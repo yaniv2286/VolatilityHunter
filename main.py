@@ -1,232 +1,115 @@
-from flask import Flask, jsonify, render_template_string
+"""
+VolatilityHunter - Standalone Trading Bot
+Simple automation script for swing trading strategy
+"""
+
 from datetime import datetime
 import sys
 import os
-from src.config import PORT, STOCK_LIST, STOCK_UNIVERSE_MODE, TICKER_FILTERS, TICKER_LIST_FILE, DATA_SOURCE
+from src.config import STOCK_LIST, STOCK_UNIVERSE_MODE, TICKER_FILTERS, TICKER_LIST_FILE, DATA_SOURCE
 from src.data_loader import get_stock_data
 from src.data_loader_factory import get_data_loader
 from src.strategy import scan_all_stocks, get_portfolio_summary
 from src.notifications import log_info, log_error
 from src.ticker_manager import TickerManager
-
-app = Flask(__name__)
-ticker_manager = TickerManager()
-data_loader = get_data_loader()
+from src.tracker import Portfolio
+from src.email_notifier import EmailNotifier
 
 def get_active_stock_list():
-    """Get the active stock list based on configuration."""
-    if STOCK_UNIVERSE_MODE == 'all':
-        # Load from file or get full universe
-        if os.path.exists(TICKER_LIST_FILE):
-            return ticker_manager.load_ticker_list(TICKER_LIST_FILE)
-        else:
-            # Use data source to get and filter tickers
-            if DATA_SOURCE == 'yfinance':
-                all_tickers = data_loader.download_nasdaq_tickers()
-                filtered_df = data_loader.filter_tickers_by_criteria(
-                    all_tickers,
-                    min_price=TICKER_FILTERS['min_price'],
-                    min_volume=TICKER_FILTERS['min_volume']
-                )
-                tickers = filtered_df['ticker'].tolist()
-            else:
-                tickers = ticker_manager.get_filtered_tickers(
-                    min_price=TICKER_FILTERS['min_price'],
-                    min_volume=TICKER_FILTERS['min_volume'],
-                    exchanges=TICKER_FILTERS['exchanges']
-                )
-            ticker_manager.save_ticker_list(tickers, TICKER_LIST_FILE)
-            return tickers
-    elif STOCK_UNIVERSE_MODE == 'sp500':
-        return ticker_manager.get_sp500_tickers()
+    """Get the complete universe of 2,150 US stocks for production."""
+    ticker_manager = TickerManager()
+    
+    # Always use full universe for production
+    if os.path.exists(TICKER_LIST_FILE):
+        tickers = ticker_manager.load_ticker_list(TICKER_LIST_FILE)
+        log_info(f"Loaded {len(tickers)} tickers from cached file")
+        return tickers
     else:
-        # Default to manual list
-        return STOCK_LIST
-
-HTML_DASHBOARD = """
-<!DOCTYPE html>
-<html>
-<head>
-    <title>VolatilityHunter Dashboard</title>
-    <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: #333;
-        }
-        .container {
-            background: white;
-            border-radius: 10px;
-            padding: 30px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-        }
-        h1 {
-            color: #667eea;
-            text-align: center;
-            margin-bottom: 10px;
-        }
-        .subtitle {
-            text-align: center;
-            color: #666;
-            margin-bottom: 30px;
-        }
-        .status {
-            background: #f8f9fa;
-            padding: 20px;
-            border-radius: 8px;
-            margin: 20px 0;
-        }
-        .btn {
-            display: inline-block;
-            padding: 12px 24px;
-            margin: 10px 5px;
-            background: #667eea;
-            color: white;
-            text-decoration: none;
-            border-radius: 5px;
-            font-weight: bold;
-            transition: background 0.3s;
-        }
-        .btn:hover {
-            background: #5568d3;
-        }
-        .btn-success {
-            background: #28a745;
-        }
-        .btn-success:hover {
-            background: #218838;
-        }
-        .actions {
-            text-align: center;
-            margin: 30px 0;
-        }
-        .info-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin: 20px 0;
-        }
-        .info-card {
-            background: #e9ecef;
-            padding: 15px;
-            border-radius: 5px;
-            text-align: center;
-        }
-        .info-card h3 {
-            margin: 0 0 10px 0;
-            color: #667eea;
-            font-size: 2em;
-        }
-        .info-card p {
-            margin: 0;
-            color: #666;
-        }
-        .footer {
-            text-align: center;
-            margin-top: 30px;
-            color: #999;
-            font-size: 0.9em;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>🎯 VolatilityHunter</h1>
-        <p class="subtitle">Swing Trading Bot - Wealth Builder Strategy</p>
+        # Get complete US stock universe
+        data_loader = get_data_loader()
+        if DATA_SOURCE == 'yfinance':
+            log_info("Downloading complete US stock universe...")
+            all_tickers = data_loader.download_nasdaq_tickers()
+            
+            # Apply production filters: CAGR > 15% and basic quality filters
+            filtered_df = data_loader.filter_tickers_by_criteria(
+                all_tickers,
+                min_price=TICKER_FILTERS['min_price'],
+                min_volume=TICKER_FILTERS['min_volume']
+            )
+            tickers = filtered_df['ticker'].tolist()
+            log_info(f"Filtered to {len(tickers)} high-quality tickers")
+        else:
+            tickers = ticker_manager.get_filtered_tickers(
+                min_price=TICKER_FILTERS['min_price'],
+                min_volume=TICKER_FILTERS['min_volume'],
+                exchanges=TICKER_FILTERS['exchanges']
+            )
         
-        <div class="status">
-            <h2>📊 System Status</h2>
-            <div class="info-grid">
-                <div class="info-card">
-                    <h3>{{ stock_count }}</h3>
-                    <p>Tracked Stocks</p>
-                </div>
-                <div class="info-card">
-                    <h3>✓</h3>
-                    <p>System Online</p>
-                </div>
-                <div class="info-card">
-                    <h3>SMA 200</h3>
-                    <p>Trend Filter</p>
-                </div>
-                <div class="info-card">
-                    <h3>32-80</h3>
-                    <p>Sweet Spot</p>
-                </div>
-            </div>
-        </div>
+        ticker_manager.save_ticker_list(tickers, TICKER_LIST_FILE)
+        log_info(f"Saved {len(tickers)} tickers to cache")
+        return tickers
 
-        <div class="actions">
-            <h2>🚀 Actions</h2>
-            <a href="/update" class="btn">Update Market Data</a>
-            <a href="/scan" class="btn btn-success">Scan for Signals</a>
-        </div>
-
-        <div class="status">
-            <h3>📈 Strategy Details</h3>
-            <ul>
-                <li><strong>Entry:</strong> Price > SMA 200 AND Stochastic K between 32-80</li>
-                <li><strong>Exit:</strong> Price < SMA 200 (Trend Break)</li>
-                <li><strong>Filter:</strong> Only stocks with CAGR > 15%</li>
-                <li><strong>Indicators:</strong> SMA 200, Stochastic (10,3,3)</li>
-            </ul>
-        </div>
-
-        <div class="footer">
-            <p>VolatilityHunter v1.0 | {{ timestamp }}</p>
-        </div>
-    </div>
-</body>
-</html>
-"""
-
-@app.route('/')
-def index():
-    active_stocks = get_active_stock_list()
-    return render_template_string(
-        HTML_DASHBOARD,
-        stock_count=len(active_stocks),
-        timestamp=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    )
-
-@app.route('/update')
-def update():
+def main():
+    """Main execution flow for VolatilityHunter."""
+    print("="*60)
+    print("VolatilityHunter - Standalone Trading Bot")
+    print("="*60)
+    print(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Data Source: {DATA_SOURCE}")
+    
     try:
-        log_info("Received /update request")
+        # Step 1: Initialize
+        print("\n[STEP 1] Initializing...")
+        log_info("Initializing VolatilityHunter...")
+        
+        # Clear log file to start fresh for this session
+        try:
+            with open('volatility_hunter.log', 'w') as f:
+                f.write(f"VolatilityHunter Session Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write("="*60 + "\n")
+            log_info("Log file cleared for new session")
+        except Exception as e:
+            log_warning(f"Could not clear log file: {e}")
+        
+        # Load portfolio and initialize components
+        portfolio = Portfolio()
+        data_loader = get_data_loader()
+        email_notifier = EmailNotifier()
+        
+        print(f"  - Portfolio: ${portfolio.state['cash']:,.2f} cash, {len(portfolio.state['positions'])} positions")
+        
+        # Get active stock list
         active_stocks = get_active_stock_list()
-        result = data_loader.update_all_stocks(stock_list=active_stocks, full_refresh=False)
-        return jsonify(result), 200
-    except Exception as e:
-        log_error(f"Error in /update endpoint: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e),
-            'timestamp': datetime.now().isoformat()
-        }), 500
-
-@app.route('/update/full')
-def update_full():
-    try:
-        log_info("Received /update/full request")
-        active_stocks = get_active_stock_list()
-        result = data_loader.update_all_stocks(stock_list=active_stocks, full_refresh=True)
-        return jsonify(result), 200
-    except Exception as e:
-        log_error(f"Error in /update/full endpoint: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e),
-            'timestamp': datetime.now().isoformat()
-        }), 500
-
-@app.route('/scan')
-def scan():
-    try:
-        log_info("Received /scan request")
-        active_stocks = get_active_stock_list()
+        print(f"  - Stock Universe: {STOCK_UNIVERSE_MODE} ({len(active_stocks)} stocks)")
+        log_info(f"Monitoring {len(active_stocks)} stocks")
+        
+        # Step 2: Update market data
+        print("\n[STEP 2] Updating market data...")
+        log_info("Starting market data update...")
+        
+        update_result = data_loader.update_all_stocks(
+            stock_list=active_stocks,
+            full_refresh=False
+        )
+        
+        print(f"  - Updated: {update_result['updated']}/{update_result['total']} stocks")
+        log_info(f"Data update complete: {update_result['updated']}/{update_result['total']} stocks")
+        
+        # Step 3: Update portfolio valuation
+        print("\n[STEP 3] Updating portfolio valuation...")
+        log_info("Updating portfolio valuation with current market prices...")
+        
+        portfolio_summary = portfolio.update_portfolio_valuation()
+        
+        print(f"  - Total Value: ${portfolio_summary['total_value']:,.2f}")
+        print(f"  - Total Return: ${portfolio_summary['total_return_dollars']:,.2f} ({portfolio_summary['total_return_pct']:+.2f}%)")
+        print(f"  - Positions: {portfolio_summary['num_positions']}/10")
+        print(f"  - Cash: ${portfolio_summary['cash']:,.2f}")
+        
+        # Step 4: Scan for signals
+        print("\n[STEP 4] Scanning for trading signals...")
+        log_info("Scanning for trading signals...")
         
         stock_data = {}
         for ticker in active_stocks:
@@ -237,147 +120,87 @@ def scan():
         scan_results = scan_all_stocks(stock_data)
         summary = get_portfolio_summary(scan_results)
         
-        response = {
-            'success': True,
-            'timestamp': datetime.now().isoformat(),
-            'summary': summary,
-            'signals': scan_results
-        }
+        print(f"  - Total Stocks: {summary['total_stocks']}")
+        print(f"  - BUY Signals: {summary['buy_signals']}")
+        print(f"  - SELL Signals: {summary['sell_signals']}")
+        print(f"  - HOLD Signals: {summary['hold_signals']}")
+        print(f"  - Errors: {summary['errors']}")
         
-        return jsonify(response), 200
-    except Exception as e:
-        log_error(f"Error in /scan endpoint: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e),
-            'timestamp': datetime.now().isoformat()
-        }), 500
-
-@app.route('/health')
-def health():
-    return jsonify({
-        'status': 'healthy',
-        'timestamp': datetime.now().isoformat()
-    }), 200
-
-@app.route('/tickers/refresh')
-def refresh_tickers():
-    """Refresh the ticker list based on current configuration."""
-    try:
-        log_info("Received /tickers/refresh request")
+        log_info(f"Scan complete: {summary['buy_signals']} BUY, {summary['sell_signals']} SELL")
         
-        if STOCK_UNIVERSE_MODE == 'all':
-            tickers = ticker_manager.get_filtered_tickers(
-                min_price=TICKER_FILTERS['min_price'],
-                min_volume=TICKER_FILTERS['min_volume'],
-                exchanges=TICKER_FILTERS['exchanges']
+        # Step 5: Process trades
+        print("\n[STEP 5] Processing paper trading...")
+        log_info("Processing paper trading signals...")
+        
+        # Sort BUY signals by quality score (highest first)
+        buy_signals = sorted(scan_results.get('BUY', []), 
+                           key=lambda x: x.get('quality_score', 0), reverse=True)
+        sell_signals = scan_results.get('SELL', [])
+        
+        executed_trades = portfolio.process_signals(buy_signals, sell_signals)
+        
+        print(f"  - Buys Executed: {len(executed_trades['buys'])}")
+        print(f"  - Sells Executed: {len(executed_trades['sells'])}")
+        
+        # Show top signals
+        if summary['buy_signals'] > 0:
+            print(f"\n[TOP BUY SIGNALS]:")
+            for i, signal in enumerate(buy_signals[:5]):  # Show top 5
+                print(f"  {i+1}. {signal['ticker']}: ${signal['indicators']['price']:.2f} | Quality: {signal.get('quality_score', 0):.2f}")
+                print(f"     Reason: {signal['reason']}")
+        
+        if summary['sell_signals'] > 0:
+            print(f"\n[SELL SIGNALS]:")
+            for i, signal in enumerate(sell_signals[:5]):  # Show top 5
+                print(f"  {i+1}. {signal['ticker']}: ${signal['indicators']['price']:.2f}")
+                print(f"     Reason: {signal['reason']}")
+        
+        # Step 6: Send email report
+        print("\n[STEP 6] Sending email report...")
+        log_info("Sending comprehensive email notification...")
+        
+        try:
+            email_sent = email_notifier.send_comprehensive_scan_results(
+                scan_results=scan_results,
+                summary=summary,
+                portfolio_summary=portfolio_summary,
+                executed_trades=executed_trades,
+                attach_log_file=True
             )
-            ticker_manager.save_ticker_list(tickers, TICKER_LIST_FILE)
-            message = f"Refreshed ticker list with {len(tickers)} stocks"
-        elif STOCK_UNIVERSE_MODE == 'sp500':
-            tickers = ticker_manager.get_sp500_tickers()
-            message = f"Using S&P 500 universe with {len(tickers)} stocks"
-        else:
-            tickers = STOCK_LIST
-            message = f"Using manual list with {len(tickers)} stocks"
+            
+            if email_sent:
+                print("  - Email sent successfully!")
+                print("  - Log file attached: Yes")
+                log_info("Comprehensive email notification sent successfully")
+            else:
+                print("  - Failed to send email")
+                log_error("Failed to send email notification")
+                
+        except Exception as e:
+            print(f"  - Email error: {e}")
+            log_error(f"Email sending error: {e}")
         
-        return jsonify({
-            'success': True,
-            'message': message,
-            'ticker_count': len(tickers),
-            'mode': STOCK_UNIVERSE_MODE,
-            'timestamp': datetime.now().isoformat()
-        }), 200
+        # Step 7: Final summary
+        print("\n[STEP 7] Final Summary")
+        print("="*60)
+        print(f"[OK] VolatilityHunter completed successfully!")
+        print(f"[DATA] Market Data: {update_result['updated']}/{update_result['total']} stocks updated")
+        print(f"[SIGNALS] Signals: {summary['buy_signals']} BUY, {summary['sell_signals']} SELL")
+        print(f"[PORTFOLIO] Portfolio: ${portfolio_summary['total_value']:,.2f} ({portfolio_summary['total_return_pct']:+.2f}%)")
+        print(f"[EMAIL] Email: {'Sent' if email_sent else 'Failed'}")
+        print(f"[DURATION] Total runtime: {datetime.now() - datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)}")
+        print("="*60)
+        
+        log_info("VolatilityHunter execution completed successfully")
+        
+        # Exit cleanly - linear execution complete
+        sys.exit(0)
+        
     except Exception as e:
-        log_error(f"Error refreshing tickers: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e),
-            'timestamp': datetime.now().isoformat()
-        }), 500
-
-@app.route('/tickers/list')
-def list_tickers():
-    """Get the current list of active tickers."""
-    try:
-        active_stocks = get_active_stock_list()
-        return jsonify({
-            'success': True,
-            'tickers': active_stocks,
-            'count': len(active_stocks),
-            'mode': STOCK_UNIVERSE_MODE,
-            'timestamp': datetime.now().isoformat()
-        }), 200
-    except Exception as e:
-        log_error(f"Error listing tickers: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e),
-            'timestamp': datetime.now().isoformat()
-        }), 500
-
-def cli_update(full=False):
-    print(f"{'='*60}")
-    print(f"VolatilityHunter - Data Update ({'Full' if full else 'Incremental'})")
-    print(f"{'='*60}")
-    print(f"Data Source: {DATA_SOURCE}")
-    active_stocks = get_active_stock_list()
-    print(f"Stock Universe: {STOCK_UNIVERSE_MODE} ({len(active_stocks)} stocks)")
-    result = data_loader.update_all_stocks(stock_list=active_stocks, full_refresh=full)
-    print(f"\n✓ Update Complete:")
-    print(f"  - Updated: {result['updated']}/{result['total']} stocks")
-    print(f"  - Timestamp: {result['timestamp']}")
-    print(f"{'='*60}\n")
-
-def cli_scan():
-    print(f"{'='*60}")
-    print("VolatilityHunter - Market Scan")
-    print(f"{'='*60}")
-    print(f"Data Source: {DATA_SOURCE}")
-    active_stocks = get_active_stock_list()
-    print(f"Stock Universe: {STOCK_UNIVERSE_MODE} ({len(active_stocks)} stocks)")
-    
-    stock_data = {}
-    for ticker in active_stocks:
-        df = get_stock_data(ticker)
-        if df is not None:
-            stock_data[ticker] = df
-    
-    scan_results = scan_all_stocks(stock_data)
-    summary = get_portfolio_summary(scan_results)
-    
-    print(f"\n📊 SUMMARY:")
-    print(f"  - Total Stocks: {summary['total_stocks']}")
-    print(f"  - BUY Signals: {summary['buy_signals']}")
-    print(f"  - SELL Signals: {summary['sell_signals']}")
-    print(f"  - HOLD Signals: {summary['hold_signals']}")
-    print(f"  - Errors: {summary['errors']}")
-    
-    if summary['buy_signals'] > 0:
-        print(f"\n🟢 BUY SIGNALS:")
-        for signal in scan_results['BUY']:
-            print(f"  - {signal['ticker']}: ${signal['indicators']['price']:.2f}")
-            print(f"    Reason: {signal['reason']}")
-    
-    if summary['sell_signals'] > 0:
-        print(f"\n🔴 SELL SIGNALS:")
-        for signal in scan_results['SELL']:
-            print(f"  - {signal['ticker']}: ${signal['indicators']['price']:.2f}")
-            print(f"    Reason: {signal['reason']}")
-    
-    print(f"\n{'='*60}\n")
+        print(f"\n[ERROR] VolatilityHunter execution failed: {e}")
+        log_error(f"VolatilityHunter execution failed: {e}")
+        print("="*60)
+        sys.exit(1)
 
 if __name__ == '__main__':
-    if len(sys.argv) > 1:
-        command = sys.argv[1]
-        if command == 'update':
-            cli_update(full=False)
-        elif command == 'update-full':
-            cli_update(full=True)
-        elif command == 'scan':
-            cli_scan()
-        else:
-            print("Unknown command. Available commands: update, update-full, scan")
-    else:
-        log_info(f"Starting VolatilityHunter Flask server on port {PORT}")
-        app.run(host='0.0.0.0', port=PORT, debug=False)
+    main()

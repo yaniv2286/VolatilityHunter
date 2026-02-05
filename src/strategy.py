@@ -77,8 +77,8 @@ def analyze_stock(df):
         'date': str(latest['date'])
     }
     
-    # Quality score for prioritization (higher CAGR = better quality)
-    quality_score = float(cagr)
+    # Quality score for prioritization: CAGR * (Stochastic_K / 100)
+    quality_score = float(cagr) * (float(stoch_k) / 100.0) if pd.notna(stoch_k) else float(cagr)
     
     if pd.isna(sma_200) or pd.isna(stoch_k):
         return {
@@ -138,7 +138,8 @@ def scan_all_stocks(stock_data_dict):
                 'ticker': ticker,
                 'signal': signal,
                 'reason': analysis['reason'],
-                'indicators': analysis['indicators']
+                'indicators': analysis['indicators'],
+                'quality_score': analysis.get('quality_score', 0)
             }
             
             if signal in ['BUY', 'SELL', 'HOLD', 'INSUFFICIENT_DATA']:

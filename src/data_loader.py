@@ -110,6 +110,5 @@ def update_all_stocks(full_refresh=False, stock_list=None):
 def get_stock_data(ticker):
     """Load stock data from local storage only (no API fallback)."""
     df = storage.load_data(ticker)
-    if df is None:
-        log_warning(f"No local data found for {ticker}")
+    # Silent fail - no logging for missing local data to reduce noise
     return df

@@ -16,9 +16,10 @@ STOCK_UNIVERSE_MODE = os.getenv('STOCK_UNIVERSE_MODE', 'manual')
 
 # Manual stock list (used when STOCK_UNIVERSE_MODE='manual')
 STOCK_LIST = [
-    'NVDA', 'NFLX', 'PLTR', 'SHOP', 'ZS', 'SPOT', 'CRWD', 'DECK', 
+    'NVDA', 'PLTR', 'SHOP', 'ZS', 'SPOT', 'CRWD', 'DECK', 
     'META', 'AVGO', 'LRCX', 'CSCO', 'MU', 'AMZN', 'MELI', 'TSLA', 
-    'HD', 'KLAC', 'MSFT', 'GOOGL', 'QQQ'
+    'HD', 'KLAC', 'MSFT', 'GOOGL', 'QQQ', 'ABBV', 'BLK', 'REGN', 
+    'ROKU', 'AAPL', 'AMD', 'INTC', 'BABA', 'PYPL', 'NFLX'
 ]
 
 # Ticker filtering criteria (used when STOCK_UNIVERSE_MODE='all' or 'sp500')

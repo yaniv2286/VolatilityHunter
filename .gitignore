@@ -30,7 +30,16 @@ venv.bak/
 data/
 *.csv
 *.log
+*.log.err
 portfolio.json
+*.sqlite
+*.db
+
+# Test artifacts
+test_data/
+mock_data/
+*_output.log
+task_scheduler_output.log
 
 .DS_Store
 .idea/

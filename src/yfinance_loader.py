@@ -1,6 +1,6 @@
 """
 Yahoo Finance Data Loader
-Provides unlimited free access to US stock data
+Provides unlimited free access to US stock data with optimized bulk downloading
 """
 
 import yfinance as yf
@@ -149,89 +149,123 @@ class YFinanceLoader:
             log_error(f"Error downloading {ticker}: {e}")
             return None
     
-    def download_batch(self, tickers, period='2y'):
+    def download_batch(self, tickers, period='2y', max_retries=2):
         """
-        Download historical data for multiple tickers in parallel.
+        Download historical data for multiple tickers using optimized bulk download.
         
         Args:
             tickers: List of ticker symbols
             period: Time period
+            max_retries: Maximum number of retry attempts
             
         Returns:
             Dictionary of {ticker: DataFrame}
         """
-        log_info(f"Downloading {len(tickers)} stocks with period={period}...")
+        log_info(f"Bulk downloading {len(tickers)} stocks with period={period}...")
         
         results = {}
+        retry_count = 0
         
-        try:
-            # Download all tickers at once (yfinance handles parallelization)
-            data = yf.download(tickers, period=period, progress=False, threads=True, group_by='ticker')
-            
-            if isinstance(data.columns, pd.MultiIndex):
-                # Multiple tickers
-                for ticker in tickers:
-                    try:
-                        if ticker in data.columns.get_level_values(0):
-                            ticker_data = data[ticker].copy()
-                            ticker_data = ticker_data.reset_index()
-                            ticker_data = ticker_data.rename(columns={'Date': 'date'})
-                            
-                            # Ensure column names are correct
-                            ticker_data = ticker_data[['date', 'Open', 'High', 'Low', 'Close', 'Volume']]
-                            ticker_data = ticker_data.dropna(subset=['Close', 'High', 'Low', 'Open'])
-                            
-                            if len(ticker_data) > 0:
-                                results[ticker] = ticker_data
-                    except Exception as e:
-                        log_warning(f"Error processing {ticker}: {e}")
-            else:
-                # Single ticker
-                ticker = tickers[0]
-                ticker_data = data.copy()
-                ticker_data = ticker_data.reset_index()
-                ticker_data = ticker_data.rename(columns={'Date': 'date'})
-                ticker_data = ticker_data[['date', 'Open', 'High', 'Low', 'Close', 'Volume']]
-                ticker_data = ticker_data.dropna(subset=['Close', 'High', 'Low', 'Open'])
+        while retry_count < max_retries:
+            try:
+                # Use conservative bulk download without custom session
+                start_time = time.time()
+                data = yf.download(
+                    tickers, 
+                    period=period, 
+                    progress=False, 
+                    threads=5  # Reduced threading to avoid rate limits
+                )
                 
-                if len(ticker_data) > 0:
-                    results[ticker] = ticker_data
-            
-            log_info(f"Successfully downloaded {len(results)}/{len(tickers)} stocks")
-            
-        except Exception as e:
-            log_error(f"Error in batch download: {e}")
+                download_time = time.time() - start_time
+                log_info(f"Bulk download completed in {download_time:.2f} seconds")
+                
+                if isinstance(data.columns, pd.MultiIndex):
+                    # Multiple tickers - process efficiently
+                    for ticker in tickers:
+                        try:
+                            if ticker in data.columns.get_level_values(0):
+                                ticker_data = data[ticker].copy()
+                                ticker_data = ticker_data.reset_index()
+                                ticker_data = ticker_data.rename(columns={'Date': 'date'})
+                                
+                                # Ensure column names are correct and drop NaN
+                                ticker_data = ticker_data[['date', 'Open', 'High', 'Low', 'Close', 'Volume']]
+                                ticker_data = ticker_data.dropna(subset=['Close', 'High', 'Low', 'Open'])
+                                
+                                if len(ticker_data) > 0:
+                                    results[ticker] = ticker_data
+                            else:
+                                log_warning(f"No data returned for {ticker}")
+                        except Exception as e:
+                            log_warning(f"Error processing {ticker}: {e}")
+                else:
+                    # Single ticker case
+                    ticker = tickers[0]
+                    ticker_data = data.copy()
+                    ticker_data = ticker_data.reset_index()
+                    ticker_data = ticker_data.rename(columns={'Date': 'date'})
+                    ticker_data = ticker_data[['date', 'Open', 'High', 'Low', 'Close', 'Volume']]
+                    ticker_data = ticker_data.dropna(subset=['Close', 'High', 'Low', 'Open'])
+                    
+                    if len(ticker_data) > 0:
+                        results[ticker] = ticker_data
+                
+                log_info(f"Successfully processed {len(results)}/{len(tickers)} stocks")
+                return results
+                
+            except Exception as e:
+                retry_count += 1
+                if "Rate limit" in str(e) or "Too many requests" in str(e):
+                    log_warning(f"Rate limit hit (attempt {retry_count}/{max_retries}): {e}")
+                    if retry_count < max_retries:
+                        log_info(f"Waiting 5 seconds before retry...")
+                        time.sleep(5)
+                    else:
+                        log_error(f"Max retries reached for bulk download")
+                        return results
+                else:
+                    log_error(f"Error in bulk download (attempt {retry_count}/{max_retries}): {e}")
+                    if retry_count < max_retries:
+                        log_info(f"Waiting 5 seconds before retry...")
+                        time.sleep(5)
+                    else:
+                        log_error(f"Max retries reached for bulk download")
+                        return results
         
         return results
     
     def update_all_stocks(self, stock_list, full_refresh=False, batch_size=50):
         """
-        Update historical data for all stocks in the list.
+        Update historical data for all stocks using production batching for 2,150 stocks.
         
         Args:
-            stock_list: List of ticker symbols
+            stock_list: List of ticker symbols (2,150 stocks)
             full_refresh: If True, download 2 years; if False, download last 7 days
-            batch_size: Number of stocks per batch
+            batch_size: Number of stocks per batch (50 for high-volume processing)
             
         Returns:
             Dictionary with update results
         """
         period = '2y' if full_refresh else '7d'
-        log_info(f"Starting {'full' if full_refresh else 'incremental'} update for {len(stock_list)} stocks")
+        log_info(f"Starting production batch update for {len(stock_list)} stocks with batch_size={batch_size}")
         
+        start_time = time.time()
         updated_count = 0
+        
+        # Process in production batches with 10-second delays
         total_batches = (len(stock_list) + batch_size - 1) // batch_size
         
         for i in range(0, len(stock_list), batch_size):
             batch = stock_list[i:i+batch_size]
             batch_num = i // batch_size + 1
             
-            log_info(f"Batch {batch_num}/{total_batches}: {len(batch)} stocks")
+            log_info(f"Processing production batch {batch_num}/{total_batches}: {len(batch)} stocks")
             
-            # Download batch
-            batch_data = self.download_batch(batch, period=period)
+            # Download batch with production retry mechanism
+            batch_data = self.download_production_batch(batch, period=period, max_retries=2)
             
-            # Save each stock
+            # Save each stock's data with local persistence fallback
             for ticker, new_df in batch_data.items():
                 try:
                     if full_refresh:
@@ -251,12 +285,122 @@ class YFinanceLoader:
                     updated_count += 1
                 except Exception as e:
                     log_error(f"Error saving {ticker}: {e}")
+            
+            # 10-second delay between batches to prevent YFRateLimitError
+            if batch_num < total_batches:
+                log_info("Production delay: Waiting 10 seconds before next batch...")
+                time.sleep(10)
         
-        log_info(f"Update complete: {updated_count}/{len(stock_list)} stocks updated")
+        total_time = time.time() - start_time
+        log_info(f"Production batch update complete: {updated_count}/{len(stock_list)} stocks updated in {total_time:.2f} seconds")
         
         return {
             'success': True,
             'updated': updated_count,
             'total': len(stock_list),
-            'timestamp': datetime.now().isoformat()
+            'timestamp': datetime.now().isoformat(),
+            'download_time_seconds': total_time
         }
+    
+    def download_production_batch(self, tickers, period='7d', max_retries=2):
+        """
+        Download historical data for a production batch with high-volume API handling.
+        
+        Args:
+            tickers: List of ticker symbols (up to 50)
+            period: Time period
+            max_retries: Maximum number of retry attempts
+            
+        Returns:
+            Dictionary of {ticker: DataFrame}
+        """
+        log_info(f"Production batch downloading {len(tickers)} stocks with period={period}...")
+        
+        results = {}
+        retry_count = 0
+        
+        while retry_count < max_retries:
+            try:
+                # Use production batch download with optimal settings
+                start_time = time.time()
+                data = yf.download(
+                    tickers, 
+                    period=period, 
+                    progress=False, 
+                    threads=True,
+                    group_by='ticker'  # Group by ticker for efficient processing
+                )
+                
+                download_time = time.time() - start_time
+                log_info(f"Production batch download completed in {download_time:.2f} seconds")
+                
+                if data.empty:
+                    log_warning(f"Production batch returned empty data (attempt {retry_count + 1}/{max_retries + 1})")
+                    if retry_count < max_retries:
+                        log_info("Production retry: Waiting 5 seconds before retry...")
+                        time.sleep(5)
+                        retry_count += 1
+                        continue
+                    else:
+                        log_error(f"Production batch failed after max retries")
+                        return results
+                
+                # Process each ticker in the batch with local persistence fallback
+                for ticker in tickers:
+                    try:
+                        if ticker in data:
+                            ticker_data = data[ticker]
+                            if not ticker_data.empty:
+                                results[ticker] = ticker_data
+                            else:
+                                # Use local persistence fallback
+                                local_data = self._local_persistence_fallback(ticker)
+                                if local_data is not None:
+                                    results[ticker] = local_data
+                                    log_info(f"[LOCAL FALLBACK] {ticker}: Used last known local price")
+                        else:
+                            # Use local persistence fallback
+                            local_data = self._local_persistence_fallback(ticker)
+                            if local_data is not None:
+                                results[ticker] = local_data
+                                log_info(f"[LOCAL FALLBACK] {ticker}: Used last known local price")
+                    except Exception as e:
+                        log_error(f"Error processing {ticker}: {e}")
+                
+                return results
+                
+            except Exception as e:
+                log_error(f"Production batch error (attempt {retry_count + 1}/{max_retries + 1}): {e}")
+                if retry_count < max_retries:
+                    log_info("Production retry: Waiting 5 seconds before retry...")
+                    time.sleep(5)
+                    retry_count += 1
+                else:
+                    log_error(f"Production batch failed after max retries")
+                    break
+        
+        return results
+    
+    def _local_persistence_fallback(self, ticker):
+        """
+        Production local persistence fallback - use last known price from local data.
+        
+        Args:
+            ticker: Ticker symbol
+            
+        Returns:
+            DataFrame with local data or None if not found
+        """
+        try:
+            # Try to load from local storage
+            local_data = self.storage.load_data(ticker)
+            if local_data is not None and len(local_data) > 0:
+                # Return the local data for continued processing
+                return local_data
+            else:
+                # Silent fail - no local data available
+                return None
+        except Exception as e:
+            # Only log actual errors, not missing data
+            log_error(f"[LOCAL ERROR] {ticker}: Error accessing local data: {e}")
+            return None

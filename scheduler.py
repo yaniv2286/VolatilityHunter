@@ -146,11 +146,16 @@ def run_scheduler():
     print("Running initial scan...")
     daily_job()
     
-    # Keep running
-    print("\nScheduler is now running. Press Ctrl+C to stop.")
-    while True:
-        schedule.run_pending()
-        time.sleep(60)  # Check every minute
+    # Check if this was just the initial scan (no scheduled jobs yet)
+    # If so, exit after completion
+    if len(schedule.jobs) > 0:
+        print("\nScheduler is now running. Press Ctrl+C to stop.")
+        while True:
+            schedule.run_pending()
+            time.sleep(60)  # Check every minute
+    else:
+        print("\nInitial scan completed. Exiting...")
+        sys.exit(0)
 
 if __name__ == "__main__":
     try:
