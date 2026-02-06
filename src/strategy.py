@@ -108,17 +108,28 @@ def calculate_volume_sma(df, period=30):
 
 def check_volume_quality(df, min_days=30):
     """Check if current volume is above 30-day average."""
+    from src.config_manager import get_config
+    
+    config = get_config()
+    checklist_config = config.get_pre_trade_checklist_config()
+    
+    # Check if volume check is enabled
+    if not checklist_config.get('volume_check', True):
+        return True, "Volume check disabled"
+    
     if len(df) < min_days:
-        return False, "Insufficient volume history"
+        return False, f"Insufficient data (need {min_days} days, have {len(df)})"
     
-    current_volume = df.iloc[-1]['Volume']
-    avg_volume = calculate_volume_sma(df, min_days).iloc[-1]
+    current_volume = df['Volume'].iloc[-1]
+    volume_sma = df['Volume'].rolling(window=min_days).mean().iloc[-1]
     
-    if pd.isna(avg_volume) or avg_volume == 0:
-        return False, "Invalid volume data"
+    if volume_sma <= 0:
+        return False, "Invalid volume SMA (zero or negative)"
     
-    volume_ratio = current_volume / avg_volume
-    return volume_ratio >= 1.0, f"Volume ratio: {volume_ratio:.2f}"
+    volume_ratio = current_volume / volume_sma
+    is_above_avg = current_volume >= volume_sma
+    
+    return is_above_avg, f"Volume ratio: {volume_ratio:.2f}"
 
 def detect_w_formation(df, lookback=20):
     """Detect basic W formation (higher lows)."""
@@ -338,6 +349,15 @@ def check_power_stock_exception(df):
 def is_friday_trading():
     """Check if today is Friday (for Friday Rule awareness)."""
     from datetime import datetime
+    from src.config_manager import get_config
+    
+    config = get_config()
+    checklist_config = config.get_pre_trade_checklist_config()
+    
+    # Check if Friday rule is enabled
+    if not checklist_config.get('friday_rule', True):
+        return False
+    
     return datetime.now().weekday() == 4  # Friday is 4 (0=Monday)
 
 def check_earnings_safety(ticker, days_ahead=5):
@@ -345,6 +365,19 @@ def check_earnings_safety(ticker, days_ahead=5):
     Check if ticker has earnings in the next N days.
     For now, returns True (safe) - can be enhanced with earnings API later.
     """
+    from src.config_manager import get_config
+    
+    config = get_config()
+    checklist_config = config.get_pre_trade_checklist_config()
+    
+    # In simulation mode, always return True
+    if config.is_simulation_mode():
+        return True, "Simulation mode - earnings check bypassed"
+    
+    # In production mode, check if earnings check is enabled
+    if not checklist_config.get('earnings_check', True):
+        return True, "Earnings check disabled"
+    
     # TODO: Implement earnings date check using API like:
     # - Yahoo Finance earnings calendar
     # - Alpha Vantage earnings endpoint
