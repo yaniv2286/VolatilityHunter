@@ -99,7 +99,7 @@ class DataStorage:
             # Local: Overwrite the old file or create new standard one
             # Let's just create a standard one to clean up the mess
             path = os.path.join(self.local_dir, filename)
-            df.to_csv(path)
+            df.to_csv(path, index=False)
             print(f"Saved {ticker} to {path}")
 
     def list_available_tickers(self):

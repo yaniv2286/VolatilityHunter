@@ -99,7 +99,11 @@ def daily_job():
         # Step 4: Process paper trading
         log_info("Processing paper trading signals...")
         portfolio = Portfolio()
-        trades = portfolio.process_signals(scan_results['BUY'], scan_results['SELL'])
+        # Sort BUY signals by quality score (highest first)
+        buy_signals = sorted(scan_results.get('BUY', []),
+                           key=lambda x: x.get('quality_score', 0), reverse=True)
+        sell_signals = scan_results.get('SELL', [])
+        trades = portfolio.process_signals(buy_signals, sell_signals)
         
         # Get current prices for portfolio positions
         current_prices = {}
