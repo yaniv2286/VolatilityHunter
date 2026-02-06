@@ -25,6 +25,31 @@ def get_active_stock_list():
     from main import get_active_stock_list as get_list
     return get_list()
 
+def _check_needs_full_refresh(stock_list, sample_size=50, min_rows=200):
+    """Check if most stocks need a full data refresh by sampling."""
+    from src.storage import DataStorage
+    storage = DataStorage()
+    
+    sample = stock_list[:sample_size]
+    sufficient_count = 0
+    
+    for ticker in sample:
+        df = storage.load_data(ticker)
+        if df is not None and len(df) >= min_rows:
+            sufficient_count += 1
+    
+    pct_sufficient = sufficient_count / len(sample) * 100
+    log_info(f"[DATA CHECK] {sufficient_count}/{len(sample)} sampled stocks have >= {min_rows} rows ({pct_sufficient:.0f}%)")
+    
+    # If less than 50% of sampled stocks have enough data, trigger full refresh
+    needs_refresh = pct_sufficient < 50
+    if needs_refresh:
+        log_info(f"[DATA CHECK] Full refresh needed - only {pct_sufficient:.0f}% have sufficient data")
+    else:
+        log_info(f"[DATA CHECK] Incremental update sufficient - {pct_sufficient:.0f}% have enough data")
+    
+    return needs_refresh
+
 def daily_job():
     """Main daily job: update data, scan, and send email."""
     print("="*60)
@@ -39,13 +64,23 @@ def daily_job():
         stock_list = get_active_stock_list()
         log_info(f"Monitoring {len(stock_list)} stocks")
         
-        # Step 2: Update data (incremental)
-        log_info("Starting incremental data update...")
+        # Step 2: Check if full refresh is needed (auto-detect insufficient data)
         data_loader = get_data_loader()
-        update_result = data_loader.update_all_stocks(
-            stock_list=stock_list,
-            full_refresh=False
-        )
+        needs_full_refresh = _check_needs_full_refresh(stock_list)
+        
+        if needs_full_refresh:
+            log_info("[AUTO-BACKFILL] Most stocks lack historical data. Running full 2-year refresh...")
+            print("[AUTO-BACKFILL] Downloading 2 years of history for all stocks...")
+            update_result = data_loader.update_all_stocks(
+                stock_list=stock_list,
+                full_refresh=True
+            )
+        else:
+            log_info("Starting incremental data update...")
+            update_result = data_loader.update_all_stocks(
+                stock_list=stock_list,
+                full_refresh=False
+            )
         log_info(f"Data update complete: {update_result['updated']}/{update_result['total']} stocks")
         
         # Step 3: Scan for signals
@@ -119,7 +154,7 @@ def weekly_full_update():
         )
         
         log_info(f"Full refresh complete: {result['updated']}/{result['total']} stocks")
-        print(f"✓ Full refresh complete: {result['updated']}/{result['total']} stocks")
+        print(f"[OK] Full refresh complete: {result['updated']}/{result['total']} stocks")
         
     except Exception as e:
         log_error(f"Weekly update failed: {e}")

@@ -19,12 +19,16 @@ class DataStorage:
             print(f"INFO: LocalStorage initialized at {self.local_dir}")
 
     def _get_local_file_path(self, ticker):
-        """Finds the file for a ticker, ignoring the date suffix."""
-        # Search for data/NVDA_1d_full_*.csv
+        """Finds the file for a ticker, checking standard name first, then dated suffix."""
+        # First check for standard filename: TICKER_1d_full.csv
+        standard_path = os.path.join(self.local_dir, f"{ticker}_1d_full.csv")
+        if os.path.exists(standard_path):
+            return standard_path
+        # Fallback: search for dated suffix pattern: TICKER_1d_full_*.csv
         search_pattern = os.path.join(self.local_dir, f"{ticker}_1d_full_*.csv")
         files = glob.glob(search_pattern)
         if files:
-            return files[0] # Return the first match found
+            return files[0]
         return None
 
     def load_data(self, ticker):
@@ -41,17 +45,27 @@ class DataStorage:
                 # Use the first matching blob
                 blob = matching_blobs[0]
                 content = blob.download_as_text()
-                df = pd.read_csv(StringIO(content), parse_dates=['date'])
+                df = pd.read_csv(StringIO(content))
+                df = self._ensure_date_column(df)
                 return self._normalize_columns(df)
             return None
         else:
             # Local: Use the robust finder
             file_path = self._get_local_file_path(ticker)
             if file_path and os.path.exists(file_path):
-                df = pd.read_csv(file_path, parse_dates=['date'])
+                df = pd.read_csv(file_path)
+                df = self._ensure_date_column(df)
                 return self._normalize_columns(df)
             return None
     
+    def _ensure_date_column(self, df):
+        """Ensure 'date' column exists, handling both 'Date' and 'date' formats."""
+        if 'Date' in df.columns and 'date' not in df.columns:
+            df = df.rename(columns={'Date': 'date'})
+        if 'date' in df.columns:
+            df['date'] = pd.to_datetime(df['date'], errors='coerce')
+        return df
+
     def _normalize_columns(self, df):
         """Normalize column names to match expected format."""
         # Map lowercase to capitalized column names
@@ -98,10 +112,11 @@ class DataStorage:
                 t = b.name.split('_')[0]
                 tickers.add(t)
         else:
-            # Local: glob all CSVs
-            files = glob.glob(os.path.join(self.local_dir, "*_1d_full_*.csv"))
-            for f in files:
-                filename = os.path.basename(f)
-                t = filename.split('_')[0]
-                tickers.add(t)
+            # Local: glob all CSVs (both standard and dated formats)
+            for pattern in ["*_1d_full.csv", "*_1d_full_*.csv"]:
+                files = glob.glob(os.path.join(self.local_dir, pattern))
+                for f in files:
+                    filename = os.path.basename(f)
+                    t = filename.split('_')[0]
+                    tickers.add(t)
         return list(tickers)
