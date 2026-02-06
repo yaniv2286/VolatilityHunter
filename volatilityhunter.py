@@ -17,7 +17,7 @@ from src.config_manager import get_config, is_simulation, is_production
 from src.backtest_engine import run_complete_backtest
 from src.strategy import scan_all_stocks
 from src.tracker import Portfolio
-from src.data_loader_factory import get_data_loader
+from src.smart_data_loader_factory import get_data_loader
 from src.storage import DataStorage
 from src.notifications import log_info, log_error, log_warning, alert_signal, alert_error
 from src.log_collector import LogCollector
@@ -68,6 +68,11 @@ class VolatilityHunter:
             # Step 1: Update data
             log_info("Step 1: Updating market data...")
             data_loader = get_data_loader()
+            
+            # Display data source information
+            if hasattr(data_loader, 'get_data_source_info'):
+                source_info = data_loader.get_data_source_info()
+                log_info(f"Data Source: {source_info['source']} ({source_info['reason']})")
             
             # Get stock list for data loader
             from src.ticker_manager import TickerManager

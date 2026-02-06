@@ -61,7 +61,7 @@ class ConfigurationManager:
         
         # Data source
         data_source = os.getenv('VH_DATA_SOURCE', 'tiingo').lower()
-        if data_source == 'yahoo':
+        if data_source in ['yahoo', 'yfinance']:
             self.config.data_source = DataSourceType.YAHOO
         else:
             self.config.data_source = DataSourceType.TIINGO
@@ -141,6 +141,18 @@ class ConfigurationManager:
         print("=" * 60)
         print(f"Mode: {self.config.mode.value.upper()}")
         print(f"Data Source: {self.config.data_source.value.upper()}")
+        
+        # Show smart data source info
+        try:
+            from src.smart_data_loader_factory import get_smart_data_loader
+            smart_loader = get_smart_data_loader()
+            source_info = smart_loader.get_data_source_info()
+            print(f"Active Source: {source_info['source']}")
+            print(f"Reason: {source_info['reason']}")
+            print(f"Tiingo Key Available: {'✅ YES' if source_info['key_available'] else '❌ NO'}")
+        except Exception as e:
+            print(f"Data Source Info: Unable to load ({e})")
+        
         print(f"Initial Capital: ${self.config.initial_capital:,.2f}")
         print(f"Max Positions: {self.config.max_positions}")
         print(f"Position Size: ${self.config.position_size:,.2f}")
