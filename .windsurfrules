@@ -1,10 +1,10 @@
-# VolatilityHunter Operational Rules
-# MUST follow these rules during every session to ensure code quality and prevent automation crashes
+ VolatilityHunter Operational Rules
+ MUST follow these rules during every session to ensure code quality and prevent automation crashes
 
 ## Testing Protocol - MANDATORY AFTER EVERY CHANGE
-# After any code enhancement or development, you MUST run ALL three test suites in order:
-# 1. python lightning_tests.py      (1-2 seconds - Core functionality validation)
-# 2. python quick_tests.py           (0.5 seconds - Unit tests with mocking)
+ After any code enhancement or development, you MUST run ALL three test suites in order:
+ 1. python lightning_tests.py      (1-2 seconds - Core functionality validation)
+ 2. python quick_tests.py           (0.5 seconds - Unit tests with mocking)
 # 3. python quick_test_runner.py     (<30 seconds - Comprehensive validation)
 #
 # These tests verify:

@@ -68,30 +68,49 @@ class SmartDataLoader:
         """
         Update stocks with automatic fallback on failure
         """
+        total_stocks = len(stock_list)
+        log_info(f"📊 Starting data update for {total_stocks} stocks (batch_size={batch_size})")
+        
         try:
             if self.using_fallback:
-                log_info("Using fallback loader (Yahoo Finance)")
-                return self.fallback_loader.update_all_stocks(stock_list, full_refresh, batch_size)
+                log_info("🔄 Using fallback loader (Yahoo Finance)")
+                return self._update_with_progress(self.fallback_loader, stock_list, full_refresh, batch_size, total_stocks)
             else:
-                log_info("Using primary loader (Tiingo)")
-                result = self.primary_loader.update_all_stocks(stock_list, full_refresh, batch_size)
+                log_info("🚀 Using primary loader (Tiingo)")
+                result = self._update_with_progress(self.primary_loader, stock_list, full_refresh, batch_size, total_stocks)
                 
                 # Check if Tiingo call was successful
                 if result and result.get('success', False):
+                    log_info(f"✅ Data update completed: {result.get('updated', 0)}/{total_stocks} stocks updated")
                     return result
                 else:
-                    log_warning("Tiingo failed, switching to Yahoo Finance fallback")
+                    log_warning("⚠️ Tiingo failed, switching to Yahoo Finance fallback")
                     self.using_fallback = True
-                    return self.fallback_loader.update_all_stocks(stock_list, full_refresh, batch_size)
+                    log_info("🔄 Retrying with Yahoo Finance fallback...")
+                    return self._update_with_progress(self.fallback_loader, stock_list, full_refresh, batch_size, total_stocks)
                     
         except Exception as e:
-            log_error(f"Primary loader failed: {e}")
+            log_error(f"❌ Primary loader failed: {e}")
             if not self.using_fallback and self.fallback_loader:
-                log_warning("Switching to Yahoo Finance fallback")
+                log_warning("🔄 Switching to Yahoo Finance fallback")
                 self.using_fallback = True
-                return self.fallback_loader.update_all_stocks(stock_list, full_refresh, batch_size)
+                return self._update_with_progress(self.fallback_loader, stock_list, full_refresh, batch_size, total_stocks)
             else:
                 raise e
+    
+    def _update_with_progress(self, loader, stock_list, full_refresh, batch_size, total_stocks):
+        """Update with progress indicators"""
+        import time
+        start_time = time.time()
+        
+        result = loader.update_all_stocks(stock_list, full_refresh, batch_size)
+        
+        elapsed_time = time.time() - start_time
+        updated = result.get('updated', 0) if result else 0
+        
+        log_info(f"📈 Progress: {updated}/{total_stocks} stocks updated in {elapsed_time:.1f}s")
+        
+        return result
     
     def get_data_source_info(self):
         """Get information about current data source"""

@@ -6,6 +6,7 @@ Unified entry point for both manual execution and Task Scheduler
 
 import sys
 import os
+import time
 import argparse
 from datetime import datetime
 from typing import Dict, Any
@@ -86,8 +87,23 @@ class VolatilityHunter:
             
             # Step 2: Generate signals
             log_info("Step 2: Generating trading signals...")
+            import time
+            signal_start = time.time()
+            
             all_data = self._load_all_stock_data()
+            log_info(f"📊 Loaded data for {len(all_data)} tickers")
+            
+            log_info("🔍 Analyzing stocks for trading signals...")
             signals = scan_all_stocks(all_data)
+            
+            signal_time = time.time() - signal_start
+            total_signals = sum(len(signals.get(signal_type, [])) for signal_type in ['BUY', 'SELL', 'HOLD'])
+            
+            log_info(f"✅ Signal generation completed: {total_signals} signals in {signal_time:.1f}s")
+            for signal_type, signal_list in signals.items():
+                if signal_list:
+                    log_info(f"  📈 {signal_type}: {len(signal_list)} signals")
+            
             results['signals'] = signals
             results['signals_generated'] = True
             
@@ -104,31 +120,79 @@ class VolatilityHunter:
             # Step 3: Execute trades (if not in backtest mode)
             if not self.config.config.backtest_enabled:
                 log_info("Step 3: Executing trades...")
+                portfolio_start = time.time()
+                
                 portfolio = Portfolio()
+                log_info(f"💰 Current portfolio: ${portfolio.state['cash']:,.2f} cash, {len(portfolio.state['positions'])} positions")
                 
                 # Get current prices
+                log_info("💱 Fetching current market prices...")
                 current_prices = self._get_current_prices(all_data)
+                log_info(f"📊 Retrieved prices for {len(current_prices)} stocks")
                 
                 # Process signals
                 buy_signals = sorted(signals['BUY'], key=lambda x: x.get('quality_score', 0), reverse=True)
                 sell_signals = signals['SELL']
                 
+                log_info(f"📈 Processing {len(buy_signals)} BUY and {len(sell_signals)} SELL signals...")
                 trades = portfolio.process_signals(buy_signals, sell_signals, current_prices)
                 results['trades'] = trades
                 results['trades_executed'] = True
                 
+                # Log executed trades
+                if trades:
+                    executed_buys = trades.get('buys', [])
+                    executed_sells = trades.get('sells', [])
+                    log_info(f"🔄 Executed trades: {len(executed_buys)} buys, {len(executed_sells)} sells")
+                    for trade in executed_buys[:3]:  # Show first 3 buys
+                        log_info(f"  📈 BUY: {trade.get('ticker', 'N/A')} - {trade.get('shares', 0)} shares @ ${trade.get('price', 0):.2f}")
+                    for trade in executed_sells[:3]:  # Show first 3 sells
+                        log_info(f"  📉 SELL: {trade.get('ticker', 'N/A')} - {trade.get('shares', 0)} shares @ ${trade.get('price', 0):.2f}")
+                else:
+                    log_info("🔄 No trades executed")
+                
                 # Update portfolio valuation
+                log_info("💼 Updating portfolio valuation...")
                 portfolio_summary = portfolio.update_portfolio_valuation()
                 results['portfolio_summary'] = portfolio_summary
-                log_info(f"Portfolio updated: ${portfolio_summary['total_value']:,.2f}")
+                
+                portfolio_time = time.time() - portfolio_start
+                log_info(f"✅ Portfolio updated: ${portfolio_summary['total_value']:,.2f} in {portfolio_time:.1f}s")
+                log_info(f"   💰 Cash: ${portfolio_summary['cash']:,.2f}")
+                log_info(f"   📊 Positions: {portfolio_summary.get('position_count', 0)}")
+                log_info(f"   📈 Daily P&L: ${portfolio_summary.get('daily_pnl', 0):,.2f}")
             
             # Step 4: Send email report
             if self.config.config.email_enabled:
                 log_info("Step 4: Sending email report...")
-                self._send_trading_email(results)
-                results['email_sent'] = True
+                email_start = time.time()
+                
+                try:
+                    self._send_trading_email(results)
+                    email_time = time.time() - email_start
+                    log_info(f"✅ Email report sent successfully in {email_time:.1f}s")
+                    results['email_sent'] = True
+                except Exception as e:
+                    log_error(f"❌ Failed to send email: {e}")
+                    results['email_sent'] = False
             
-            log_info(f"VolatilityHunter {mode_str} run completed successfully")
+            # Final summary
+            total_time = time.time() - self.start_time
+            log_info(f"🎉 VolatilityHunter {mode_str} run completed successfully in {total_time:.1f}s")
+            
+            # Summary of results
+            if results.get('signals_generated'):
+                signals = results.get('signals', {})
+                log_info(f"📊 SUMMARY: {len(signals.get('BUY', []))} BUY, {len(signals.get('SELL', []))} SELL, {len(signals.get('HOLD', []))} HOLD")
+            
+            if results.get('trades_executed'):
+                trades = results.get('trades', {})
+                log_info(f"💼 TRADES: {len(trades.get('buys', []))} buys, {len(trades.get('sells', []))} sells")
+            
+            if results.get('portfolio_summary'):
+                portfolio = results['portfolio_summary']
+                log_info(f"💰 PORTFOLIO: ${portfolio.get('total_value', 0):,.2f} total value")
+            
             return results
             
         except Exception as e:
@@ -144,7 +208,8 @@ class VolatilityHunter:
     
     def run_quick_dryrun(self) -> Dict[str, Any]:
         """Run quick dryrun to verify system health"""
-        log_info("Starting VolatilityHunter quick dryrun...")
+        log_info("🔍 Starting VolatilityHunter quick dryrun...")
+        dryrun_start = time.time()
         
         results = {
             'dryrun': True,
@@ -154,12 +219,12 @@ class VolatilityHunter:
         
         try:
             # Check 1: Configuration
-            log_info("Check 1: Configuration...")
+            log_info("📋 Check 1: Configuration...")
             self.config.print_configuration()
             results['checks']['configuration'] = 'PASS'
             
             # Check 2: Data access
-            log_info("Check 2: Data access...")
+            log_info("💾 Check 2: Data access...")
             test_tickers = ['AAPL', 'MSFT', 'GOOGL']
             data_accessible = 0
             for ticker in test_tickers:
@@ -167,41 +232,41 @@ class VolatilityHunter:
                     df = self.storage.load_data(ticker)
                     if df is not None and len(df) > 0:
                         data_accessible += 1
-                        log_info(f"  {ticker}: ✅ {len(df)} rows available")
+                        log_info(f"  ✅ {ticker}: {len(df)} rows available")
                     else:
-                        log_info(f"  {ticker}: ❌ No data")
+                        log_info(f"  ❌ {ticker}: No data")
                 except Exception as e:
-                    log_info(f"  {ticker}: ❌ Error - {e}")
+                    log_info(f"  ❌ {ticker}: Error - {e}")
             
             results['checks']['data_access'] = f'PASS ({data_accessible}/{len(test_tickers)} tickers)'
             
             # Check 3: Strategy engine
-            log_info("Check 3: Strategy engine...")
+            log_info("🔬 Check 3: Strategy engine...")
             try:
                 from src.strategy import analyze_stock
                 df = self.storage.load_data('AAPL')
                 if df is not None:
                     analysis = analyze_stock(df, 'AAPL')
-                    log_info(f"  Strategy test: ✅ {analysis['signal']} - {analysis['reason']}")
+                    log_info(f"  ✅ Strategy test: {analysis['signal']} - {analysis['reason']}")
                     results['checks']['strategy'] = 'PASS'
                 else:
                     results['checks']['strategy'] = 'FAIL - No data'
             except Exception as e:
-                log_info(f"  Strategy test: ❌ {e}")
+                log_info(f"  ❌ Strategy test: {e}")
                 results['checks']['strategy'] = f'FAIL - {e}'
             
             # Check 4: Portfolio system
-            log_info("Check 4: Portfolio system...")
+            log_info("💼 Check 4: Portfolio system...")
             try:
                 portfolio = Portfolio()
-                log_info(f"  Portfolio: ✅ ${portfolio.state['cash']:,.2f} cash, {len(portfolio.state['positions'])} positions")
+                log_info(f"  ✅ Portfolio: ${portfolio.state['cash']:,.2f} cash, {len(portfolio.state['positions'])} positions")
                 results['checks']['portfolio'] = 'PASS'
             except Exception as e:
-                log_info(f"  Portfolio: ❌ {e}")
+                log_info(f"  ❌ Portfolio: {e}")
                 results['checks']['portfolio'] = f'FAIL - {e}'
             
             # Check 5: Email system
-            log_info("Check 5: Email system...")
+            log_info("📧 Check 5: Email system...")
             if self.config.config.email_enabled:
                 results['checks']['email'] = 'ENABLED'
             else:
@@ -211,17 +276,19 @@ class VolatilityHunter:
             all_checks = list(results['checks'].values())
             failed_checks = [c for c in all_checks if 'FAIL' in str(c)]
             
+            dryrun_time = time.time() - dryrun_start
+            
             if not failed_checks:
-                log_info("✅ DRYRUN PASSED - System is healthy and ready")
+                log_info(f"✅ DRYRUN PASSED - System is healthy and ready ({dryrun_time:.2f}s)")
                 results['status'] = 'PASS'
             else:
-                log_warning(f"⚠️ DRYRUN ISSUES - {len(failed_checks)} checks failed")
+                log_warning(f"⚠️ DRYRUN ISSUES - {len(failed_checks)} checks failed ({dryrun_time:.2f}s)")
                 results['status'] = 'FAIL'
             
             return results
             
         except Exception as e:
-            log_error(f"Dryrun failed: {e}")
+            log_error(f"❌ Dryrun failed: {e}")
             results['status'] = 'ERROR'
             results['error'] = str(e)
             return results
