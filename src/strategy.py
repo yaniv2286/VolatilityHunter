@@ -142,6 +142,106 @@ def detect_w_formation(df, lookback=20):
     
     return False, "No W pattern detected"
 
+def check_stochastic_crossover(df, days=3):
+    """
+    Check stochastic crossover and trend direction.
+    Returns (bullish_crossover, trend_up, details)
+    """
+    if len(df) < days + 1:
+        return False, False, "Insufficient data for crossover analysis"
+    
+    recent_data = df.tail(days + 1)
+    
+    # Get current and previous stochastic values
+    curr_k = recent_data.iloc[-1]['Stochastic_K']
+    curr_d = recent_data.iloc[-1]['Stochastic_D']
+    prev_k = recent_data.iloc[-2]['Stochastic_K']
+    prev_d = recent_data.iloc[-2]['Stochastic_D']
+    
+    # Check for NaN values
+    if any(pd.isna([curr_k, curr_d, prev_k, prev_d])):
+        return False, False, "Invalid stochastic data"
+    
+    # Bullish crossover: K was below D, now above D
+    bullish_crossover = (prev_k <= prev_d) and (curr_k > curr_d)
+    
+    # Trend direction: K and D both trending up over period
+    k_trend = curr_k > recent_data.iloc[0]['Stochastic_K']
+    d_trend = curr_d > recent_data.iloc[0]['Stochastic_D']
+    trend_up = k_trend and d_trend
+    
+    # Position check: K above D (required for BUY)
+    k_above_d = curr_k > curr_d
+    
+    details = f"K={curr_k:.2f}, D={curr_d:.2f}, K>D={k_above_d}, Trend_Up={trend_up}"
+    
+    return k_above_d, trend_up, details
+
+def detect_engulfing_candle(df):
+    """
+    Detect engulfing candlestick pattern.
+    Returns (is_engulfing, details)
+    """
+    if len(df) < 2:
+        return False, "Insufficient data for candlestick analysis"
+    
+    # Get last two candles
+    prev_candle = df.iloc[-2]
+    curr_candle = df.iloc[-1]
+    
+    # Calculate body sizes and ranges
+    prev_body = abs(prev_candle['Close'] - prev_candle['Open'])
+    curr_body = abs(curr_candle['Close'] - curr_candle['Open'])
+    prev_range = prev_candle['High'] - prev_candle['Low']
+    curr_range = curr_candle['High'] - curr_candle['Low']
+    
+    # Check for engulfing pattern
+    # Current candle must completely engulf previous candle's range
+    range_engulfed = (curr_candle['High'] >= prev_candle['High'] and 
+                     curr_candle['Low'] <= prev_candle['Low'])
+    
+    # Current body should be larger than previous body
+    body_engulfed = curr_body > prev_body
+    
+    # Check for minimal wicks (body should be most of the range)
+    curr_body_ratio = curr_body / curr_range if curr_range > 0 else 0
+    minimal_wicks = curr_body_ratio >= 0.7  # Body is 70%+ of range
+    
+    is_engulfing = range_engulfed and body_engulfed and minimal_wicks
+    
+    details = (f"Range_Engulfed={range_engulfed}, Body_Engulfed={body_engulfed}, "
+              f"Body_Ratio={curr_body_ratio:.2f}, Minimal_Wicks={minimal_wicks}")
+    
+    return is_engulfing, details
+
+def check_volume_consistency(df, days=5):
+    """
+    Check volume consistency and increasing trend.
+    Returns (consistent, increasing, details)
+    """
+    if len(df) < days:
+        return False, False, "Insufficient volume history"
+    
+    recent_volume = df.tail(days)['Volume']
+    
+    # Check for consistent volume (no major drops)
+    volume_mean = recent_volume.mean()
+    volume_std = recent_volume.std()
+    
+    # Volume is consistent if within 2 standard deviations
+    consistent = all(abs(v - volume_mean) <= 2 * volume_std for v in recent_volume)
+    
+    # Check if volume is increasing (trend analysis)
+    volume_trend = recent_volume.is_monotonic_increasing
+    increasing = volume_trend
+    
+    # Alternative: check if recent volume > average of period
+    current_vs_avg = recent_volume.iloc[-1] > recent_volume.mean()
+    
+    details = f"Consistent={consistent}, Increasing={increasing}, Current_vs_Avg={current_vs_avg}"
+    
+    return consistent, current_vs_avg, details
+
 def check_earnings_safety(ticker, days_ahead=5):
     """
     Check if ticker has earnings in the next N days.
@@ -277,68 +377,114 @@ def analyze_stock(df, ticker=None):
             'quality_score': quality_score
         }
     
-    # Additional filters for enhanced analysis
+    # CRITICAL: Professional Trading Checklist Analysis
     volume_ok, volume_reason = check_volume_quality(df)
+    volume_consistent, volume_increasing, volume_consistency_reason = check_volume_consistency(df)
     w_pattern, w_reason = detect_w_formation(df)
+    engulfing_candle, engulfing_reason = detect_engulfing_candle(df)
+    k_above_d, stochastic_trend_up, stochastic_reason = check_stochastic_crossover(df)
     earnings_safe, earnings_reason = check_earnings_safety(ticker) if ticker else (True, "No ticker provided")
     
-    # Add additional indicators
+    # Add comprehensive indicators
     indicators.update({
         'sma_25': float(latest['SMA_25']) if pd.notna(latest['SMA_25']) else None,
         'sma_50': float(latest['SMA_50']) if pd.notna(latest['SMA_50']) else None,
         'sma_100': float(latest['SMA_100']) if pd.notna(latest['SMA_100']) else None,
         'volume_ratio': float(latest['Volume'] / latest['Volume_SMA_30']) if pd.notna(latest['Volume_SMA_30']) and latest['Volume_SMA_30'] > 0 else None,
         'w_pattern': w_pattern,
-        'volume_ok': volume_ok
+        'volume_ok': volume_ok,
+        'volume_consistent': volume_consistent,
+        'volume_increasing': volume_increasing,
+        'engulfing_candle': engulfing_candle,
+        'k_above_d': k_above_d,
+        'stochastic_trend_up': stochastic_trend_up
     })
     
     price_above_sma = price > sma_200
     in_sweet_spot = (STRATEGY_PARAMS['sweet_spot_lower'] <= stoch_k <= STRATEGY_PARAMS['sweet_spot_upper'])
     
-    # Enhanced BUY criteria with volume and earnings confirmation
-    if price_above_sma and in_sweet_spot and volume_ok and earnings_safe:
+    # PROFESSIONAL CHECKLIST: All critical elements must pass
+    checklist_pass = True
+    failure_reasons = []
+    
+    # 1. Trend: Price above SMA 200
+    if not price_above_sma:
+        checklist_pass = False
+        failure_reasons.append("Price below SMA 200")
+    
+    # 2. Sweet Spot: Stochastic K in 32-80% range
+    if not in_sweet_spot:
+        checklist_pass = False
+        failure_reasons.append(f"Stochastic K ({stoch_k:.2f}) outside sweet spot")
+    
+    # 3. Stochastic Crossover: K above D (RED > YELLOW)
+    if not k_above_d:
+        checklist_pass = False
+        failure_reasons.append(f"Stochastic K not above D ({stochastic_reason})")
+    
+    # 4. Trend Direction: Stochastics trending upward
+    if not stochastic_trend_up:
+        checklist_pass = False
+        failure_reasons.append(f"Stochastics not trending up ({stochastic_reason})")
+    
+    # 5. Volume Confirmation: Above 30-day average
+    if not volume_ok:
+        checklist_pass = False
+        failure_reasons.append(f"Volume insufficient ({volume_reason})")
+    
+    # 6. Volume Consistency: Consistent or increasing
+    if not volume_consistent:
+        checklist_pass = False
+        failure_reasons.append(f"Volume inconsistent ({volume_consistency_reason})")
+    
+    # 7. Candlestick Confirmation: Engulfing pattern preferred
+    # Note: Not a hard requirement, but enhances signal quality
+    
+    # 8. Earnings Safety: No upcoming earnings
+    if not earnings_safe:
+        checklist_pass = False
+        failure_reasons.append(f"Earnings risk ({earnings_reason})")
+    
+    # Final decision based on checklist
+    if checklist_pass:
         reason_parts = [
-            f'Price above SMA 200 and Stochastic K in sweet spot ({stoch_k:.2f})',
-            f'Volume confirmed ({volume_reason})',
+            f'PROFESSIONAL CHECKLIST PASS',
+            f'Price > SMA 200 (${sma_200:.2f})',
+            f'Stochastic K ({stoch_k:.2f}) in sweet spot with K>D and uptrend',
+            f'Volume confirmed ({volume_reason}) and consistent ({volume_consistency_reason})',
             f'Earnings safe ({earnings_reason})'
         ]
+        
+        # Add bonus confirmations
+        if engulfing_candle:
+            reason_parts.append(f'BONUS: Engulfing candle ({engulfing_reason})')
         if w_pattern:
-            reason_parts.append(f'W pattern detected ({w_reason})')
+            reason_parts.append(f'BONUS: W pattern ({w_reason})')
+        if volume_increasing:
+            reason_parts.append('BONUS: Volume increasing')
         
         return {
             'signal': 'BUY',
             'reason': ' | '.join(reason_parts),
             'indicators': indicators,
-            'quality_score': quality_score
-        }
-    elif price_above_sma and in_sweet_spot and not volume_ok:
-        return {
-            'signal': 'HOLD',
-            'reason': f'Price and stochastic OK but volume weak ({volume_reason})',
-            'indicators': indicators,
-            'quality_score': quality_score
-        }
-    elif price_above_sma and in_sweet_spot and volume_ok and not earnings_safe:
-        return {
-            'signal': 'HOLD',
-            'reason': f'All technical OK but earnings risk ({earnings_reason})',
-            'indicators': indicators,
-            'quality_score': quality_score
-        }
-    elif not price_above_sma:
-        return {
-            'signal': 'SELL',
-            'reason': f'Price below SMA 200 (trend break)',
-            'indicators': indicators,
-            'quality_score': quality_score
+            'quality_score': quality_score * 1.5  # Bonus for passing full checklist
         }
     else:
-        return {
-            'signal': 'HOLD',
-            'reason': f'Stochastic K ({stoch_k:.2f}) outside sweet spot',
-            'indicators': indicators,
-            'quality_score': quality_score
-        }
+        # Check for SELL signal (trend break)
+        if not price_above_sma:
+            return {
+                'signal': 'SELL',
+                'reason': f'Price below SMA 200 (trend break)',
+                'indicators': indicators,
+                'quality_score': quality_score
+            }
+        else:
+            return {
+                'signal': 'HOLD',
+                'reason': f'CHECKLIST FAIL: {" | ".join(failure_reasons)}',
+                'indicators': indicators,
+                'quality_score': quality_score
+            }
 
 def scan_all_stocks(stock_data_dict):
     results = {
