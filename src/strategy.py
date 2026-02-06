@@ -242,6 +242,104 @@ def check_volume_consistency(df, days=5):
     
     return consistent, current_vs_avg, details
 
+def detect_head_and_shoulders(df, lookback=60):
+    """
+    Detect Head and Shoulders pattern (bearish reversal).
+    Returns (is_hns, details)
+    """
+    if len(df) < lookback:
+        return False, "Insufficient data for H&S analysis"
+    
+    recent_data = df.tail(lookback)
+    highs = recent_data['High'].values
+    lows = recent_data['Low'].values
+    
+    # Find peaks (potential shoulders and head)
+    peaks = []
+    for i in range(1, len(highs)-1):
+        if highs[i] > highs[i-1] and highs[i] > highs[i+1]:
+            peaks.append((i, highs[i]))
+    
+    # Need at least 3 peaks for H&S pattern
+    if len(peaks) < 3:
+        return False, "Insufficient peaks for H&S pattern"
+    
+    # Check for classic H&S: left shoulder < head > right shoulder
+    # with head being the highest peak
+    try:
+        # Get the three most recent significant peaks
+        recent_peaks = peaks[-3:]
+        
+        left_shoulder_idx, left_shoulder_price = recent_peaks[0]
+        head_idx, head_price = recent_peaks[1]
+        right_shoulder_idx, right_shoulder_price = recent_peaks[2]
+        
+        # Head must be higher than both shoulders
+        head_highest = head_price > left_shoulder_price and head_price > right_shoulder_price
+        
+        # Shoulders should be roughly similar height (within 20%)
+        shoulder_similarity = abs(left_shoulder_price - right_shoulder_price) / max(left_shoulder_price, right_shoulder_price) < 0.2
+        
+        # Neckline should be declining (right shoulder lower than left)
+        neckline_declining = right_shoulder_price < left_shoulder_price
+        
+        is_hns = head_highest and shoulder_similarity and neckline_declining
+        
+        details = (f"Head={head_price:.2f}, L_Shoulder={left_shoulder_price:.2f}, "
+                  f"R_Shoulder={right_shoulder_price:.2f}, Head_Highest={head_highest}, "
+                  f"Shoulder_Similarity={shoulder_similarity}, Neckline_Declining={neckline_declining}")
+        
+        return is_hns, details
+        
+    except Exception:
+        return False, "Error analyzing H&S pattern"
+
+def check_power_stock_exception(df):
+    """
+    Check if stock qualifies as Power Stock (overbought but strong).
+    Returns (is_power_stock, details)
+    """
+    if len(df) < 200:
+        return False, "Insufficient data for Power Stock analysis"
+    
+    latest = df.iloc[-1]
+    stoch_k = latest['Stochastic_K']
+    
+    # Check if overbought (above 80%)
+    overbought = stoch_k > 80
+    
+    if not overbought:
+        return False, f"Not overbought (Stochastic K: {stoch_k:.2f})"
+    
+    # Check if above all major moving averages
+    sma_25 = latest.get('SMA_25', 0)
+    sma_50 = latest.get('SMA_50', 0)
+    sma_100 = latest.get('SMA_100', 0)
+    sma_200 = latest.get('SMA_200', 0)
+    current_price = latest['Close']
+    
+    above_all_mas = (current_price > sma_25 and 
+                    current_price > sma_50 and 
+                    current_price > sma_100 and 
+                    current_price > sma_200)
+    
+    # Check for high volume
+    volume_sma = latest.get('Volume_SMA_30', 1)
+    current_volume = latest['Volume']
+    high_volume = current_volume > volume_sma * 1.5  # 50% above average
+    
+    is_power_stock = overbought and above_all_mas and high_volume
+    
+    details = (f"Overbought={overbought}, Above_All_MAs={above_all_mas}, "
+              f"High_Volume={high_volume}, Stoch_K={stoch_k:.2f}")
+    
+    return is_power_stock, details
+
+def is_friday_trading():
+    """Check if today is Friday (for Friday Rule awareness)."""
+    from datetime import datetime
+    return datetime.now().weekday() == 4  # Friday is 4 (0=Monday)
+
 def check_earnings_safety(ticker, days_ahead=5):
     """
     Check if ticker has earnings in the next N days.
@@ -377,13 +475,18 @@ def analyze_stock(df, ticker=None):
             'quality_score': quality_score
         }
     
-    # CRITICAL: Professional Trading Checklist Analysis
+    # CRITICAL: Complete Professional Trading Checklist Analysis
     volume_ok, volume_reason = check_volume_quality(df)
     volume_consistent, volume_increasing, volume_consistency_reason = check_volume_consistency(df)
     w_pattern, w_reason = detect_w_formation(df)
     engulfing_candle, engulfing_reason = detect_engulfing_candle(df)
     k_above_d, stochastic_trend_up, stochastic_reason = check_stochastic_crossover(df)
     earnings_safe, earnings_reason = check_earnings_safety(ticker) if ticker else (True, "No ticker provided")
+    
+    # Additional pattern analysis
+    head_and_shoulders, hns_reason = detect_head_and_shoulders(df)
+    is_power_stock, power_stock_reason = check_power_stock_exception(df)
+    is_friday = is_friday_trading()
     
     # Add comprehensive indicators
     indicators.update({
@@ -397,7 +500,10 @@ def analyze_stock(df, ticker=None):
         'volume_increasing': volume_increasing,
         'engulfing_candle': engulfing_candle,
         'k_above_d': k_above_d,
-        'stochastic_trend_up': stochastic_trend_up
+        'stochastic_trend_up': stochastic_trend_up,
+        'head_and_shoulders': head_and_shoulders,
+        'is_power_stock': is_power_stock,
+        'is_friday': is_friday
     })
     
     price_above_sma = price > sma_200
@@ -470,21 +576,55 @@ def analyze_stock(df, ticker=None):
             'quality_score': quality_score * 1.5  # Bonus for passing full checklist
         }
     else:
-        # Check for SELL signal (trend break)
+        # Check for SELL signals
+        sell_reasons = []
+        
+        # 1. Trend Break: Price below SMA 200
         if not price_above_sma:
+            sell_reasons.append(f'Price below SMA 200 (trend break)')
+        
+        # 2. Head & Shoulders Pattern (bearish reversal)
+        if head_and_shoulders:
+            sell_reasons.append(f'Head & Shoulders pattern detected ({hns_reason})')
+        
+        # 3. Stochastic Breakdown (below sweet spot)
+        if stoch_k < STRATEGY_PARAMS['sweet_spot_lower']:
+            sell_reasons.append(f'Stochastic breakdown (K: {stoch_k:.2f} below 32%)')
+        
+        # If any SELL conditions met, return SELL signal
+        if sell_reasons:
             return {
                 'signal': 'SELL',
-                'reason': f'Price below SMA 200 (trend break)',
+                'reason': ' | '.join(sell_reasons),
                 'indicators': indicators,
                 'quality_score': quality_score
             }
-        else:
+        
+        # Check for Power Stock exception (hold overbought strong stocks)
+        if is_power_stock:
             return {
                 'signal': 'HOLD',
-                'reason': f'CHECKLIST FAIL: {" | ".join(failure_reasons)}',
+                'reason': f'POWER STOCK EXCEPTION - Hold overbought strong stock ({power_stock_reason})',
+                'indicators': indicators,
+                'quality_score': quality_score * 1.2  # Bonus for power stock
+            }
+        
+        # Friday Rule awareness
+        if is_friday:
+            return {
+                'signal': 'HOLD',
+                'reason': f'FRIDAY RULE - Profit taking day | CHECKLIST FAIL: {" | ".join(failure_reasons)}',
                 'indicators': indicators,
                 'quality_score': quality_score
             }
+        
+        # Default HOLD for failed checklist
+        return {
+            'signal': 'HOLD',
+            'reason': f'CHECKLIST FAIL: {" | ".join(failure_reasons)}',
+            'indicators': indicators,
+            'quality_score': quality_score
+        }
 
 def scan_all_stocks(stock_data_dict):
     results = {
