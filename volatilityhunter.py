@@ -68,7 +68,13 @@ class VolatilityHunter:
             # Step 1: Update data
             log_info("Step 1: Updating market data...")
             data_loader = get_data_loader()
-            update_stats = data_loader.update_all_stocks()
+            
+            # Get stock list for data loader
+            from src.ticker_manager import TickerManager
+            ticker_manager = TickerManager()
+            stock_list = ticker_manager.get_filtered_tickers()
+            
+            update_stats = data_loader.update_all_stocks(stock_list)
             results['data_updated'] = True
             results['update_stats'] = update_stats
             log_info(f"Data update completed: {update_stats}")
@@ -85,7 +91,10 @@ class VolatilityHunter:
                 if signal_list:
                     log_info(f"Generated {len(signal_list)} {signal_type} signals")
                     for signal in signal_list[:3]:  # Log first 3 of each type
-                        alert_signal(signal_type, signal['ticker'], signal['reason'])
+                        # Get price from indicators or use 0 if not available
+                        price = signal.get('indicators', {}).get('price', 0)
+                        indicators_str = str(signal.get('indicators', {}))
+                        alert_signal(signal['ticker'], signal_type, price, indicators_str)
             
             # Step 3: Execute trades (if not in backtest mode)
             if not self.config.config.backtest_enabled:
@@ -104,7 +113,7 @@ class VolatilityHunter:
                 results['trades_executed'] = True
                 
                 # Update portfolio valuation
-                portfolio_summary = portfolio.update_portfolio_valuation(current_prices)
+                portfolio_summary = portfolio.update_portfolio_valuation()
                 results['portfolio_summary'] = portfolio_summary
                 log_info(f"Portfolio updated: ${portfolio_summary['total_value']:,.2f}")
             
@@ -215,17 +224,15 @@ class VolatilityHunter:
     def _load_all_stock_data(self) -> Dict[str, Any]:
         """Load all available stock data"""
         all_data = {}
-        ticker_files = self.storage.list_files()
+        ticker_list = self.storage.list_available_tickers()
         
-        for file in ticker_files:
-            if file.endswith('_1d_full.csv'):
-                ticker = file.replace('_1d_full.csv', '')
-                try:
-                    df = self.storage.load_data(ticker)
-                    if df is not None and len(df) > 0:
-                        all_data[ticker] = df
-                except Exception as e:
-                    log_warning(f"Failed to load {ticker}: {e}")
+        for ticker in ticker_list:
+            try:
+                df = self.storage.load_data(ticker)
+                if df is not None and len(df) > 0:
+                    all_data[ticker] = df
+            except Exception as e:
+                log_warning(f"Failed to load {ticker}: {e}")
         
         log_info(f"Loaded {len(all_data)} tickers for analysis")
         return all_data

@@ -72,9 +72,13 @@ class Portfolio:
     
     def _check_risk_management_trades(self, current_prices, trades_executed):
         """Check for stop-loss, take-profit, and technical exit opportunities."""
-        from src.config import STOP_LOSS_PCT, TAKE_PROFIT_PCT
+        from src.config_manager import get_config
         from src.strategy import analyze_stock
         from src.storage import DataStorage
+        
+        config = get_config()
+        STOP_LOSS_PCT = config.config.stop_loss_pct
+        TAKE_PROFIT_PCT = config.config.take_profit_pct
         
         positions_to_close = []
         
