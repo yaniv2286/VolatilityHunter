@@ -6,6 +6,7 @@ Intelligently switches between Tiingo and Yahoo Finance based on configuration a
 import os
 from src.config import TIINGO_KEY
 from src.notifications import log_info, log_warning, log_error
+from src.log_sanitizer import log_error_with_tracking, log_warning_with_tracking
 
 def get_data_loader():
     """
@@ -84,18 +85,18 @@ class SmartDataLoader:
                     log_info(f"✅ Data update completed: {result.get('updated', 0)}/{total_stocks} stocks updated")
                     return result
                 else:
-                    log_warning("⚠️ Tiingo failed, switching to Yahoo Finance fallback")
+                    log_warning_with_tracking("⚠️ Tiingo failed, switching to Yahoo Finance fallback")
                     self.using_fallback = True
                     log_info("🔄 Retrying with Yahoo Finance fallback...")
                     return self._update_with_progress(self.fallback_loader, stock_list, full_refresh, batch_size, total_stocks)
                     
         except Exception as e:
-            log_error(f"❌ Primary loader failed: {e}")
             if not self.using_fallback and self.fallback_loader:
-                log_warning("🔄 Switching to Yahoo Finance fallback")
+                log_warning_with_tracking(f"❌ Primary loader failed: {e}, switching to Yahoo Finance fallback")
                 self.using_fallback = True
                 return self._update_with_progress(self.fallback_loader, stock_list, full_refresh, batch_size, total_stocks)
             else:
+                log_error_with_tracking(f"❌ All loaders failed: {e}")
                 raise e
     
     def _update_with_progress(self, loader, stock_list, full_refresh, batch_size, total_stocks):
@@ -148,7 +149,7 @@ class TiingoLoader:
             from src.data_loader import update_all_stocks
             return update_all_stocks(full_refresh=full_refresh, stock_list=stock_list)
         except Exception as e:
-            log_error(f"Tiingo data update failed: {e}")
+            log_warning_with_tracking(f"Tiingo data update failed: {e}")
             return {'success': False, 'error': str(e), 'updated': 0, 'total': len(stock_list)}
     
     def download_nasdaq_tickers(self):
@@ -174,7 +175,7 @@ class YFinanceLoader:
         try:
             return self.loader.update_all_stocks(stock_list, full_refresh, batch_size)
         except Exception as e:
-            log_error(f"Yahoo Finance data update failed: {e}")
+            log_warning_with_tracking(f"Yahoo Finance data update failed: {e}")
             return {'success': False, 'error': str(e), 'updated': 0, 'total': len(stock_list)}
     
     def download_nasdaq_tickers(self):

@@ -364,7 +364,28 @@ class VolatilityHunter:
                 body.append(f"  Total Value: ${portfolio.get('total_value', 0):,.2f}")
                 body.append(f"  Cash: ${portfolio.get('cash', 0):,.2f}")
                 body.append(f"  Positions: {portfolio.get('position_count', 0)}")
-                body.append(f"  Daily P&L: ${portfolio.get('daily_pnl', 0):,.2f} ({portfolio.get('daily_pnl_pct', 0):.2f}%)")
+                daily_pnl = portfolio.get('daily_pnl', 0)
+                daily_pnl_pct = portfolio.get('daily_pnl_pct', 0)
+                
+                # Handle case where daily_pnl_pct might be a timedelta, list, or other invalid type
+                try:
+                    if isinstance(daily_pnl_pct, list) and len(daily_pnl_pct) > 0:
+                        # If it's a list, take the first element
+                        daily_pnl_pct = daily_pnl_pct[0]
+                    
+                    # Convert timedelta to float hours if needed
+                    if hasattr(daily_pnl_pct, 'total_seconds'):
+                        # It's a timedelta, convert to hours as float
+                        daily_pnl_pct = float(daily_pnl_pct.total_seconds()) / 3600
+                    
+                    # Ensure it's a number
+                    daily_pnl_pct = float(daily_pnl_pct) if daily_pnl_pct is not None else 0
+                    
+                except (ValueError, TypeError, AttributeError):
+                    # If any conversion fails, default to 0
+                    daily_pnl_pct = 0
+                
+                body.append(f"  Daily P&L: ${daily_pnl:,.2f} ({daily_pnl_pct:.2f}%)")
                 body.append("")
             
             # Add logs

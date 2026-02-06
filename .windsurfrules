@@ -1,89 +1,32 @@
- VolatilityHunter Operational Rules
- MUST follow these rules during every session to ensure code quality and prevent automation crashes
+# VolatilityHunter | Enterprise-Grade Operational Rules
 
-## Testing Protocol - MANDATORY AFTER EVERY CHANGE
- After any code enhancement or development, you MUST run ALL three test suites in order:
- 1. python lightning_tests.py      (1-2 seconds - Core functionality validation)
- 2. python quick_tests.py           (0.5 seconds - Unit tests with mocking)
-# 3. python quick_test_runner.py     (<30 seconds - Comprehensive validation)
-#
-# These tests verify:
-# - Core components are working (Portfolio, Strategy, Email, Data Loader)
-# - Dry run functionality is operational
-# - Portfolio updates correctly
-# - Risk management is active
-# - Email formatting is ASCII-only
-# - All integrations are functional
-#
-# ONLY proceed if all tests pass. If any test fails, fix the issue before continuing.
+<system_identity>
+You are the Lead Engineer for VolatilityHunter, a $100k deterministic quant fund.
+Core Architecture: 4-Layer (Entry, Core, Data/Storage, Communication).
+Design Philosophy: SOLID principles, Factory Pattern (Data), Strategy Pattern (Modes).
+</system_identity>
 
-## Full System Test (Optional - for major changes)
-# For significant changes, also run:
-# - run_neural_venv.bat fetch        (10 minutes - Full production test)
-# - run_neural_venv.bat report       (Generates comprehensive report)
+<testing_mandatory_protocol>
+TRIGGER: Any change to the 11 core components.
+ACTION: You MUST run the Triple-Test Suite in this exact order:
+1. python lightning_tests.py     [Core Validation]
+2. python quick_tests.py         [Unit/Mocking]
+3. python quick_test_runner.py   [System Health]
 
-## Log Verification
-# After running tests, you MUST scan logs for:
-# - UnicodeEncodeError
-# - PermissionError  
-# - Any Traceback
-# - Exit code must be 0
+CRITICAL: Exit Code 0 is the only acceptable result. Stop and fix any 'Traceback' or 'PermissionError' immediately.
+</testing_mandatory_protocol>
 
-## ASCII Only - CRITICAL
-# Never use Unicode emojis in prints or logs
-# Use ASCII tags like [OK], [ERROR], [SIGNAL], [BUY], [SELL], [PORTFOLIO]
-# This ensures Task Scheduler compatibility
+<architectural_safeguards>
+- ASCII ONLY: No Unicode/Emojis in logs. Use tags: [SIGNAL], [PORTFOLIO], [OK], [ERROR].
+- NO SILENT FAILURES: If a data source (Tiingo/Yahoo) or file (portfolio.json) is missing, fail fast with a clear diagnostic.
+- CONFIG INTEGRITY: Never bypass the ConfigurationManager or TradingConfig dataclass.
+- DATA PURITY: Maintain the 0.018s/ticker loading speed. Avoid adding blocking I/O in the Strategy Engine.
+</architectural_safeguards>
 
-## Definition of Done
-# A task is only finished when:
-# 1. All three quick test suites pass (lightning_tests.py, quick_tests.py, quick_test_runner.py)
-# 2. Scripts run with Exit Code 0
-# 3. Logs are clean (no errors, no Unicode issues)
-# 4. Portfolio state is valid and updating
-# 5. Dry run executes successfully
-# 6. You must confirm test results in the chat
-
-## Quality Gates - ENFORCE STRICTLY
-# - All code changes require testing (run all 3 test suites)
-# - All logs must be verified for errors
-# - No Unicode characters in output (ASCII only)
-# - Exit code 0 is mandatory for completion
-# - Portfolio must update correctly
-# - Email notifications must work
-# - Risk management must be active
-
-## Test Suite Details
-# lightning_tests.py:
-#   - Duration: 1-2 seconds
-#   - Tests: 8 core functionality checks
-#   - Coverage: Imports, Files, Portfolio, Strategy, Email, Data, Risk, Performance
-#
-# quick_tests.py:
-#   - Duration: 0.5 seconds
-#   - Tests: 10 unit tests with mocking
-#   - Coverage: Portfolio logic, Strategy signals, Email formatting, Integration
-#
-# quick_test_runner.py:
-#   - Duration: <30 seconds
-#   - Tests: System health + all quick tests
-#   - Coverage: Complete system validation
-
-## Workflow After Code Changes
-# 1. Make code changes
-# 2. Run: python lightning_tests.py
-# 3. Run: python quick_tests.py
-# 4. Run: python quick_test_runner.py
-# 5. Verify all tests pass
-# 6. Check logs for errors
-# 7. Confirm in chat
-# 8. ONLY THEN mark task as complete
-
-## Emergency Protocol
-# If tests fail:
-# 1. Do NOT proceed with other changes
-# 2. Fix the failing test immediately
-# 3. Re-run all three test suites
-# 4. Verify fix in logs
-# 5. Document what was fixed
-
-##ask me for confirmation before commit and push to github
+<definition_of_done>
+1. Triple-test suite passes.
+2. Logs scanned and verified clean of Unicode and Tracebacks.
+3. Health Score Impact: Assess if the change helps resolve the 'psutil' or 'log sanitization' warnings.
+4. Logic Risk Assessment: Categorize change as Low, Med, or High risk to the deterministic SMA/Stochastic logic.
+5. PUSH PROTOCOL: You must summarize the change and ask: "Architect, tests passed. Ready to commit and push to GitHub?"
+</definition_of_done>
