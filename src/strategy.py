@@ -109,16 +109,21 @@ def calculate_cagr(df, years=2):
         return 0.0
     
     try:
-        # Use last N years of data instead of full history
-        end_date = df.iloc[-1]['date']
-        start_date = end_date - pd.Timedelta(days=years * 365.25)
+        # Drop rows with invalid dates
+        df_clean = df.dropna(subset=['date'])
+        if len(df_clean) < 2:
+            return 0.0
+        
+        # Try to use last N years of data, but fall back to what's available
+        end_date = df_clean.iloc[-1]['date']
+        target_start_date = end_date - pd.Timedelta(days=years * 365.25)
         
         # Filter data to last N years
-        recent_df = df[df['date'] >= start_date]
+        recent_df = df_clean[df_clean['date'] >= target_start_date]
         
         if len(recent_df) < 2:
             # Fall back to full data if not enough recent data
-            recent_df = df
+            recent_df = df_clean
         
         start_price = recent_df.iloc[0]['Close']
         end_price = recent_df.iloc[-1]['Close']
