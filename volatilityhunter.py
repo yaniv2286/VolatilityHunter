@@ -177,7 +177,7 @@ class VolatilityHunter:
                     results['email_sent'] = False
             
             # Final summary
-            total_time = time.time() - self.start_time
+            total_time = time.time() - self.start_time.timestamp()
             log_info(f"🎉 VolatilityHunter {mode_str} run completed successfully in {total_time:.1f}s")
             
             # Summary of results
@@ -444,7 +444,7 @@ def send_email(subject: str, body: str, attach_log_file: bool = False):
     """Simple email sending function"""
     try:
         notifier = EmailNotifier()
-        # Use the comprehensive email method
+        # Use the comprehensive email method with correct parameters
         notifier.send_comprehensive_scan_results(
             scan_results={},
             summary=body,
