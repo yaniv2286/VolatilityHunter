@@ -19,7 +19,6 @@ def get_data_loader():
         return YFinanceLoader()
     else:
         log_info("Using Tiingo as data source")
-        from src.data_loader import TiingoLoader
         return TiingoLoader()
 
 class TiingoLoader:
