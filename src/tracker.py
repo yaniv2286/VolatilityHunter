@@ -71,32 +71,25 @@ class Portfolio:
             log_warning(f"Error saving portfolio: {e}")
     
     def _check_risk_management_trades(self, current_prices, trades_executed):
-        """Check for stop-loss and take-profit opportunities."""
-        
-        # Risk management parameters
-        STOP_LOSS_PCT = -10.0  # Sell if position drops 10%
-        TAKE_PROFIT_PCT = 25.0  # Sell if position gains 25%
-        
-        log_info("Checking risk management (stop-loss/take-profit)...")
+        """Check for stop-loss, take-profit, and technical exit opportunities."""
+        from src.config import STOP_LOSS_PCT, TAKE_PROFIT_PCT
+        from src.strategy import analyze_stock
+        from src.storage import DataStorage
         
         positions_to_close = []
         
         for ticker, position in self.state['positions'].items():
             entry_price = position['entry_price']
-            shares = position['shares']
+            current_price = current_prices.get(ticker, entry_price) if current_prices else entry_price
             
-            # Get current price
-            if current_prices and ticker in current_prices:
-                current_price = current_prices[ticker]
-            else:
-                # Skip if no current price available
+            if current_price <= 0:
                 continue
             
             # Calculate profit/loss percentage
             profit_loss_pct = ((current_price - entry_price) / entry_price) * 100
             
             # Check stop-loss
-            if profit_loss_pct <= STOP_LOSS_PCT:
+            if profit_loss_pct <= -STOP_LOSS_PCT:
                 log_info(f"[STOP-LOSS] {ticker}: ${current_price:.2f} ({profit_loss_pct:.2f}%) - Triggering stop-loss")
                 positions_to_close.append((ticker, current_price, 'STOP-LOSS'))
             
@@ -104,6 +97,53 @@ class Portfolio:
             elif profit_loss_pct >= TAKE_PROFIT_PCT:
                 log_info(f"[TAKE-PROFIT] {ticker}: ${current_price:.2f} ({profit_loss_pct:.2f}%) - Triggering take-profit")
                 positions_to_close.append((ticker, current_price, 'TAKE-PROFIT'))
+            
+            # Check technical exit signals (stochastic crossover)
+            else:
+                try:
+                    storage = DataStorage()
+                    df = storage.load_data(ticker)
+                    if df is not None and len(df) > 0:
+                        analysis = analyze_stock(df, ticker)
+                        indicators = analysis.get('indicators', {})
+                        
+                        # Check for stochastic crossover (Stochastic K crossing below D)
+                        stoch_k = indicators.get('stochastic_k')
+                        stoch_d = indicators.get('stochastic_d')
+                        
+                        if stoch_k is not None and stoch_d is not None:
+                            # Get previous day's values for crossover detection
+                            if len(df) >= 2:
+                                prev_data = df.iloc[-2]
+                                curr_data = df.iloc[-1]
+                                
+                                prev_k = prev_data.get('Stochastic_K')
+                                curr_k = curr_data.get('Stochastic_K')
+                                prev_d = prev_data.get('Stochastic_D')
+                                curr_d = curr_data.get('Stochastic_D')
+                                
+                                # Bearish crossover: K was above D, now below D
+                                if (prev_k is not None and curr_k is not None and 
+                                    prev_d is not None and curr_d is not None):
+                                    if prev_k > prev_d and curr_k < curr_d:
+                                        log_info(f"[TECHNICAL EXIT] {ticker}: Stochastic bearish crossover (K:{curr_k:.2f} < D:{curr_d:.2f})")
+                                        positions_to_close.append((ticker, current_price, 'STOCH_CROSS'))
+                        
+                        # Check if price falls below key moving averages
+                        sma_25 = indicators.get('sma_25')
+                        sma_50 = indicators.get('sma_50')
+                        sma_100 = indicators.get('sma_100')
+                        
+                        if current_price < sma_25 and profit_loss_pct > 2.0:  # Only if profitable
+                            log_info(f"[TECHNICAL EXIT] {ticker}: Below SMA 25 (${sma_25:.2f}) with profit")
+                            positions_to_close.append((ticker, current_price, 'BELOW_SMA_25'))
+                        elif current_price < sma_50 and profit_loss_pct > 5.0:  # Only if good profit
+                            log_info(f"[TECHNICAL EXIT] {ticker}: Below SMA 50 (${sma_50:.2f}) with good profit")
+                            positions_to_close.append((ticker, current_price, 'BELOW_SMA_50'))
+                        
+                except Exception as e:
+                    log_info(f"Technical analysis failed for {ticker}: {e}")
+                    continue
         
         # Execute risk management trades
         for ticker, current_price, reason in positions_to_close:

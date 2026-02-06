@@ -92,7 +92,78 @@ def check_sector_diversification(portfolio_positions, new_ticker, max_per_sector
     return sector_count < max_per_sector
 
 def calculate_sma(df, period):
+    """Calculate Simple Moving Average."""
     return df['Close'].rolling(window=period).mean()
+
+def calculate_multiple_smas(df, periods=[25, 50, 100, 200]):
+    """Calculate multiple SMAs for trend analysis."""
+    smas = {}
+    for period in periods:
+        smas[f'SMA_{period}'] = calculate_sma(df, period)
+    return smas
+
+def calculate_volume_sma(df, period=30):
+    """Calculate Volume Moving Average."""
+    return df['Volume'].rolling(window=period).mean()
+
+def check_volume_quality(df, min_days=30):
+    """Check if current volume is above 30-day average."""
+    if len(df) < min_days:
+        return False, "Insufficient volume history"
+    
+    current_volume = df.iloc[-1]['Volume']
+    avg_volume = calculate_volume_sma(df, min_days).iloc[-1]
+    
+    if pd.isna(avg_volume) or avg_volume == 0:
+        return False, "Invalid volume data"
+    
+    volume_ratio = current_volume / avg_volume
+    return volume_ratio >= 1.0, f"Volume ratio: {volume_ratio:.2f}"
+
+def detect_w_formation(df, lookback=20):
+    """Detect basic W formation (higher lows)."""
+    if len(df) < lookback:
+        return False, "Insufficient data for W detection"
+    
+    recent_data = df.tail(lookback)
+    lows = recent_data['Low'].values
+    
+    # Find the two most recent significant lows
+    low_points = []
+    for i in range(1, len(lows)-1):
+        if lows[i] < lows[i-1] and lows[i] < lows[i+1]:
+            low_points.append((i, lows[i]))
+    
+    if len(low_points) >= 2:
+        # Check if the right low is higher than the left low
+        left_low = low_points[-2][1]
+        right_low = low_points[-1][1]
+        return right_low > left_low, f"W pattern: left={left_low:.2f}, right={right_low:.2f}"
+    
+    return False, "No W pattern detected"
+
+def check_earnings_safety(ticker, days_ahead=5):
+    """
+    Check if ticker has earnings in the next N days.
+    For now, returns True (safe) - can be enhanced with earnings API later.
+    """
+    # TODO: Implement earnings date check using API like:
+    # - Yahoo Finance earnings calendar
+    # - Alpha Vantage earnings endpoint
+    # - Financial Modeling Prep
+    
+    # For now, assume all stocks are safe (no earnings data available)
+    return True, "No earnings data available - assuming safe"
+
+# List of high-risk stocks that frequently have volatile earnings
+EARNINGS_SENSITIVE_STOCKS = {
+    'TSLA', 'NVDA', 'AMD', 'NFLX', 'AMZN', 'META', 'GOOGL', 'MSFT',
+    'AAPL', 'CRM', 'PYPL', 'SQ', 'SHOP', 'ROKU', 'SNAP', 'TWTR'
+}
+
+def is_earnings_sensitive(ticker):
+    """Check if stock is known for earnings volatility."""
+    return ticker in EARNINGS_SENSITIVE_STOCKS
 
 def calculate_stochastic(df, k_period=14, d_period=3, smooth=3):
     low_min = df['Low'].rolling(window=k_period).min()
@@ -143,7 +214,13 @@ def calculate_cagr(df, years=2):
 def add_indicators(df):
     df = df.copy()
     
-    df['SMA_200'] = calculate_sma(df, STRATEGY_PARAMS['sma_period'])
+    # Add multiple SMAs for trend analysis
+    smas = calculate_multiple_smas(df, [25, 50, 100, 200])
+    for name, sma in smas.items():
+        df[name] = sma
+    
+    # Add volume analysis
+    df['Volume_SMA_30'] = calculate_volume_sma(df, 30)
     
     k, d = calculate_stochastic(
         df,
@@ -156,7 +233,7 @@ def add_indicators(df):
     
     return df
 
-def analyze_stock(df):
+def analyze_stock(df, ticker=None):
     if df is None or len(df) < STRATEGY_PARAMS['sma_period']:
         return {
             'signal': 'INSUFFICIENT_DATA',
@@ -200,13 +277,51 @@ def analyze_stock(df):
             'quality_score': quality_score
         }
     
+    # Additional filters for enhanced analysis
+    volume_ok, volume_reason = check_volume_quality(df)
+    w_pattern, w_reason = detect_w_formation(df)
+    earnings_safe, earnings_reason = check_earnings_safety(ticker) if ticker else (True, "No ticker provided")
+    
+    # Add additional indicators
+    indicators.update({
+        'sma_25': float(latest['SMA_25']) if pd.notna(latest['SMA_25']) else None,
+        'sma_50': float(latest['SMA_50']) if pd.notna(latest['SMA_50']) else None,
+        'sma_100': float(latest['SMA_100']) if pd.notna(latest['SMA_100']) else None,
+        'volume_ratio': float(latest['Volume'] / latest['Volume_SMA_30']) if pd.notna(latest['Volume_SMA_30']) and latest['Volume_SMA_30'] > 0 else None,
+        'w_pattern': w_pattern,
+        'volume_ok': volume_ok
+    })
+    
     price_above_sma = price > sma_200
     in_sweet_spot = (STRATEGY_PARAMS['sweet_spot_lower'] <= stoch_k <= STRATEGY_PARAMS['sweet_spot_upper'])
     
-    if price_above_sma and in_sweet_spot:
+    # Enhanced BUY criteria with volume and earnings confirmation
+    if price_above_sma and in_sweet_spot and volume_ok and earnings_safe:
+        reason_parts = [
+            f'Price above SMA 200 and Stochastic K in sweet spot ({stoch_k:.2f})',
+            f'Volume confirmed ({volume_reason})',
+            f'Earnings safe ({earnings_reason})'
+        ]
+        if w_pattern:
+            reason_parts.append(f'W pattern detected ({w_reason})')
+        
         return {
             'signal': 'BUY',
-            'reason': f'Price above SMA 200 and Stochastic K in sweet spot ({stoch_k:.2f})',
+            'reason': ' | '.join(reason_parts),
+            'indicators': indicators,
+            'quality_score': quality_score
+        }
+    elif price_above_sma and in_sweet_spot and not volume_ok:
+        return {
+            'signal': 'HOLD',
+            'reason': f'Price and stochastic OK but volume weak ({volume_reason})',
+            'indicators': indicators,
+            'quality_score': quality_score
+        }
+    elif price_above_sma and in_sweet_spot and volume_ok and not earnings_safe:
+        return {
+            'signal': 'HOLD',
+            'reason': f'All technical OK but earnings risk ({earnings_reason})',
             'indicators': indicators,
             'quality_score': quality_score
         }
@@ -235,7 +350,7 @@ def scan_all_stocks(stock_data_dict):
     
     for ticker, df in stock_data_dict.items():
         try:
-            analysis = analyze_stock(df)
+            analysis = analyze_stock(df, ticker)
             signal = analysis['signal']
             
             result = {
