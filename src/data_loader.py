@@ -5,8 +5,6 @@ from src.config import TIINGO_KEY, TIINGO_BASE_URL, BATCH_SIZE, STOCK_LIST
 from src.storage import DataStorage
 from src.notifications import log_info, log_error, log_warning
 
-storage = DataStorage()
-
 def fetch_tiingo_data(tickers, start_date=None, end_date=None):
     if not TIINGO_KEY:
         log_error("TIINGO_KEY not set in environment variables")
@@ -109,6 +107,7 @@ def update_all_stocks(full_refresh=False, stock_list=None):
 
 def get_stock_data(ticker):
     """Load stock data from local storage only (no API fallback)."""
+    storage = DataStorage()
     df = storage.load_data(ticker)
     # Silent fail - no logging for missing local data to reduce noise
     return df

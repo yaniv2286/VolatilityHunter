@@ -87,22 +87,22 @@ class LogCollector:
         
         # Format logs
         formatted_logs = f"""
-📋 SYSTEM LOGS (Last {hours} hours)
+[LOGS] SYSTEM LOGS (Last {hours} hours)
 {'='*60}
 """
         
         for log in logs:
             # Color code based on log level
             if ' - ERROR - ' in log:
-                formatted_logs += f"🔴 {log}\n"
+                formatted_logs += f"[ERROR] {log}\n"
             elif ' - WARNING - ' in log:
-                formatted_logs += f"🟡 {log}\n"
+                formatted_logs += f"[WARN] {log}\n"
             elif 'SIGNAL' in log:
-                formatted_logs += f"📢 {log}\n"
+                formatted_logs += f"[SIGNAL] {log}\n"
             elif 'BOUGHT' in log or 'SOLD' in log:
-                formatted_logs += f"💰 {log}\n"
+                formatted_logs += f"[TRADE] {log}\n"
             else:
-                formatted_logs += f"   {log}\n"
+                formatted_logs += f"       {log}\n"
         
         if truncated:
             formatted_logs += f"\n... ({len(logs)} of {len(logs) + max_lines} lines shown)\n"

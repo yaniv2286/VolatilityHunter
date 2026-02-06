@@ -19,7 +19,7 @@ class Portfolio:
         self.state = self._load_state()
     
     def _load_state(self):
-        """Load portfolio state from JSON file."""
+        """Load portfolio state from JSON file with backup restoration."""
         if os.path.exists(self.portfolio_file):
             try:
                 with open(self.portfolio_file, 'r') as f:
@@ -27,9 +27,24 @@ class Portfolio:
                     log_info(f"Loaded portfolio: ${state['cash']:.2f} cash, {len(state['positions'])} positions")
                     return state
             except Exception as e:
-                log_warning(f"Error loading portfolio: {e}, creating new")
+                log_warning(f"Error loading portfolio: {e}, trying backup...")
+                
+                # Try to restore from backup
+                backup_file = self.portfolio_file.replace('.json', '_backup.json')
+                if os.path.exists(backup_file):
+                    try:
+                        with open(backup_file, 'r') as f:
+                            state = json.load(f)
+                            log_info(f"Restored portfolio from backup: ${state['cash']:.2f} cash, {len(state['positions'])} positions")
+                            # Save the restored state to main file
+                            self.state = state
+                            self._save_state()
+                            return state
+                    except Exception as backup_e:
+                        log_error(f"Backup restoration failed: {backup_e}")
         
         # Initialize new portfolio
+        log_info("Creating new portfolio (no valid backup found)")
         return {
             'cash': 100000.0,
             'positions': {},
@@ -37,9 +52,18 @@ class Portfolio:
         }
     
     def _save_state(self):
-        """Save portfolio state to JSON file."""
+        """Save portfolio state to JSON file with backup."""
         try:
             os.makedirs(os.path.dirname(self.portfolio_file), exist_ok=True)
+            
+            # Create backup before overwriting
+            backup_file = self.portfolio_file.replace('.json', '_backup.json')
+            if os.path.exists(self.portfolio_file):
+                import shutil
+                shutil.copy2(self.portfolio_file, backup_file)
+                log_info("Portfolio backup created")
+            
+            # Save main file
             with open(self.portfolio_file, 'w') as f:
                 json.dump(self.state, f, indent=2)
             log_info("Portfolio state saved")
@@ -209,6 +233,13 @@ class Portfolio:
                 # Skip if already holding
                 if ticker in self.state['positions']:
                     log_info(f"Skipping {ticker} - already holding")
+                    continue
+                
+                # Check sector diversification
+                from src.strategy import check_sector_diversification
+                if not check_sector_diversification(self.state['positions'], ticker):
+                    sector = check_sector_diversification.__globals__.get('SECTOR_MAPPING', {}).get(ticker, 'Unknown')
+                    log_info(f"Skipping {ticker} - sector limit reached ({sector})")
                     continue
                 
                 # Check if we have enough cash

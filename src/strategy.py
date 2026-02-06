@@ -3,6 +3,94 @@ import numpy as np
 from src.config import STRATEGY_PARAMS
 from src.notifications import log_info, log_error, alert_signal
 
+# Basic sector mapping for major stocks
+SECTOR_MAPPING = {
+    # Technology
+    'AAPL': 'Technology', 'MSFT': 'Technology', 'GOOGL': 'Technology', 'GOOG': 'Technology',
+    'META': 'Technology', 'NVDA': 'Technology', 'AMD': 'Technology', 'INTC': 'Technology',
+    'CRM': 'Technology', 'ADBE': 'Technology', 'ORCL': 'Technology', 'CSCO': 'Technology',
+    'PYPL': 'Technology', 'SQ': 'Technology', 'SHOP': 'Technology', 'SNOW': 'Technology',
+    'CRWD': 'Technology', 'ZS': 'Technology', 'OKTA': 'Technology', 'PANW': 'Technology',
+    'NET': 'Technology', 'DDOG': 'Technology', 'FTNT': 'Technology', 'CYBR': 'Technology',
+    'PLTR': 'Technology', 'RBLX': 'Technology', 'U': 'Technology', 'OPEN': 'Technology',
+    'RDFN': 'Technology', 'Z': 'Technology', 'COMP': 'Technology', 'SPOT': 'Technology',
+    
+    # Healthcare
+    'JNJ': 'Healthcare', 'UNH': 'Healthcare', 'PFE': 'Healthcare', 'ABBV': 'Healthcare',
+    'LLY': 'Healthcare', 'MRK': 'Healthcare', 'TMO': 'Healthcare', 'ABT': 'Healthcare',
+    'DHR': 'Healthcare', 'BMY': 'Healthcare', 'AMGN': 'Healthcare', 'GILD': 'Healthcare',
+    'REGN': 'Healthcare', 'VRTX': 'Healthcare', 'BIIB': 'Healthcare', 'MDT': 'Healthcare',
+    'ISRG': 'Healthcare', 'SYK': 'Healthcare', 'BSX': 'Healthcare', 'ZTS': 'Healthcare',
+    
+    # Finance
+    'BRK.B': 'Finance', 'JPM': 'Finance', 'V': 'Finance', 'MA': 'Finance', 'BAC': 'Finance',
+    'WFC': 'Finance', 'GS': 'Finance', 'MS': 'Finance', 'C': 'Finance', 'AXP': 'Finance',
+    'BLK': 'Finance', 'SPGI': 'Finance', 'ICE': 'Finance', 'CME': 'Finance', 'CB': 'Finance',
+    'AON': 'Finance', 'AFL': 'Finance', 'MMC': 'Finance', 'AJG': 'Finance', 'TRV': 'Finance',
+    'ALL': 'Finance', 'MET': 'Finance', 'PRU': 'Finance', 'LNC': 'Finance', 'HIG': 'Finance',
+    
+    # Consumer Discretionary
+    'AMZN': 'Consumer', 'TSLA': 'Consumer', 'HD': 'Consumer', 'MCD': 'Consumer',
+    'NKE': 'Consumer', 'LOW': 'Consumer', 'TJX': 'Consumer', 'TGT': 'Consumer',
+    'COST': 'Consumer', 'WMT': 'Consumer', 'BKNG': 'Consumer', 'EXPE': 'Consumer',
+    'DIS': 'Consumer', 'CMCSA': 'Consumer', 'NFLX': 'Consumer', 'ROKU': 'Consumer',
+    'DECK': 'Consumer', 'LULU': 'Consumer', 'PTON': 'Consumer', 'EL': 'Consumer',
+    
+    # Energy
+    'XOM': 'Energy', 'CVX': 'Energy', 'COP': 'Energy', 'EOG': 'Energy', 'SLB': 'Energy',
+    'HAL': 'Energy', 'OXY': 'Energy', 'BP': 'Energy', 'SHEL': 'Energy', 'TOT': 'Energy',
+    'ENB': 'Energy', 'KMI': 'Energy', 'WMB': 'Energy', 'ET': 'Energy', 'MPC': 'Energy',
+    
+    # Industrials
+    'BA': 'Industrial', 'CAT': 'Industrial', 'GE': 'Industrial', 'HON': 'Industrial',
+    'UPS': 'Industrial', 'RTX': 'Industrial', 'LMT': 'Industrial', 'NOC': 'Industrial',
+    'GD': 'Industrial', 'DE': 'Industrial', 'MMM': 'Industrial', '3M': 'Industrial',
+    'PH': 'Industrial', 'ITW': 'Industrial', 'ETN': 'Industrial', 'EMR': 'Industrial',
+    'CARR': 'Industrial', 'OTIS': 'Industrial', 'GEV': 'Industrial', 'TXT': 'Industrial',
+    
+    # Materials
+    'LIN': 'Materials', 'APD': 'Materials', 'ECL': 'Materials', 'DD': 'Materials',
+    'DOW': 'Materials', 'NEM': 'Materials', 'FCX': 'Materials', 'BHP': 'Materials',
+    'RIO': 'Materials', 'VALE': 'Materials', 'AA': 'Materials', 'ALB': 'Materials',
+    
+    # Utilities
+    'NEE': 'Utilities', 'DUK': 'Utilities', 'SO': 'Utilities', 'AEP': 'Utilities',
+    'XEL': 'Utilities', 'ED': 'Utilities', 'PEG': 'Utilities', 'WEC': 'Utilities',
+    'EIX': 'Utilities', 'SRE': 'Utilities', 'CNP': 'Utilities', 'AWK': 'Utilities',
+    
+    # Real Estate
+    'AMT': 'Real Estate', 'PLD': 'Real Estate', 'CCI': 'Real Estate', 'EQIX': 'Real Estate',
+    'PSA': 'Real Estate', 'SPG': 'Real Estate', 'VTR': 'Real Estate', 'WELL': 'Real Estate',
+    'DLR': 'Real Estate', 'EXR': 'Real Estate', 'AVB': 'Real Estate', 'EQR': 'Real Estate',
+    
+    # Communication Services
+    'VZ': 'Communications', 'T': 'Communications', 'TMUS': 'Communications',
+    'CHTR': 'Communications', 'CMCSA': 'Communications', 'DIS': 'Communications',
+    'NFLX': 'Communications', 'FOXA': 'Communications', 'WBD': 'Communications',
+    'PARA': 'Communications', 'TWC': 'Communications', 'CSCO': 'Communications',
+    
+    # Default for unknown stocks
+}
+
+def get_sector(ticker):
+    """Get sector for a ticker, default to 'Unknown'."""
+    return SECTOR_MAPPING.get(ticker, 'Unknown')
+
+def check_sector_diversification(portfolio_positions, new_ticker, max_per_sector=3):
+    """Check if adding new ticker would exceed sector limit."""
+    if new_ticker not in SECTOR_MAPPING:
+        return True  # Allow unknown sectors
+    
+    new_sector = SECTOR_MAPPING[new_ticker]
+    
+    # Count positions in the same sector
+    sector_count = 0
+    for ticker in portfolio_positions:
+        if ticker in SECTOR_MAPPING and SECTOR_MAPPING[ticker] == new_sector:
+            sector_count += 1
+    
+    return sector_count < max_per_sector
+
 def calculate_sma(df, period):
     return df['Close'].rolling(window=period).mean()
 
@@ -21,10 +109,21 @@ def calculate_cagr(df, years=2):
         return 0.0
     
     try:
-        start_price = df.iloc[0]['Close']
-        end_price = df.iloc[-1]['Close']
+        # Use last N years of data instead of full history
+        end_date = df.iloc[-1]['date']
+        start_date = end_date - pd.Timedelta(days=years * 365.25)
         
-        actual_days = (df.iloc[-1]['date'] - df.iloc[0]['date']).days
+        # Filter data to last N years
+        recent_df = df[df['date'] >= start_date]
+        
+        if len(recent_df) < 2:
+            # Fall back to full data if not enough recent data
+            recent_df = df
+        
+        start_price = recent_df.iloc[0]['Close']
+        end_price = recent_df.iloc[-1]['Close']
+        
+        actual_days = (recent_df.iloc[-1]['date'] - recent_df.iloc[0]['date']).days
         actual_years = actual_days / 365.25
         
         if actual_years <= 0 or start_price <= 0:
