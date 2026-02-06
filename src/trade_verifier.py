@@ -200,6 +200,11 @@ Note: Paper trading simulator assumes all trades are filled at signal prices.
     
     def get_missed_trades_summary(self, hours=24):
         """Get summary of missed trades in the last N hours."""
+        # Defensive fix for "timedelta hours component: list" error
+        if isinstance(hours, list):
+            hours = hours[0] if hours else 24
+        hours = float(hours)
+        
         cutoff_time = datetime.now() - timedelta(hours=hours)
         
         missed_trades = []

@@ -26,6 +26,14 @@ class LogCollector:
         Returns:
             List of log lines
         """
+        # Defensive coding: Handle case where hours might be a list
+        if isinstance(hours, list):
+            hours = hours[0] if hours else 1
+        elif not isinstance(hours, (int, float)):
+            hours = 1
+        
+        hours = int(hours)  # Ensure it's an integer
+        
         if not os.path.exists(self.log_file):
             return ["No log file found"]
         
@@ -119,7 +127,13 @@ class LogCollector:
         Returns:
             Dict with error summary
         """
-        logs = self.get_recent_logs(hours)
+        # Defensive coding: Handle case where hours might be a list
+        if isinstance(hours, list):
+            hours = hours[0] if hours else 1
+        elif not isinstance(hours, (int, float)):
+            hours = 1
+        
+        logs = self.get_recent_logs(int(hours))
         
         errors = []
         warnings = []
@@ -182,7 +196,13 @@ class LogCollector:
         Returns:
             Dict with performance metrics
         """
-        logs = self.get_recent_logs(hours)
+        # Defensive coding: Handle case where hours might be a list
+        if isinstance(hours, list):
+            hours = hours[0] if hours else 1
+        elif not isinstance(hours, (int, float)):
+            hours = 1
+        
+        logs = self.get_recent_logs(int(hours))
         
         metrics = {
             'stocks_scanned': 0,
@@ -193,22 +213,26 @@ class LogCollector:
         }
         
         for log in logs:
-            # Extract stocks scanned
-            if 'Stock Universe:' in log:
-                match = re.search(r'\((\d+) stocks\)', log)
-                if match:
-                    metrics['stocks_scanned'] = int(match.group(1))
-            
-            # Extract data updates
-            if 'Updated:' in log and 'stocks' in log:
-                match = re.search(r'Updated: (\d+)/', log)
-                if match:
-                    metrics['data_updated'] = int(match.group(1))
-            
-            # Count errors and warnings
-            if ' - ERROR - ' in log:
-                metrics['errors'] += 1
-            elif ' - WARNING - ' in log:
-                metrics['warnings'] += 1
+            try:
+                # Extract stocks scanned
+                if 'Stock Universe:' in log:
+                    match = re.search(r'\((\d+) stocks\)', log)
+                    if match:
+                        metrics['stocks_scanned'] = int(match.group(1))
+                
+                # Extract data updates
+                if 'Updated:' in log and 'stocks' in log:
+                    match = re.search(r'Updated: (\d+)/', log)
+                    if match:
+                        metrics['data_updated'] = int(match.group(1))
+                
+                # Count errors and warnings
+                if ' - ERROR - ' in log:
+                    metrics['errors'] += 1
+                elif ' - WARNING - ' in log:
+                    metrics['warnings'] += 1
+            except (ValueError, AttributeError) as e:
+                # Skip malformed log lines
+                continue
         
         return metrics
