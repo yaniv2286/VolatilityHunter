@@ -46,6 +46,14 @@ class BacktestEngine:
         if df is None or len(df) < 200:
             return None, []
         
+        # Ensure index is datetime
+        if not isinstance(df.index, pd.DatetimeIndex):
+            if 'date' in df.columns:
+                df.index = pd.to_datetime(df['date'])
+            else:
+                # Try to convert the index to datetime
+                df.index = pd.to_datetime(df.index)
+        
         # Get all unique dates from the data
         dates = df.index.strftime('%Y-%m-%d').tolist()
         return df, dates
@@ -88,7 +96,8 @@ class BacktestEngine:
             day_results['trades_executed'] = trades
         
         # Update portfolio value
-        portfolio_value = portfolio.update_portfolio_valuation(current_prices)
+        portfolio_summary = portfolio.update_portfolio_valuation(current_prices)
+        portfolio_value = portfolio_summary['total_value']
         day_results['portfolio_value'] = portfolio_value
         
         return day_results
@@ -98,12 +107,7 @@ class BacktestEngine:
         log_info("Starting comprehensive backtest...")
         
         # Get all available tickers
-        all_tickers = []
-        ticker_files = self.storage.list_files()
-        for file in ticker_files:
-            if file.endswith('_1d_full.csv'):
-                ticker = file.replace('_1d_full.csv', '')
-                all_tickers.append(ticker)
+        all_tickers = self.storage.list_available_tickers()
         
         log_info(f"Found {len(all_tickers)} tickers for backtesting")
         
@@ -120,6 +124,12 @@ class BacktestEngine:
         if not start_date or not end_date:
             all_dates = set()
             for df in all_data.values():
+                # Ensure index is datetime
+                if not isinstance(df.index, pd.DatetimeIndex):
+                    if 'date' in df.columns:
+                        df.index = pd.to_datetime(df['date'])
+                    else:
+                        df.index = pd.to_datetime(df.index)
                 all_dates.update(df.index.strftime('%Y-%m-%d').tolist())
             
             if all_dates:
@@ -152,7 +162,7 @@ class BacktestEngine:
         
         # Simulate each trading day
         for i, date in enumerate(trading_days):
-            if i % 50 == 0:
+            if i % 20 == 0:
                 log_info(f"Processing day {i+1}/{len(trading_days)}: {date}")
             
             try:

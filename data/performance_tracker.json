@@ -1,0 +1,64 @@
+{
+  "daily_snapshots": [
+    {
+      "date": "2026-02-05",
+      "portfolio_value": 100000.0,
+      "cash": 70000.0,
+      "positions_count": 6,
+      "total_return_pct": 0.0,
+      "total_return_dollars": 0.0,
+      "positions": [
+        {
+          "ticker": "ABBV",
+          "shares": 22.32840619836556,
+          "entry_price": 223.93,
+          "current_value": 5000.0,
+          "quality_score": 11.412889242692016
+        },
+        {
+          "ticker": "BLK",
+          "shares": 4.517977030604777,
+          "entry_price": 1106.69,
+          "current_value": 5000.000000000001,
+          "quality_score": 7.952088449009676
+        },
+        {
+          "ticker": "CRWD",
+          "shares": 10.489657198002769,
+          "entry_price": 476.66,
+          "current_value": 5000.0,
+          "quality_score": 23.734743318494342
+        },
+        {
+          "ticker": "REGN",
+          "shares": 6.656637333084819,
+          "entry_price": 751.13,
+          "current_value": 5000.0,
+          "quality_score": 11.142890235089393
+        },
+        {
+          "ticker": "ROKU",
+          "shares": 47.8102887741442,
+          "entry_price": 104.58,
+          "current_value": 5000.0,
+          "quality_score": 7.289027081006175
+        },
+        {
+          "ticker": "TSLA",
+          "shares": 11.603620329542817,
+          "entry_price": 430.9,
+          "current_value": 5000.0,
+          "quality_score": 11.724627933459114
+        }
+      ]
+    }
+  ],
+  "metrics": {
+    "total_trades": 0,
+    "winning_trades": 0,
+    "losing_trades": 0,
+    "total_profit_loss": 0.0,
+    "best_trade": 0.0,
+    "worst_trade": 0.0
+  }
+}

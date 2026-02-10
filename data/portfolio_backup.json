@@ -1,0 +1,170 @@
+{
+  "cash": 55000.0,
+  "positions": {
+    "MNKD": {
+      "shares": 865.0518717136496,
+      "entry_price": 5.78000020980835,
+      "entry_date": "2026-02-10",
+      "quality_score": 32.81287927467231,
+      "execution_mode": "PAPER"
+    },
+    "SCHW": {
+      "shares": 48.11393464298735,
+      "entry_price": 103.91999816894531,
+      "entry_date": "2026-02-10",
+      "quality_score": 27.56740207671413,
+      "execution_mode": "PAPER"
+    },
+    "AEP": {
+      "shares": 41.74493789440434,
+      "entry_price": 119.7750015258789,
+      "entry_date": "2026-02-10",
+      "quality_score": 26.49401697957558,
+      "execution_mode": "PAPER"
+    },
+    "LNC": {
+      "shares": 120.16342049166231,
+      "entry_price": 41.61000061035156,
+      "entry_date": "2026-02-10",
+      "quality_score": 25.96116527217059,
+      "execution_mode": "PAPER"
+    },
+    "GAP": {
+      "shares": 178.6990736884183,
+      "entry_price": 27.979999542236328,
+      "entry_date": "2026-02-10",
+      "quality_score": 25.49309458418955,
+      "execution_mode": "PAPER"
+    },
+    "UMBF": {
+      "shares": 39.326726632083755,
+      "entry_price": 127.13999938964844,
+      "entry_date": "2026-02-10",
+      "quality_score": 24.414048568312364,
+      "execution_mode": "PAPER"
+    },
+    "SIMO": {
+      "shares": 42.041536930715054,
+      "entry_price": 118.93000030517578,
+      "entry_date": "2026-02-10",
+      "quality_score": 24.264303288238217,
+      "execution_mode": "PAPER"
+    },
+    "OPLN": {
+      "shares": 166.44473527347847,
+      "entry_price": 30.040000915527344,
+      "entry_date": "2026-02-10",
+      "quality_score": 24.005963627645713,
+      "execution_mode": "PAPER"
+    },
+    "ONB": {
+      "shares": 204.66639122148072,
+      "entry_price": 24.43000030517578,
+      "entry_date": "2026-02-10",
+      "quality_score": 23.901911220013314,
+      "execution_mode": "PAPER"
+    }
+  },
+  "trade_history": [
+    {
+      "type": "BUY",
+      "ticker": "MNKD",
+      "shares": 865.0518717136496,
+      "price": 5.78000020980835,
+      "cost": 5000.0,
+      "timestamp": "2026-02-10T21:24:16.030323",
+      "execution_mode": "PAPER",
+      "quality_score": 32.81287927467231,
+      "reason": "PROFESSIONAL CHECKLIST PASS | Price > SMA 200 ($4.86) | Stochastic K (69.28) in sweet spot with K>D and uptrend | Volume confirmed (Volume ratio: 1.06) and consistent (Consistent=True, Increasing=False, Current_vs_Avg=True) | Earnings safe (Simulation mode - earnings check bypassed) | BONUS: W pattern (W pattern: left=5.03, right=5.42) | BONUS: Volume increasing"
+    },
+    {
+      "type": "BUY",
+      "ticker": "SCHW",
+      "shares": 48.11393464298735,
+      "price": 103.91999816894531,
+      "cost": 5000.0,
+      "timestamp": "2026-02-10T21:24:16.050863",
+      "execution_mode": "PAPER",
+      "quality_score": 27.56740207671413,
+      "reason": "PROFESSIONAL CHECKLIST PASS | Price > SMA 200 ($93.23) | Stochastic K (64.40) in sweet spot with K>D and uptrend | Volume confirmed (Volume ratio: 1.28) and consistent (Consistent=True, Increasing=False, Current_vs_Avg=True) | Earnings safe (Simulation mode - earnings check bypassed) | BONUS: W pattern (W pattern: left=102.25, right=102.68) | BONUS: Volume increasing"
+    },
+    {
+      "type": "BUY",
+      "ticker": "AEP",
+      "shares": 41.74493789440434,
+      "price": 119.7750015258789,
+      "cost": 5000.0,
+      "timestamp": "2026-02-10T21:24:16.062250",
+      "execution_mode": "PAPER",
+      "quality_score": 26.49401697957558,
+      "reason": "PROFESSIONAL CHECKLIST PASS | Price > SMA 200 ($111.56) | Stochastic K (74.13) in sweet spot with K>D and uptrend | Volume confirmed (Volume ratio: 1.09) and consistent (Consistent=True, Increasing=False, Current_vs_Avg=True) | Earnings safe (Simulation mode - earnings check bypassed) | BONUS: W pattern (W pattern: left=115.36, right=115.56) | BONUS: Volume increasing"
+    },
+    {
+      "type": "BUY",
+      "ticker": "LNC",
+      "shares": 120.16342049166231,
+      "price": 41.61000061035156,
+      "cost": 5000.0,
+      "timestamp": "2026-02-10T21:24:16.077420",
+      "execution_mode": "PAPER",
+      "quality_score": 25.96116527217059,
+      "reason": "PROFESSIONAL CHECKLIST PASS | Price > SMA 200 ($38.49) | Stochastic K (74.80) in sweet spot with K>D and uptrend | Volume confirmed (Volume ratio: 1.09) and consistent (Consistent=True, Increasing=False, Current_vs_Avg=True) | Earnings safe (Simulation mode - earnings check bypassed) | BONUS: W pattern (W pattern: left=40.04, right=40.73) | BONUS: Volume increasing"
+    },
+    {
+      "type": "BUY",
+      "ticker": "GAP",
+      "shares": 178.6990736884183,
+      "price": 27.979999542236328,
+      "cost": 5000.0,
+      "timestamp": "2026-02-10T21:24:16.086850",
+      "execution_mode": "PAPER",
+      "quality_score": 25.49309458418955,
+      "reason": "PROFESSIONAL CHECKLIST PASS | Price > SMA 200 ($23.33) | Stochastic K (75.97) in sweet spot with K>D and uptrend | Volume confirmed (Volume ratio: 1.13) and consistent (Consistent=True, Increasing=False, Current_vs_Avg=True) | Earnings safe (Simulation mode - earnings check bypassed) | BONUS: W pattern (W pattern: left=25.78, right=26.42) | BONUS: Volume increasing"
+    },
+    {
+      "type": "BUY",
+      "ticker": "UMBF",
+      "shares": 39.326726632083755,
+      "price": 127.13999938964844,
+      "cost": 5000.0,
+      "timestamp": "2026-02-10T21:24:16.097260",
+      "execution_mode": "PAPER",
+      "quality_score": 24.414048568312364,
+      "reason": "PROFESSIONAL CHECKLIST PASS | Price > SMA 200 ($111.73) | Stochastic K (67.37) in sweet spot with K>D and uptrend | Volume confirmed (Volume ratio: 1.32) and consistent (Consistent=True, Increasing=False, Current_vs_Avg=False) | Earnings safe (Simulation mode - earnings check bypassed)"
+    },
+    {
+      "type": "BUY",
+      "ticker": "SIMO",
+      "shares": 42.041536930715054,
+      "price": 118.93000030517578,
+      "cost": 5000.0,
+      "timestamp": "2026-02-10T21:24:16.101873",
+      "execution_mode": "PAPER",
+      "quality_score": 24.264303288238217,
+      "reason": "PROFESSIONAL CHECKLIST PASS | Price > SMA 200 ($81.46) | Stochastic K (43.20) in sweet spot with K>D and uptrend | Volume confirmed (Volume ratio: 1.67) and consistent (Consistent=True, Increasing=False, Current_vs_Avg=True) | Earnings safe (Simulation mode - earnings check bypassed) | BONUS: W pattern (W pattern: left=111.00, right=111.50) | BONUS: Volume increasing"
+    },
+    {
+      "type": "BUY",
+      "ticker": "OPLN",
+      "shares": 166.44473527347847,
+      "price": 30.040000915527344,
+      "cost": 5000.0,
+      "timestamp": "2026-02-10T21:24:16.119682",
+      "execution_mode": "PAPER",
+      "quality_score": 24.005963627645713,
+      "reason": "PROFESSIONAL CHECKLIST PASS | Price > SMA 200 ($26.02) | Stochastic K (34.71) in sweet spot with K>D and uptrend | Volume confirmed (Volume ratio: 1.15) and consistent (Consistent=True, Increasing=False, Current_vs_Avg=True) | Earnings safe (Simulation mode - earnings check bypassed) | BONUS: Volume increasing"
+    },
+    {
+      "type": "BUY",
+      "ticker": "ONB",
+      "shares": 204.66639122148072,
+      "price": 24.43000030517578,
+      "cost": 5000.0,
+      "timestamp": "2026-02-10T21:24:16.133224",
+      "execution_mode": "PAPER",
+      "quality_score": 23.901911220013314,
+      "reason": "PROFESSIONAL CHECKLIST PASS | Price > SMA 200 ($21.77) | Stochastic K (73.07) in sweet spot with K>D and uptrend | Volume confirmed (Volume ratio: 1.54) and consistent (Consistent=True, Increasing=False, Current_vs_Avg=True) | Earnings safe (Simulation mode - earnings check bypassed) | BONUS: W pattern (W pattern: left=22.87, right=23.37) | BONUS: Volume increasing"
+    }
+  ],
+  "execution_mode": "PAPER"
+}

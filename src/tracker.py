@@ -15,46 +15,104 @@ class Portfolio:
     """Manages virtual portfolio for paper trading."""
     
     def __init__(self, portfolio_file='data/portfolio.json'):
-        self.portfolio_file = portfolio_file
+        self.portfolio_file = os.path.abspath(portfolio_file)
         self.state = self._load_state()
     
     def _load_state(self):
-        """Load portfolio state from JSON file with backup restoration."""
-        if os.path.exists(self.portfolio_file):
-            try:
-                with open(self.portfolio_file, 'r') as f:
-                    state = json.load(f)
-                    log_info(f"Loaded portfolio: ${state['cash']:.2f} cash, {len(state['positions'])} positions")
-                    return state
-            except Exception as e:
-                log_warning(f"Error loading portfolio: {e}, trying backup...")
-                
-                # Try to restore from backup
-                backup_file = self.portfolio_file.replace('.json', '_backup.json')
-                if os.path.exists(backup_file):
-                    try:
-                        with open(backup_file, 'r') as f:
-                            state = json.load(f)
-                            log_info(f"Restored portfolio from backup: ${state['cash']:.2f} cash, {len(state['positions'])} positions")
-                            # Save the restored state to main file
-                            self.state = state
-                            self._save_state()
-                            return state
-                    except Exception as backup_e:
-                        log_error(f"Backup restoration failed: {backup_e}")
+        """Load portfolio state from JSON file with robust error handling."""
+        log_info(f"Loading portfolio from: {self.portfolio_file}")
         
-        # Initialize new portfolio
-        log_info("Creating new portfolio (no valid backup found)")
-        return {
-            'cash': 100000.0,
-            'positions': {},
-            'trade_history': []
-        }
+        if not os.path.exists(self.portfolio_file):
+            log_info(f"No portfolio found at {self.portfolio_file}, starting fresh.")
+            return {
+                'cash': 100000.0,
+                'positions': {},
+                'trade_history': []
+            }
+        
+        try:
+            with open(self.portfolio_file, 'r') as f:
+                data = json.load(f)
+            
+            # Use .get() to prevent crashes if keys are missing
+            cash = float(data.get("cash", 100000.0))
+            positions = data.get("positions", {})
+            trade_history = data.get("trade_history", [])
+            
+            state = {
+                'cash': cash,
+                'positions': positions,
+                'trade_history': trade_history
+            }
+            
+            log_info(f"✅ Successfully loaded portfolio from {self.portfolio_file}")
+            log_info(f"   💰 Cash: ${cash:,.2f}")
+            log_info(f"   📈 Positions: {len(positions)}")
+            log_info(f"   📊 Trade History: {len(trade_history)} trades")
+            
+            return state
+            
+        except json.JSONDecodeError as e:
+            log_error(f"❌ JSON decode error in portfolio file: {e}")
+            # Try backup restoration
+            return self._try_backup_restore()
+        except Exception as e:
+            log_error(f"❌ Error loading portfolio: {e}")
+            # Try backup restoration
+            return self._try_backup_restore()
+    
+    def _try_backup_restore(self):
+        """Try to restore portfolio from backup file."""
+        backup_file = self.portfolio_file.replace('.json', '_backup.json')
+        
+        if not os.path.exists(backup_file):
+            log_warning("No backup file found, starting with fresh portfolio")
+            return {
+                'cash': 100000.0,
+                'positions': {},
+                'trade_history': []
+            }
+        
+        try:
+            with open(backup_file, 'r') as f:
+                data = json.load(f)
+            
+            # Use .get() to prevent crashes if keys are missing
+            cash = float(data.get("cash", 100000.0))
+            positions = data.get("positions", {})
+            trade_history = data.get("trade_history", [])
+            
+            state = {
+                'cash': cash,
+                'positions': positions,
+                'trade_history': trade_history
+            }
+            
+            log_info(f"✅ Restored portfolio from backup: {backup_file}")
+            log_info(f"   💰 Cash: ${cash:,.2f}")
+            log_info(f"   📈 Positions: {len(positions)}")
+            
+            # Save the restored state to main file
+            self.state = state
+            self._save_state()
+            
+            return state
+            
+        except Exception as backup_e:
+            log_error(f"❌ Backup restoration failed: {backup_e}")
+            log_warning("Starting with fresh portfolio as last resort")
+            return {
+                'cash': 100000.0,
+                'positions': {},
+                'trade_history': []
+            }
     
     def _save_state(self):
         """Save portfolio state to JSON file with backup."""
         try:
-            os.makedirs(os.path.dirname(self.portfolio_file), exist_ok=True)
+            directory = os.path.dirname(self.portfolio_file)
+            if directory:  # Only try to create if directory string is not empty
+                os.makedirs(directory, exist_ok=True)
             
             # Create backup before overwriting
             backup_file = self.portfolio_file.replace('.json', '_backup.json')
@@ -519,22 +577,26 @@ class Portfolio:
         
         return current_prices
     
-    def update_portfolio_valuation(self):
+    def update_portfolio_valuation(self, current_prices=None):
         """
         Update portfolio valuation with current market prices and force sync.
         Ensures Total Value = (Current_Price * Shares) + Cash.
+        
+        Args:
+            current_prices: Optional dict of ticker->price for backtesting mode
+                           If None, will fetch current prices for live mode
         
         Returns:
             Dict with updated portfolio summary
         """
         log_info("Updating portfolio valuation with current market prices...")
         
-        # Fetch current prices for all positions
-        current_prices = self.fetch_current_prices()
-        
-        if not current_prices:
-            log_warning("No current prices available, using entry prices")
-            current_prices = None
+        # Use provided prices or fetch current prices for live mode
+        if current_prices is None:
+            current_prices = self.fetch_current_prices()
+            if not current_prices:
+                log_warning("No current prices available, using entry prices")
+                current_prices = None
         
         # Get updated summary
         summary = self.get_summary(current_prices)

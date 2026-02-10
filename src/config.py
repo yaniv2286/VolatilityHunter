@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-TIINGO_KEY = os.getenv('TIINGO_KEY')
+TIINGO_KEY = os.getenv('TIINGO_API_KEY')
 BUCKET_NAME = os.getenv('BUCKET_NAME')
 IS_CLOUD_RUN = os.getenv('IS_CLOUD_RUN', 'False').lower() == 'true'
 PORT = int(os.getenv('PORT', 8080))

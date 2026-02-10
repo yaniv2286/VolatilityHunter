@@ -1,18 +1,25 @@
 """
-VolatilityHunter - Standalone Trading Bot
-Simple automation script for swing trading strategy
+VolatilityHunter - The Hunter
+3-Pillar Architecture: Trading Execution Engine
 """
 
-from datetime import datetime
-import sys
 import os
+import sys
+
+# FORCE WORKING DIRECTORY TO SCRIPT LOCATION
+script_dir = os.path.dirname(os.path.abspath(__file__))
+os.chdir(script_dir)
+sys.path.append(script_dir)
+print(f"📍 Working Directory set to: {os.getcwd()}")
+
+from datetime import datetime
 from src.config import STOCK_LIST, STOCK_UNIVERSE_MODE, TICKER_FILTERS, TICKER_LIST_FILE, DATA_SOURCE
 from src.data_loader import get_stock_data
 from src.data_loader_factory import get_data_loader
 from src.strategy import scan_all_stocks, get_portfolio_summary
-from src.notifications import log_info, log_error
+from src.notifications import log_info, log_error, log_warning
 from src.ticker_manager import TickerManager
-from src.tracker import Portfolio
+from src.execution import get_executor
 from src.email_notifier import EmailNotifier
 
 def get_active_stock_list():
@@ -51,41 +58,49 @@ def get_active_stock_list():
         return tickers
 
 def main():
-    """Main execution flow for VolatilityHunter."""
+    """Main execution flow for VolatilityHunter - The Hunter"""
     print("="*60)
-    print("VolatilityHunter - Standalone Trading Bot")
+    print("VolatilityHunter - The Hunter")
+    print("3-Pillar Architecture: Trading Execution Engine")
     print("="*60)
     print(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"Data Source: {DATA_SOURCE}")
     
     try:
-        # Step 1: Initialize
-        print("\n[STEP 1] Initializing...")
-        log_info("Initializing VolatilityHunter...")
+        # Step 1: Initialize Components
+        print("\n[STEP 1] Initializing Components...")
+        log_info("Initializing VolatilityHunter Trading Engine...")
         
-        # Clear log file to start fresh for this session
-        try:
-            with open('volatility_hunter.log', 'w') as f:
-                f.write(f"VolatilityHunter Session Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                f.write("="*60 + "\n")
-            log_info("Log file cleared for new session")
-        except Exception as e:
-            log_warning(f"Could not clear log file: {e}")
+        # Define data directory
+        data_dir = os.path.join(os.getcwd(), 'data')
         
-        # Load portfolio and initialize components
-        portfolio = Portfolio()
+        # Initialize executor based on config with explicit portfolio path
+        portfolio_file = os.path.join(data_dir, "portfolio.json")
+        executor = get_executor(portfolio_file=portfolio_file)
+        execution_mode = executor.execution_mode
+        print(f"  - Execution Mode: {execution_mode}")
+        
+        # Initialize data loader and email notifier
         data_loader = get_data_loader()
         email_notifier = EmailNotifier()
         
-        print(f"  - Portfolio: ${portfolio.state['cash']:,.2f} cash, {len(portfolio.state['positions'])} positions")
+        print(f"  - Data Loader: {type(data_loader).__name__}")
+        print(f"  - Email Notifier: Configured")
         
-        # Get active stock list
+        # Get executor portfolio summary
+        portfolio_summary = executor.get_portfolio_summary()
+        print(f"  - Portfolio: ${portfolio_summary['total_value']:,.2f} total value")
+        print(f"  - Positions: {portfolio_summary['num_positions']}/10")
+        print(f"  - Cash: ${portfolio_summary['cash']:,.2f}")
+        
+        # Step 2: Get Stock Universe
+        print("\n[STEP 2] Loading Stock Universe...")
         active_stocks = get_active_stock_list()
         print(f"  - Stock Universe: {STOCK_UNIVERSE_MODE} ({len(active_stocks)} stocks)")
         log_info(f"Monitoring {len(active_stocks)} stocks")
         
-        # Step 2: Update market data
-        print("\n[STEP 2] Updating market data...")
+        # Step 3: Update Market Data
+        print("\n[STEP 3] Updating Market Data...")
         log_info("Starting market data update...")
         
         update_result = data_loader.update_all_stocks(
@@ -96,27 +111,18 @@ def main():
         print(f"  - Updated: {update_result['updated']}/{update_result['total']} stocks")
         log_info(f"Data update complete: {update_result['updated']}/{update_result['total']} stocks")
         
-        # Step 3: Update portfolio valuation
-        print("\n[STEP 3] Updating portfolio valuation...")
-        log_info("Updating portfolio valuation with current market prices...")
-        
-        portfolio_summary = portfolio.update_portfolio_valuation()
-        
-        print(f"  - Total Value: ${portfolio_summary['total_value']:,.2f}")
-        print(f"  - Total Return: ${portfolio_summary['total_return_dollars']:,.2f} ({portfolio_summary['total_return_pct']:+.2f}%)")
-        print(f"  - Positions: {portfolio_summary['num_positions']}/10")
-        print(f"  - Cash: ${portfolio_summary['cash']:,.2f}")
-        
-        # Step 4: Scan for signals
-        print("\n[STEP 4] Scanning for trading signals...")
+        # Step 4: Scan for Trading Signals
+        print("\n[STEP 4] Scanning for Trading Signals...")
         log_info("Scanning for trading signals...")
         
+        # Load stock data for analysis
         stock_data = {}
         for ticker in active_stocks:
             df = get_stock_data(ticker)
             if df is not None:
                 stock_data[ticker] = df
         
+        # Generate signals
         scan_results = scan_all_stocks(stock_data)
         summary = get_portfolio_summary(scan_results)
         
@@ -128,19 +134,21 @@ def main():
         
         log_info(f"Scan complete: {summary['buy_signals']} BUY, {summary['sell_signals']} SELL")
         
-        # Step 5: Process trades
-        print("\n[STEP 5] Processing paper trading...")
-        log_info("Processing paper trading signals...")
+        # Step 5: Execute Trading Signals
+        print("\n[STEP 5] Executing Trading Signals...")
+        log_info("Executing trading signals...")
         
-        # Sort BUY signals by quality score (highest first)
+        # Sort signals by quality
         buy_signals = sorted(scan_results.get('BUY', []), 
                            key=lambda x: x.get('quality_score', 0), reverse=True)
         sell_signals = scan_results.get('SELL', [])
         
-        executed_trades = portfolio.process_signals(buy_signals, sell_signals)
+        # Execute trades through executor
+        executed_trades = executor.process_signals(buy_signals, sell_signals)
         
         print(f"  - Buys Executed: {len(executed_trades['buys'])}")
         print(f"  - Sells Executed: {len(executed_trades['sells'])}")
+        print(f"  - Errors: {len(executed_trades['errors'])}")
         
         # Show top signals
         if summary['buy_signals'] > 0:
@@ -155,45 +163,63 @@ def main():
                 print(f"  {i+1}. {signal['ticker']}: ${signal['indicators']['price']:.2f}")
                 print(f"     Reason: {signal['reason']}")
         
-        # Step 6: Send email report
-        print("\n[STEP 6] Sending email report...")
-        log_info("Sending comprehensive email notification...")
+        # Step 6: Update Portfolio Valuation
+        print("\n[STEP 6] Updating Portfolio Valuation...")
+        log_info("Updating portfolio valuation...")
+        
+        # Get updated portfolio summary
+        updated_portfolio_summary = executor.get_portfolio_summary()
+        
+        print(f"  - Total Value: ${updated_portfolio_summary['total_value']:,.2f}")
+        print(f"  - Total Return: ${updated_portfolio_summary['total_return_dollars']:,.2f} ({updated_portfolio_summary['total_return_pct']:+.2f}%)")
+        print(f"  - Positions: {updated_portfolio_summary['num_positions']}/10")
+        print(f"  - Cash: ${updated_portfolio_summary['cash']:,.2f}")
+        
+        # Step 7: Send Daily Report
+        print("\n[STEP 7] Sending Daily Report...")
+        log_info("Sending daily trading report...")
         
         try:
+            # Prepare email content
+            subject = f"VolatilityHunter Daily Report: {execution_mode}"
+            
+            # Send comprehensive report with log attachment
             email_sent = email_notifier.send_comprehensive_scan_results(
                 scan_results=scan_results,
                 summary=summary,
-                portfolio_summary=portfolio_summary,
+                portfolio_summary=updated_portfolio_summary,
                 executed_trades=executed_trades,
                 attach_log_file=True
             )
             
             if email_sent:
-                print("  - Email sent successfully!")
+                print("  - Daily report sent successfully!")
                 print("  - Log file attached: Yes")
-                log_info("Comprehensive email notification sent successfully")
+                log_info("Daily trading report sent successfully")
             else:
-                print("  - Failed to send email")
-                log_error("Failed to send email notification")
+                print("  - Failed to send daily report")
+                log_error("Failed to send daily trading report")
                 
         except Exception as e:
             print(f"  - Email error: {e}")
-            log_error(f"Email sending error: {e}")
+            log_error(f"Daily report email error: {e}")
         
-        # Step 7: Final summary
-        print("\n[STEP 7] Final Summary")
+        # Step 8: Final Summary
+        print("\n[STEP 8] Final Summary")
         print("="*60)
         print(f"[OK] VolatilityHunter completed successfully!")
+        print(f"[MODE] Execution: {execution_mode}")
         print(f"[DATA] Market Data: {update_result['updated']}/{update_result['total']} stocks updated")
         print(f"[SIGNALS] Signals: {summary['buy_signals']} BUY, {summary['sell_signals']} SELL")
-        print(f"[PORTFOLIO] Portfolio: ${portfolio_summary['total_value']:,.2f} ({portfolio_summary['total_return_pct']:+.2f}%)")
-        print(f"[EMAIL] Email: {'Sent' if email_sent else 'Failed'}")
-        print(f"[DURATION] Total runtime: {datetime.now() - datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)}")
+        print(f"[TRADES] Executed: {len(executed_trades['buys'])} buys, {len(executed_trades['sells'])} sells")
+        print(f"[PORTFOLIO] Value: ${updated_portfolio_summary['total_value']:,.2f} ({updated_portfolio_summary['total_return_pct']:+.2f}%)")
+        print(f"[EMAIL] Report: {'Sent' if email_sent else 'Failed'}")
+        print(f"[DURATION] Runtime: {datetime.now() - datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)}")
         print("="*60)
         
-        log_info("VolatilityHunter execution completed successfully")
+        log_info("VolatilityHunter trading execution completed successfully")
         
-        # Exit cleanly - linear execution complete
+        # Exit cleanly
         sys.exit(0)
         
     except Exception as e:

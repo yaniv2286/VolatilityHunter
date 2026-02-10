@@ -1,49 +1,44 @@
+# --- Python & Environment ---
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-.env
-.venv
-env/
 venv/
-ENV/
-env.bak/
-venv.bak/
+.venv/
+env/
+.env
 
-data/
-*.csv
+# --- Secrets & Config ---
+config.json
+data/credentials.json
+.windsurf/
+
+# --- Temporary Scripts (Cleanup) ---
+finalize_config.py
+add_api_key.py
+fix_paths.py
+temp_*
+
+# --- Data (Heavy Files) ---
+data/*.parquet
+data/*.csv
+data/portfolio.json
+data/market_data/
+data/tickers.txt
+
+# --- Logs & Output ---
+logs/*.log
 *.log
 *.log.err
-portfolio.json
-*.sqlite
-*.db
-
-# Test artifacts
 test_data/
 mock_data/
-*_output.log
-task_scheduler_output.log
 
-.DS_Store
+# --- IDE & OS ---
 .idea/
 .vscode/
-*.swp
-*.swo
-*~
+.DS_Store
+Thumbs.db
+
+# --- Build Artifacts ---
+build/
+dist/
+*.spec
