@@ -1,20 +1,20 @@
 # 🏗️ VolatilityHunter Architecture
 
 **Project:** VolatilityHunter  
-**Version:** 5.0 (Stable - Persistence Fixed)  
+**Version:** 5.0 (Stable | Paper Trading)  
 **Status:** AUTONOMOUS | PAPER TRADING  
 
 ---
 
-## 📋 Core Architecture (The 3 Pillars)
+## 📋 Core Architecture (The 3-Pillar System)
 
 ### 1. The Guard (`health_check.py`)
-**Schedule:** 9:00 AM Daily  
+**Schedule:** 09:00 AM IST Daily  
 **Purpose:** System Health Validation  
 
 **Responsibilities:**
-- Internet connectivity check
-- Tiingo API availability verification  
+- Internet connectivity verification
+- Tiingo API availability check
 - Disk permissions validation
 - Fails fast with clear diagnostics
 
@@ -22,62 +22,55 @@
 
 ---
 
-### 2. The Hunter (`main.py`)
-**Schedule:** 3:45 PM Daily (Market Close)  
-**Purpose:** Autonomous Trading Execution  
+### 2. The Historian (`update_universe.py`)
+**Schedule:** Optional/Manual (On-Demand)  
+**Purpose:** Market Data Synchronization  
 
-#### **Step A: Data Updates**
-- Incremental portfolio data refresh
-- Validates market data freshness
-- Handles API rate limits gracefully
-
-#### **Step B: Market Scanning**
-- Scans 2,149 tickers for technical signals
-- Applies Wealth Builder strategy rules
-- Calculates SMA 200, Stochastic indicators
-- Filters by historical CAGR > 15%
-
-#### **Step C: Decision Engine**
-- Ranks opportunities by technical strength
-- Applies risk management rules
-- Generates Buy/Sell/Hold signals
-- Validates position limits (max 10 positions)
-
-#### **Step D: Execution**
-- Paper trading order execution
-- Updates `portfolio.json` with trades
-- Maintains cash balance tracking
-- Records trade history
-
-#### **Step E: Reporting**
-- HTML portfolio valuation reports
-- Email notifications with trade summaries
-- Daily execution logs
-- Performance metrics tracking
-
----
-
-### 3. The Historian (Data Utilities)
-
-#### **`update_universe.py`**
-**Purpose:** Mass Market Data Synchronization  
 **Capabilities:**
-- Updates all 2,149 tickers from Tiingo API
+- Forces synchronization of all 2,149 tickers to latest EOD data
 - Progress tracking every 50 tickers
 - Error resilience (continues if individual tickers fail)
 - Parquet file format for optimal performance
 
-#### **`backtest.py`**
-**Purpose:** Strategy Validation & Testing  
-**Capabilities:**
-- Historical strategy performance analysis
-- Risk metric calculations
-- Parameter optimization
-- Win/loss ratio analysis
+**Usage:** Run when market data appears stale or after system maintenance.
 
 ---
 
-## 🔧 Key Technical Decisions (The "Why")
+### 3. The Hunter (`main.py`)
+**Schedule:** 10:00 AM IST Daily  
+**Purpose:** Autonomous Trading Execution  
+
+#### **Step A: Data Synchronization**
+- Downloads latest EOD data for Portfolio + Universe
+- Validates market data freshness
+- Handles API rate limits gracefully
+
+#### **Step B: Memory Management**
+- Loads `portfolio.json` using Absolute Paths (Fixes "Amnesia" bug)
+- Robust JSON loading with `.get()` methods to prevent crashes
+- Automatic backup restoration with `_backup.json` fallback
+
+#### **Step C: Market Analysis**
+- Scans 2,149 tickers for Volatility/Mean Reversion signals
+- Applies Wealth Builder strategy rules
+- Calculates SMA 200, Stochastic indicators
+- Filters by historical CAGR > 15%
+
+#### **Step D: Trade Execution**
+- Updates Portfolio (Paper Trading mode)
+- Maintains cash balance tracking
+- Records complete trade history
+- Applies risk management rules
+
+#### **Step E: Reporting**
+- Generates HTML portfolio valuation reports
+- Sends email notifications with trade summaries
+- Attaches complete execution logs
+- Provides daily performance metrics
+
+---
+
+## 🔧 Key Technical Decisions
 
 ### Data Storage: Local Parquet Files
 **Location:** `data/` directory  
@@ -88,23 +81,23 @@
 - **Reliability:** Local storage eliminates external dependencies
 - **Performance:** Enables scanning 2,149 stocks in <30 seconds
 
-### Persistence: Robust Portfolio Management
+### Persistence: Robust JSON Management
 **File:** `portfolio.json`  
 **Key Innovations:**
-- **Absolute Paths:** Eliminates `[WinError 3]` directory creation failures
-- **Robust Key Checking:** Uses `.get()` methods to prevent KeyError crashes
+- **Absolute Paths:** Prevents Windows Task Scheduler path errors
+- **Robust Loading:** Uses `.get()` methods to handle missing keys gracefully
 - **Backup Restoration:** Automatic fallback to `_backup.json` on corruption
 - **Atomic Operations:** File validation before writes
 
 **Solved:** The "Portfolio Amnesia" bug where trading data was lost on restart.
 
-### Fail-Safes: Error Resilience
-**Strategy:** Defensive Programming  
+### Logging: Comprehensive & Reliable
+**Strategy:** Defensive Programming with explicit flushing  
 **Implementation:**
-- **Individual Ticker Isolation:** One bad ticker (like MPW) doesn't crash the universe
-- **API Rate Limiting:** Graceful handling of Tiingo API limits
-- **JSON Validation:** Prevents corrupted portfolio files
-- **Graceful Degradation:** System continues operating with partial data
+- **Append Mode:** Uses `filemode='a'` to preserve daily logs
+- **Explicit Flush:** Forces log handlers to flush before email attachment
+- **ASCII-Only:** Compatible with Windows Task Scheduler
+- **Error Isolation:** Individual ticker failures don't crash the system
 
 ---
 
@@ -116,7 +109,7 @@ VolatilityHunter/
 │   ├── main.py                 # The Hunter - Main trading execution
 │   ├── health_check.py         # The Guard - System health validation
 │   ├── update_universe.py      # The Historian - Mass data sync
-│   └── backtest.py            # Strategy testing & validation
+│   └── generate_snapshot.py     # Context mapping utility
 │
 ├── 📂 src/                    # Core business logic
 │   ├── tracker.py             # Portfolio management (robust loading)
@@ -136,8 +129,9 @@ VolatilityHunter/
 │   └── VH_YYYY-MM-DD.log     # Daily trading logs
 │
 ├── 📂 docs/                   # Documentation
-│   ├── README.md              # Project overview
-│   └── ARCHITECTURE.md        # This document
+│   ├── README.md              # Project front door
+│   ├── ARCHITECTURE.md        # Technical architecture
+│   └── generate_snapshot.py   # Documentation utility
 │
 └── 📂 config/                 # Configuration files
     ├── config.json           # Trading parameters
@@ -201,10 +195,10 @@ HTML/Email Reports ← Portfolio Valuation ← Market Data
 ## 🚀 Deployment Architecture
 
 ### Environment
-- **Python 3.10.9** (Windows/Unix compatible)
-- **Dependencies:** Tiingo API, pandas, numpy
-- **Storage:** Local filesystem (parquet + JSON)
-- **Notifications:** SMTP email + HTML reports
+- **Python 3.10** (Tiingo API constraint)
+- **Windows-optimized** with Unix compatibility
+- **Local storage only** (no external dependencies for core operations)
+- **SMTP email** for notifications and reports
 
 ### Security
 - **API Keys:** Environment variables (.env)
@@ -224,14 +218,21 @@ HTML/Email Reports ← Portfolio Valuation ← Market Data
 
 ### ✅ Data Freshness
 - Full universe (2,149 tickers) updated
-- Current market data through Feb 9, 2026
-- Incremental updates for portfolio positions
+- Current market data through Feb 10, 2026
 - Error-resilient mass updates
+- Progress tracking and reporting
+
+### ✅ Portfolio Valuation
+- Real-time P&L calculation using current market prices
+- Accurate email reports with individual position performance
+- Robust column name detection for data compatibility
+- Fallback mechanisms for data availability
 
 ### ✅ Production Ready
 - Zero data loss incidents
 - Comprehensive error handling
 - Automated health checks
 - Complete audit trail
+- 3-Pillar autonomous architecture
 
-**Status:** 🟢 **PRODUCTION READY** - Ready for live deployment with paper trading validation.
+**Status:** 🟢 **PRODUCTION READY** - Fully operational autonomous trading system.

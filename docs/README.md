@@ -9,18 +9,21 @@ A locally hosted, autonomous swing-trading bot using Tiingo data. It scans the U
 ### Daily Automation (Recommended)
 **Windows Task Scheduler Setup:**
 - **9:00 AM:** `python health_check.py` (System validation)
-- **3:45 PM:** `python main.py` (Trading execution)
+- **10:00 AM:** `python main.py` (Trading execution)
 
 ### Manual Operations
 ```bash
-# Run trading bot manually
+# Run the Hunter - Main trading execution
 python main.py
 
-# Force sync all market data (2,149 tickers)
+# Run the Guard - System health validation
+python health_check.py
+
+# Force Data Sync - Update all market data
 python update_universe.py
 
-# System health check
-python health_check.py
+# Create Context Map - Generate project snapshot
+python generate_snapshot.py
 ```
 
 ---
@@ -43,9 +46,10 @@ python health_check.py
 
 ### Trading Mode
 - **Mode:** Paper Trading
-- **Portfolio Value:** $100,000.00
+- **Portfolio Value:** $100,761.39
 - **Active Positions:** 10/10 slots filled
-- **Cash Available:** $50,000.00
+- **Available Cash:** $50,000.00
+- **Total Return:** $761.39 (+0.76%)
 
 ### Strategy Performance
 - **Strategy:** Mean Reversion / Trend Following Hybrid
@@ -54,9 +58,10 @@ python health_check.py
 - **Benchmark:** Tracking performance vs S&P 500
 
 ### Recent Activity
-- **Market Data:** Fresh through February 9, 2026
+- **Market Data:** Fresh through February 10, 2026
 - **Last Scan:** 0 BUY signals, 1 SELL signal (MPW)
 - **Data Quality:** 99.9% success rate (2,147/2,149 tickers)
+- **Execution:** Clean with zero errors
 
 ---
 
@@ -80,7 +85,7 @@ python health_check.py
 
 ### Core Components
 1. **The Guard** (`health_check.py`) - System validation at 9:00 AM
-2. **The Hunter** (`main.py`) - Trading execution at 3:45 PM
+2. **The Hunter** (`main.py`) - Trading execution at 10:00 AM
 3. **The Historian** (`update_universe.py`) - Market data synchronization
 
 ### Data Flow
@@ -100,7 +105,7 @@ Tiingo API → Parquet Files → Strategy Engine → Trading Signals → Portfol
 ### System Performance
 - **Startup Time:** <5 seconds
 - **Market Scan:** 2,149 stocks in <30 seconds
-- **Data Loading:** <1 second with error resilience
+- **Portfolio Loading:** <1 second with error resilience
 - **Memory Usage:** <500MB during full scan
 
 ### Reliability
@@ -166,7 +171,8 @@ VolatilityHunter/
 ├── 📄 Core Files
 │   ├── main.py                 # Trading execution
 │   ├── health_check.py         # System validation
-│   └── update_universe.py      # Data synchronization
+│   ├── update_universe.py      # Data synchronization
+│   └── generate_snapshot.py     # Project documentation
 │
 ├── 📂 src/                    # Business logic
 │   ├── tracker.py             # Portfolio management
@@ -180,6 +186,10 @@ VolatilityHunter/
 │
 ├── 📂 logs/                   # Daily logs
 ├── 📂 docs/                   # Documentation
+│   ├── README.md              # This file
+│   ├── ARCHITECTURE.md        # Technical architecture
+│   └── generate_snapshot.py   # Documentation utility
+│
 └── config.json               # Trading configuration
 ```
 
@@ -190,8 +200,8 @@ VolatilityHunter/
 ### ✅ Persistence Fixed
 - Eliminated portfolio amnesia bug
 - Robust JSON loading with error handling
-- Automatic backup restoration
 - Absolute file path resolution
+- Automatic backup restoration
 
 ### ✅ Data Freshness
 - Full universe (2,149 tickers) updated
@@ -199,19 +209,18 @@ VolatilityHunter/
 - Error-resilient mass updates
 - Progress tracking and reporting
 
+### ✅ Portfolio Valuation
+- Real-time P&L calculation using current market prices
+- Accurate email reports with individual position performance
+- Robust column name detection for data compatibility
+- Fallback mechanisms for data availability
+
 ### ✅ Production Ready
 - Zero data loss incidents
 - Comprehensive error handling
 - Automated health checks
 - Complete audit trail
-
----
-
-## ⚠️ Disclaimer
-
-**Educational Purpose Only:** This bot is for research and educational purposes. Trading involves substantial risk of loss. Past performance does not guarantee future results. Always conduct your own research and consult with a financial advisor before making investment decisions.
-
-**Paper Trading Only:** Current version operates in paper trading mode only. No real money is at risk.
+- 3-Pillar autonomous architecture
 
 ---
 
@@ -220,6 +229,14 @@ VolatilityHunter/
 - **Documentation:** See `docs/ARCHITECTURE.md` for technical details
 - **Logs:** Check `logs/VH_YYYY-MM-DD.log` for daily operations
 - **Health:** Run `python health_check.py` for system diagnostics
+
+---
+
+## ⚠️ Disclaimer
+
+**Educational Purpose Only:** This bot is for research and educational purposes. Trading involves substantial risk of loss. Past performance does not guarantee future results. Always conduct your own research and consult with a financial advisor before making investment decisions.
+
+**Paper Trading Only:** Current version operates in paper trading mode only. No real money is at risk.
 
 ---
 
