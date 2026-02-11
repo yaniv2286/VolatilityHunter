@@ -73,6 +73,11 @@ class EmailNotifier:
             # Add attachment if provided
             if attachment_path and os.path.exists(attachment_path):
                 try:
+                    # CRITICAL FIX: Flush logs to ensure everything is written to disk before emailing
+                    import logging
+                    for handler in logging.getLogger().handlers:
+                        handler.flush()
+                    
                     with open(attachment_path, 'rb') as attachment:
                         part = MIMEBase('application', 'octet-stream')
                         part.set_payload(attachment.read())

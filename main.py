@@ -12,6 +12,10 @@ os.chdir(script_dir)
 sys.path.append(script_dir)
 print(f"📍 Working Directory set to: {os.getcwd()}")
 
+# CRITICAL: Setup logging FIRST before any other imports that might use logging
+from src.notifications import setup_logging
+setup_logging()
+
 from datetime import datetime
 from src.config import STOCK_LIST, STOCK_UNIVERSE_MODE, TICKER_FILTERS, TICKER_LIST_FILE, DATA_SOURCE
 from src.data_loader import get_stock_data
@@ -167,8 +171,56 @@ def main():
         print("\n[STEP 6] Updating Portfolio Valuation...")
         log_info("Updating portfolio valuation...")
         
-        # Get updated portfolio summary
-        updated_portfolio_summary = executor.get_portfolio_summary()
+        # CRITICAL FIX: Fetch current prices for all portfolio positions
+        current_prices = {}
+        portfolio_positions = executor.state['positions']
+        
+        print(f"  - Fetching current prices for {len(portfolio_positions)} portfolio positions...")
+        
+        for ticker in portfolio_positions.keys():
+            try:
+                # Load current data from parquet file
+                df = data_loader.storage.load_data(ticker)
+                if df is not None and not df.empty:
+                    # Debug: print column names to understand the issue
+                    if hasattr(df, 'columns'):
+                        log_info(f"Debug {ticker}: columns = {df.columns.tolist()}")
+                    
+                    # Try different column name variations
+                    latest_price = None
+                    if 'close' in df.columns:
+                        latest_price = df.iloc[-1]['close']
+                    elif 'Close' in df.columns:
+                        latest_price = df.iloc[-1]['Close']
+                    elif 'price' in df.columns:
+                        latest_price = df.iloc[-1]['price']
+                    elif 'Price' in df.columns:
+                        latest_price = df.iloc[-1]['Price']
+                    else:
+                        # Last resort - try to find any numeric column
+                        numeric_cols = df.select_dtypes(include=['number']).columns
+                        if len(numeric_cols) > 0:
+                            latest_price = df.iloc[-1][numeric_cols[0]]
+                            log_warning(f"{ticker}: Using fallback column {numeric_cols[0]}")
+                    
+                    if latest_price is not None:
+                        current_prices[ticker] = float(latest_price)
+                        print(f"  - {ticker}: ${latest_price:.2f}")
+                    else:
+                        log_error(f"{ticker}: Could not find price column in data")
+                        # Fallback to entry price
+                        current_prices[ticker] = float(portfolio_positions[ticker]['entry_price'])
+                else:
+                    log_warning(f"No data available for {ticker}, using entry price")
+                    # Fallback to entry price if no current data available
+                    current_prices[ticker] = float(portfolio_positions[ticker]['entry_price'])
+            except Exception as e:
+                log_error(f"Error fetching price for {ticker}: {e}")
+                # Fallback to entry price on error
+                current_prices[ticker] = float(portfolio_positions[ticker]['entry_price'])
+        
+        # Get updated portfolio summary with current prices
+        updated_portfolio_summary = executor.get_portfolio_summary(current_prices)
         
         print(f"  - Total Value: ${updated_portfolio_summary['total_value']:,.2f}")
         print(f"  - Total Return: ${updated_portfolio_summary['total_return_dollars']:,.2f} ({updated_portfolio_summary['total_return_pct']:+.2f}%)")
