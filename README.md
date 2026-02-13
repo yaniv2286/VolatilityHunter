@@ -1,277 +1,234 @@
-# 🎯 VolatilityHunter v5.5 (A+ Wealth Builder)
+# 🎯 VolatilityHunter
 
-A locally hosted, autonomous swing-trading bot using Tiingo data. It scans the US market daily, identifies high-volatility setups, and manages a paper portfolio with ATR-based trailing stops.
-
----
-
-## 🚀 Quick Start
-
-### Daily Automation (Recommended)
-**Windows Task Scheduler Setup:**
-- **9:00 AM:** `python health_check.py` (System validation)
-- **10:00 AM:** `python main.py` (Trading execution)
-
-### Manual Operations
-```bash
-# Run the Hunter - Main trading execution
-python main.py
-
-# Run the Guard - System health validation
-python health_check.py
-
-# Force Data Sync - Update all market data
-python update_universe.py
-
-# Migrate Portfolio Schema - Update legacy positions
-python migrate_portfolio_schema.py
-
-# Create Context Map - Generate project snapshot
-python generate_snapshot.py
-```
+**Deterministic Quantitative Trading System | v6.5 A+ Wealth Builder**
 
 ---
 
-## ⚙️ Configuration
+## 📋 Project Overview
 
-### Required Files
-1. **`config.json`** - API keys, risk settings, trading parameters
-2. **`data/tickers.txt`** - Universe of 2,149 US stocks (auto-generated)
-3. **`.env`** - Tiingo API key (get free at https://www.tiingo.com/)
+VolatilityHunter is a **deterministic, rule-based quantitative trading system** built on a **3-Pillar Architecture** designed for systematic wealth generation through technical analysis and risk management.
 
-### Key Settings
-- **Initial Capital:** $100,000 (paper trading)
-- **Max Positions:** 10 concurrent positions
-- **Risk Management:** 3.0x ATR trailing stops, volatility-adjusted sizing
-- **Entry Rules:** A+ Wealth Builder strict criteria
+### 🏗️ The 3-Pillar Architecture
+
+- **The Guard** (`health_check.py`) - Pre-market system validation and health monitoring
+- **The Historian** (`update_universe.py`) - Smart data synchronization with append logic
+- **The Hunter** (`main.py`) - Autonomous trading execution with A+ Wealth Builder strategy
 
 ---
 
-## 📊 Current Status (February 2026)
+## 🚀 Current Version: v6.5 A+ Wealth Builder
 
-### Trading Mode
-- **Mode:** Paper Trading
-- **Portfolio Value:** $100,761.39
-- **Active Positions:** 10/10 slots filled
-- **Available Cash:** $50,000.00
-- **Total Return:** $761.39 (+0.76%)
+### ✨ Key Features
 
-### Strategy Performance
-- **Strategy:** A+ Wealth Builder (Strict Entry + ATR Exits)
-- **Indicators:** Stochastic %K (10,3,3), SMA 200, Volume Analysis, CAGR
-- **Universe:** 2,149 US stocks (full market coverage)
-- **Benchmark:** Tracking performance vs S&P 500
+#### **🔍 4-Gate Entry System**
+- **Quality Gate**: Historical CAGR > 15%
+- **Trend Gate**: Price > SMA 200
+- **SweetSpot Gate**: Stochastic %K (10,3,3) in [32-80]
+- **Momentum Gate**: Volume > 30-day SMA
+- **Phase 1**: Visual Pattern Recognition (W-Pattern/Engulfing)
 
-### Recent Activity
-- **Market Data:** Fresh through February 10, 2026
-- **Last Scan:** 0 BUY signals, 1 SELL signal (MPW)
-- **Data Quality:** 99.9% success rate (2,147/2,149 tickers)
-- **Execution:** Clean with zero errors
+#### **🛡️ Power Stock Shield**
+- **Detection**: Stochastic > 80 + Price > all SMAs + High volume
+- **Enhanced Exits**: SMA 25 break instead of SMA 200 for Power Stocks
+- **Vertical Trend Protection**: Prevents premature exits during hyper-momentum
 
----
-
-## 🎯 A+ Wealth Builder Strategy
-
-### Strict Entry Rules
-1. **TREND:** Price (Adj Close) > SMA 200
-2. **SWEETSPOT:** Stochastic %K (10,3,3) in [32-80]
-3. **MOMENTUM:** Current Volume > 30-Day Volume SMA
-4. **QUALITY:** Historical CAGR > 15%
-
-**All rules must pass for BUY signal.**
-
-### Exit Conditions
-1. **Trend Break:** Price < SMA 200
-2. **Trailing Stop:** Price < 3.0x ATR trailing stop (ratchet - only moves up)
-
-### Risk Management
-- **Position Sizing:** Volatility-adjusted (1.5% risk per trade)
-- **Stop Loss:** 3.0x ATR trailing stops with ratchet mechanism
-- **Portfolio Limits:** Maximum 10 concurrent positions
-- **Volume Filters:** Avoids illiquid stocks
-
-### Technical Indicators
-- **SMA 200:** Long-term trend direction
-- **Stochastic (10,3,3):** Mean reversion signals (K=10 for A+ precision)
-- **Volume Analysis:** Momentum confirmation and liquidity checks
-- **CAGR:** Historical performance filter (15% minimum)
-- **ATR:** Volatility measurement for trailing stops
+#### **⚡ 26-Year Crucible Engine**
+- **`crucible_engine.py`**: Master backtesting framework
+- **v6.0 vs v6.5 Comparison**: Direct performance analysis
+- **Multiprocessing**: `ProcessPoolExecutor` with memory management
+- **252-Day Bouncer**: Minimum data requirement enforcement
 
 ---
 
-## 🏗️ System Architecture
+## 📊 Data Pipeline
 
-### Core Components
-1. **The Guard** (`health_check.py`) - System validation at 9:00 AM
-2. **The Hunter** (`main.py`) - Trading execution at 10:00 AM
-3. **The Historian** (`update_universe.py`) - Market data synchronization
-4. **The Migrator** (`migrate_portfolio_schema.py`) - Portfolio schema updates
+### **Smart Append Tiingo Integration**
+- **Coverage**: 2,147 US stocks with 26+ year historical data
+- **Volume**: 8.7+ million rows of clean market data
+- **Reliability**: 99.9% uptime with intelligent error handling
+- **Storage**: Local Parquet files for optimal performance
+- **Integrity**: Append-only logic prevents data destruction
 
-### Data Flow
-```
-Tiingo API → Parquet Files → A+ Strategy Engine → Trading Signals → Portfolio Management
-                                                    ↓
-                                          ATR Trailing Stop Engine
-```
-
-### Storage
-- **Market Data:** Local parquet files (`data/*.parquet`)
-- **Portfolio State:** `data/portfolio.json` (ATR-enabled schema)
-- **Logs:** Daily execution logs (`logs/VH_YYYY-MM-DD.log`)
+### **Data Specifications**
+- **Source**: Tiingo API with EOD pricing
+- **Format**: Apache Parquet (columnar storage)
+- **History**: 2000-01-03 to present (26+ years)
+- **Update**: Smart incremental updates with overlap safety
 
 ---
 
-## 📈 Performance Metrics
+## 🎯 Trading Strategy
 
-### System Performance
-- **Startup Time:** <5 seconds
-- **Market Scan:** 2,149 stocks in <30 seconds
-- **Portfolio Loading:** <1 second with error resilience
-- **Memory Usage:** <500MB during full scan
+### **A+ Wealth Builder Logic**
+1. **Strict Entry Requirements**: All 4 gates must pass + visual pattern
+2. **Dynamic Position Sizing**: 1% portfolio risk based on 3.0x ATR
+3. **ATR-Based Risk Management**: Trailing stops with ratchet logic
+4. **Power Stock Enhancement**: Special handling for hyper-momentum stocks
 
-### Reliability
-- **Uptime:** 99.9% (with error resilience)
-- **Data Loss:** 0 incidents (v5.0 persistence fix)
-- **Error Rate:** <0.1% (isolated ticker failures)
-- **Recovery:** <30 seconds from backup
-
----
-
-## 🛡️ Safety Features
-
-### Error Resilience
-- **Individual Ticker Isolation:** One bad ticker doesn't crash the system
-- **Backup Restoration:** Automatic portfolio backup recovery
-- **Graceful Degradation:** Continues operating with partial data
-- **Comprehensive Logging:** Full audit trail of all operations
-
-### Risk Management
-- **Position Limits:** Maximum 10 concurrent positions
-- **ATR Trailing Stops:** Dynamic stops based on volatility
-- **Volume Filters:** Avoids illiquid stocks
-- **Cash Management:** Maintains minimum cash reserves
-- **Ratchet Logic:** Stops only move up, never down
+### **Risk Management Framework**
+- **Position Limit**: Maximum 10 positions
+- **Risk Per Trade**: 1% of portfolio equity
+- **Stop Distance**: 3.0x ATR from highest price
+- **Sector Diversification**: Maximum 3 positions per sector
 
 ---
 
-## 🔧 Installation & Setup
+## 🛠️ Installation & Setup
 
-### Prerequisites
+### **Prerequisites**
 - Python 3.10+
-- Tiingo API key (free tier available)
-- Windows (optimized) or Unix compatible
+- Tiingo API key
+- 8GB+ RAM recommended
 
-### Setup Steps
+### **Quick Start**
 ```bash
 # Clone repository
-git clone <repository-url>
+git clone https://github.com/your-repo/VolatilityHunter.git
 cd VolatilityHunter
 
-# Create virtual environment
+# Setup environment
 python -m venv venv
-venv\Scripts\activate
+source venv/bin/activate  # Linux/Mac
+# or
+venv\Scripts\activate  # Windows
 
 # Install dependencies
 pip install -r requirements.txt
 
 # Configure API key
-echo "TIINGO_API_KEY=your_key_here" > .env
+cp .env.example .env
+# Edit .env with your Tiingo API key
 
-# Initial data sync
-python update_universe.py
-
-# Run health check
+# Run system health check
 python health_check.py
 
-# Migrate portfolio schema (if upgrading)
-python migrate_portfolio_schema.py
+# Start paper trading
+python main.py
 ```
 
 ---
 
-## 📋 File Structure
+## 📈 Performance
+
+### **Backtested Results (26-Year Analysis)**
+- **Strategy**: A+ Wealth Builder v6.5 with Power Stock Shield
+- **Timeframe**: 2000-01-03 to 2026-02-12
+- **Universe**: 2,147 US stocks
+- **Engine**: Crucible Engine with multiprocessing
+
+### **Key Metrics**
+- **Entry Success Rate**: Strict 4-gate system with pattern confirmation
+- **Power Stock Performance**: Enhanced returns during vertical trends
+- **Risk-Adjusted Returns**: ATR-based position sizing and stops
+- **Drawdown Control**: Dynamic trailing stops with ratchet logic
+
+---
+
+## 🔧 Configuration
+
+### **Core Settings (`config.json`)**
+```json
+{
+    "DATA_SOURCE": "TIINGO",
+    "TRADING_MODE": "PAPER",
+    "RISK_TOLERANCE": "MEDIUM",
+    "MAX_POSITIONS": 10,
+    "POSITION_SIZE_PERCENT": 0.01
+}
+```
+
+### **Strategy Parameters**
+- **Stochastic Settings**: K=10, D=3, Smooth=3
+- **SMA Periods**: 25, 50, 100, 200
+- **ATR Period**: 14 days
+- **Volume SMA**: 30 days
+
+---
+
+## 📁 Project Structure
 
 ```
 VolatilityHunter/
-├── 📄 Core Files
-│   ├── main.py                 # Trading execution
-│   ├── health_check.py         # System validation
-│   ├── update_universe.py      # Data synchronization
-│   ├── migrate_portfolio_schema.py # Portfolio migration
-│   └── generate_snapshot.py     # Project documentation
-│
-├── 📂 src/                    # Business logic
-│   ├── tracker.py             # Portfolio management (ATR-enabled)
-│   ├── execution.py           # Trading engine
-│   ├── strategy.py            # A+ Wealth Builder strategy
-│   ├── technical_utils.py     # ATR calculations and utilities
-│   └── storage.py             # Data persistence
-│
-├── 📂 data/                   # Market data (Git ignored)
-│   ├── *.parquet            # Individual stock data
-│   ├── portfolio.json        # ATR-enabled portfolio state
-│   └── portfolio_legacy_backup.json # Legacy backup
-│
-├── 📂 logs/                   # Daily logs
-├── 📂 docs/                   # Documentation
-│   ├── README.md              # This file
-│   ├── ARCHITECTURE.md        # Technical architecture
-│   └── generate_snapshot.py   # Documentation utility
-│
-└── config.json               # Trading configuration
+├── 📄 Core System
+│   ├── main.py                    # Autonomous trading execution
+│   ├── health_check.py            # System validation
+│   ├── update_universe.py         # Data synchronization
+│   └── crucible_engine.py          # Master backtesting
+├── 📂 src/                        # Core business logic
+│   ├── strategy.py                # A+ Wealth Builder logic
+│   ├── tracker.py                 # Portfolio management
+│   ├── execution.py               # Trade execution
+│   └── [support modules...]
+├── 📂 data/                       # Market data (Parquet files)
+├── 📂 docs/                       # Documentation
+├── 📂 research/                   # Lab notes and analysis
+└── 📂 logs/                       # Execution logs
 ```
 
 ---
 
-## 🎯 Version 5.5 Highlights
+## 🧪 Testing & Validation
 
-### ✅ A+ Wealth Builder Strategy
-- **Strict Entry Rules:** 4-rule gatekeeper (Trend, SweetSpot, Momentum, Quality)
-- **Stochastic K=10:** Precision-tuned for optimal entry signals
-- **Volume Momentum:** Added volume confirmation for entry quality
-- **CAGR Quality Filter:** Strict 15% minimum historical performance
+### **Test Suite**
+```bash
+# Run comprehensive tests
+python lightning_tests.py
+python quick_tests.py
+python quick_test_runner.py
 
-### ✅ ATR-Based Exit Engine
-- **3.0x ATR Trailing Stops:** Dynamic volatility-based exits
-- **Ratchet Logic:** Stops only move up, never down
-- **Daily Stop Updates:** Automatic trailing stop adjustments
-- **SMA 200 Break Exits:** Trend breakdown protection
+# Run 26-year backtest
+python crucible_engine.py
 
-### ✅ Portfolio Schema Migration
-- **ATR Risk Tracking:** `atr_at_entry`, `stop_price`, `highest_price` fields
-- **Legacy Compatibility:** Seamless migration from v5.0 positions
-- **Robust Backup:** Automatic legacy backup creation
-- **Schema Validation:** Complete field presence verification
+# Verify data integrity
+python health_check.py
+```
 
-### ✅ Enhanced Risk Management
-- **Volatility-Adjusted Sizing:** 1.5% risk per trade based on ATR
-- **Dynamic Stop Distance:** Adapts to market volatility
-- **Position Risk Tracking:** Complete ATR data for each position
-- **Exit Engine Integration:** Daily exit condition checks
+### **Validation Checklist**
+- ✅ System health checks pass
+- ✅ Data pipeline operational (99.9% uptime)
+- ✅ Strategy logic verified
+- ✅ Risk management constraints enforced
+- ✅ Backtest results reproducible
 
-### ✅ Production Ready
-- **Zero Data Loss:** Robust portfolio persistence
-- **Comprehensive Error Handling:** Individual ticker isolation
-- **Automated Health Checks:** Pre-market system validation
-- **Complete Audit Trail:** Full trade and stop update logging
+---
+
+## 📚 Documentation
+
+- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Detailed system architecture
+- **[ROADMAP.md](docs/ROADMAP.md)** - Development roadmap and future plans
+- **[research/](research/)** - Analysis notes and backtest results
+
+---
+
+## 🤝 Contributing
+
+### **Development Workflow**
+1. Fork the repository
+2. Create feature branch
+3. Implement changes with tests
+4. Run full test suite
+5. Submit pull request
+
+### **Code Standards**
+- Follow PEP 8 guidelines
+- Add comprehensive docstrings
+- Include unit tests for new features
+- Update documentation for API changes
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
 ## 📞 Support
 
-- **Documentation:** See `docs/ARCHITECTURE.md` for technical details
-- **Logs:** Check `logs/VH_YYYY-MM-DD.log` for daily operations
-- **Health:** Run `python health_check.py` for system diagnostics
-- **Migration:** Run `python migrate_portfolio_schema.py` for schema updates
+For questions, issues, or contributions:
+- **Issues**: [GitHub Issues](https://github.com/your-repo/VolatilityHunter/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/your-repo/VolatilityHunter/discussions)
 
 ---
 
-## ⚠️ Disclaimer
-
-**Educational Purpose Only:** This bot is for research and educational purposes. Trading involves substantial risk of loss. Past performance does not guarantee future results. Always conduct your own research and consult with a financial advisor before making investment decisions.
-
-**Paper Trading Only:** Current version operates in paper trading mode only. No real money is at risk.
-
----
-
-**Built with ❤️ for autonomous algorithmic trading**  
-**Version:** 5.5 (A+ Wealth Builder | Stable | Paper Trading | A+ Optimization)
+**VolatilityHunter v6.5** - Deterministic Wealth Generation Through Technical Excellence 🎯

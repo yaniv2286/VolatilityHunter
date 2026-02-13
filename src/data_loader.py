@@ -11,7 +11,7 @@ def fetch_tiingo_data(tickers, start_date=None, end_date=None):
         return {}
     
     if start_date is None:
-        start_date = (datetime.now() - timedelta(days=730)).strftime('%Y-%m-%d')
+        start_date = '2000-01-01'  # Full historical data instead of 2-year limit
     if end_date is None:
         end_date = datetime.now().strftime('%Y-%m-%d')
     
@@ -72,8 +72,8 @@ def update_all_stocks(full_refresh=False, stock_list=None):
     stocks = stock_list if stock_list is not None else STOCK_LIST
     
     if full_refresh:
-        start_date = (datetime.now() - timedelta(days=730)).strftime('%Y-%m-%d')
-        log_info(f"Starting full data refresh for {len(stocks)} stocks (2 years)")
+        start_date = '2000-01-01'  # Full historical data instead of 2 years
+        log_info(f"Starting full data refresh for {len(stocks)} stocks (full history)")
     else:
         start_date = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
         log_info(f"Starting incremental update for {len(stocks)} stocks (7 days)")

@@ -1,8 +1,8 @@
 # 🏗️ VolatilityHunter Architecture
 
 **Project:** VolatilityHunter  
-**Version:** 5.5 (A+ Wealth Builder | Stable | Paper Trading)  
-**Status:** AUTONOMOUS | PAPER TRADING | A+ OPTIMIZATION  
+**Version:** 6.5 (A+ Wealth Builder | Power Stock Shield | Paper Trading)  
+**Status:** PRODUCTION READY | AUTONOMOUS | 26-YEAR BACKTESTED  
 
 ---
 
@@ -16,6 +16,7 @@
 - Internet connectivity verification
 - Tiingo API availability check
 - Disk permissions validation
+- System resource monitoring (CPU, RAM via psutil)
 - Fails fast with clear diagnostics
 
 **Design Philosophy:** "Fail early, fail loud" - prevents silent failures in trading execution.
@@ -27,10 +28,12 @@
 **Purpose:** Market Data Synchronization  
 
 **Capabilities:**
-- Forces synchronization of all 2,149 tickers to latest EOD data
-- Progress tracking every 50 tickers
+- Smart append logic preventing data destruction
+- Synchronizes 2,147 tickers to latest EOD data
+- Progress tracking with tqdm visualization
 - Error resilience (continues if individual tickers fail)
 - Parquet file format for optimal performance
+- 99.9% uptime with 8.7+ million rows of data
 
 **Usage:** Run when market data appears stale or after system maintenance.
 
@@ -46,32 +49,31 @@
 - Handles API rate limits gracefully
 
 #### **Step B: Memory Management**
-- Loads `portfolio.json` using Absolute Paths (Fixes "Amnesia" bug)
-- Robust JSON loading with `.get()` methods to prevent crashes
+- Loads `portfolio.json` using Absolute Paths
+- Robust JSON loading with `.get()` methods
 - Automatic backup restoration with `_backup.json` fallback
 
-#### **Step 3A: A+ Wealth Builder Exit Engine**
+#### **Step C: A+ Wealth Builder Exit Engine**
 - **BEFORE** scanning for new buys (critical order)
-- Iterates through all open positions
-- Calculates current ATR and SMA 200 for each position
 - Updates trailing stops: `new_stop = highest_price - (3.0 * ATR)`
 - **Ratchet Logic:** Only moves stop UP, never down
 - Checks exit conditions: Price < SMA 200 OR Price < stop_price
 - Executes immediate sells on exit triggers
 
-#### **Step C: Market Analysis**
-- Scans 2,149 tickers for A+ Wealth Builder signals
+#### **Step D: Market Analysis**
+- Scans 2,147 tickers for A+ Wealth Builder signals
 - Applies strict 4-rule entry criteria
 - Calculates SMA 200, Stochastic %K (10,3,3), Volume SMA
 - Filters by historical CAGR > 15%
+- Detects visual patterns (W-Pattern/Engulfing)
 
-#### **Step D: Trade Execution**
+#### **Step E: Trade Execution**
 - Updates Portfolio (Paper Trading mode)
 - Maintains cash balance tracking
 - Records complete trade history
 - Applies ATR-based risk management
 
-#### **Step E: Reporting**
+#### **Step F: Reporting**
 - Generates HTML portfolio valuation reports
 - Sends email notifications with trade summaries
 - Attaches complete execution logs
@@ -88,7 +90,7 @@
 - **Speed:** Columnar storage enables fast indicator calculations
 - **Compression:** Reduces storage footprint by ~80%
 - **Reliability:** Local storage eliminates external dependencies
-- **Performance:** Enables scanning 2,149 stocks in <30 seconds
+- **Performance:** Enables scanning 2,147 stocks in <30 seconds
 
 ### Persistence: Robust JSON Management
 **File:** `portfolio.json`  
@@ -125,9 +127,8 @@ VolatilityHunter/
 ├── 📄 Core Files
 │   ├── main.py                 # The Hunter - Main trading execution
 │   ├── health_check.py         # The Guard - System health validation
-│   ├── update_universe.py      # The Historian - Mass data sync
-│   ├── migrate_portfolio_schema.py # The Migrator - Schema migration
-│   └── generate_snapshot.py     # Context mapping utility
+│   ├── update_universe.py      # The Historian - Smart data sync
+│   └── crucible_engine.py       # The Crucible - 26-year backtest engine
 │
 ├── 📂 src/                    # Core business logic
 │   ├── tracker.py             # Portfolio management (ATR-enabled)
@@ -142,7 +143,7 @@ VolatilityHunter/
 ├── 📂 data/                   # Market data & state (Git Ignored)
 │   ├── *.parquet            # Individual ticker data files
 │   ├── portfolio.json        # ATR-enabled portfolio state
-│   └── portfolio_legacy_backup.json # Legacy backup
+│   └── portfolio_backup.json # Legacy backup
 │
 ├── 📂 logs/                   # Daily execution logs
 │   └── VH_YYYY-MM-DD.log     # Daily trading logs
@@ -150,7 +151,13 @@ VolatilityHunter/
 ├── 📂 docs/                   # Documentation
 │   ├── README.md              # Project front door
 │   ├── ARCHITECTURE.md        # Technical architecture
-│   └── generate_snapshot.py   # Documentation utility
+│   └── ROADMAP.md             # Development roadmap
+│
+├── 📂 research/               # Analysis and backtest results
+│   ├── archive/               # Historical artifacts
+│   ├── power_stock_backtest.py
+│   ├── pattern_backtest.py
+│   └── crucible_backtest.py
 │
 └── 📂 config/                 # Configuration files
     ├── config.json           # Trading parameters
@@ -162,7 +169,7 @@ VolatilityHunter/
 ## 🔄 Data Flow
 
 ```
-Tiingo API → update_universe.py → data/*.parquet
+Tiingo API → update_universe.py → data/*.parquet (Smart Append)
                                     ↓
 main.py → A+ Strategy Engine → Signal Generation → Execution
                                     ↓
@@ -175,7 +182,7 @@ HTML/Email Reports ← Portfolio Valuation ← Market Data
 
 ## 🎯 A+ Wealth Builder Strategy Logic
 
-### Entry Rules (Strict Gatekeeper)
+### Entry Rules (Strict 4-Gate System)
 ```python
 # 1. QUALITY: Historical CAGR > 15%
 if cagr < 15.0: return HOLD
@@ -188,6 +195,10 @@ if not (32.0 <= stoch_k <= 80.0): return HOLD
 
 # 4. MOMENTUM: Current Volume > 30-Day Volume SMA
 if current_volume <= volume_sma: return HOLD
+
+# PHASE 1: VISUAL PATTERN RECOGNITION
+has_pattern = patterns['is_engulfing'] or patterns['is_w_pattern']
+if not has_pattern: return HOLD
 
 # ALL RULES PASSED → BUY signal
 ```
@@ -204,40 +215,136 @@ if current_price < sma_200: return EXIT  # Trend break
 if current_price < position['stop_price']: return EXIT  # Trailing stop
 ```
 
-### Portfolio Schema (v5.5)
+### Power Stock Shield Enhancement
+```python
+# Power Stock Detection
+is_power_stock = (
+    stoch_k > 80 and                                    # Extreme overbought
+    price > sma_25 and price > sma_50 and price > sma_100 and price > sma_200 and  # Vertical trend
+    current_volume > volume_sma * 1.5                 # High volume momentum
+)
+
+# Enhanced Exit Rules for Power Stocks
+if is_power_stock:
+    if current_price < sma_25:  # Fast trend line break
+        return EXIT_POWER_STOCK_SMA_25_BREAK
+    # SMA 200 break ignored (shield protection)
+else:
+    if current_price < sma_200:  # Standard trend break
+        return EXIT_SMA_200_BREAK
+```
+
+### Portfolio Schema (v6.5)
 ```python
 position = {
     'shares': 100.0,
     'entry_price': 50.00,
     'entry_date': '2026-02-10',
     'quality_score': 32.81,
-    'atr_at_entry': 1.25,        # ✅ NEW: ATR at entry
-    'stop_price': 46.25,         # ✅ NEW: Current trailing stop
-    'highest_price': 52.50       # ✅ NEW: Highest price seen
+    'atr_at_entry': 1.25,        # ATR value at entry
+    'stop_price': 46.25,         # Current trailing stop
+    'highest_price': 52.50,      # Highest price seen
+    'is_power_stock': False      # Power Stock status
 }
 ```
 
 ---
 
-## 🛡️ Reliability Features
+## 🛡️ Risk Management Framework
+
+### Dynamic Position Sizing
+```python
+# RULE: 1% portfolio risk per trade
+risk_amount = current_portfolio_equity * 0.01
+
+# Calculate shares based on ATR distance
+atr_stop_distance = 3.0 * current_atr
+shares_to_buy = risk_amount / atr_stop_distance
+
+# Cap at 10% of portfolio equity
+position_cost = shares_to_buy * entry_price
+max_position_cost = portfolio_equity * 0.10
+
+if position_cost > max_position_cost:
+    shares_to_buy = max_position_cost / entry_price
+```
+
+### ATR-Based Stop Management
+- **Stop Distance**: 3.0x ATR from highest price
+- **Ratchet Logic**: Stops only move upward, never downward
+- **Daily Updates**: Automatic adjustments based on market volatility
+- **Power Stock Shield**: Enhanced exit rules for hyper-momentum stocks
+
+---
+
+## 🔥 The Crucible Engine (26-Year Backtest)
+
+### Core Implementation
+```python
+class CrucibleEngine:
+    def __init__(self, initial_capital: float = 100000):
+        self.initial_capital = initial_capital
+        self.data_dir = 'data'
+```
+
+### Key Features
+#### **252-Day Bouncer (Rule 1)**
+```python
+if len(df) < 252:
+    return None  # HARD ENFORCEMENT - No exceptions
+```
+
+#### **Multiprocessing & Memory Management (Rule 3)**
+```python
+with ProcessPoolExecutor(max_workers=4) as executor:
+    # Worker function with explicit cleanup
+    del df
+    import gc
+    gc.collect()
+```
+
+#### **v6.0 vs v6.5 Logic Comparison (Rule 4)**
+```python
+# v6.0 Exit:
+exit_condition = (price < sma_200) | (price < (highest_price - 3*ATR))
+
+# v6.5 Power Shield:
+if became_power_stock:
+    # Remove SMA 200 exit, keep only ATR stop
+    if not (price < (highest_price - 3*ATR)):
+        signals.iloc[i] = 0  # Cancel SMA 200 exit
+```
+
+#### **Performance Metrics (Rule 5)**
+- **CAGR**: Compound Annual Growth Rate
+- **Max Drawdown**: Peak-to-trough decline
+- **Win Rate**: Percentage of profitable trades
+- **Profit Factor**: Total wins / total losses
+- **Total Trades**: Number of completed trades
+
+---
+
+## �️ Reliability Features
 
 ### Health Monitoring
 - Pre-market system checks
 - API availability validation
 - Disk space monitoring
 - Configuration integrity checks
+- System resource tracking (psutil integration)
 
 ### Data Integrity
 - Parquet file validation
 - Portfolio JSON schema checking
 - Backup file rotation
 - Atomic write operations
+- Smart append logic preventing data destruction
 
 ### Error Recovery
 - Automatic backup restoration
 - Individual ticker error isolation
 - Graceful degradation modes
-- Comprehensive error logging
+- Comprehensive error logging with sanitization
 
 ---
 
@@ -245,9 +352,10 @@ position = {
 
 ### System Performance
 - **Startup Time:** <5 seconds
-- **Market Scan:** 2,149 stocks in <30 seconds
+- **Market Scan:** 2,147 stocks in <30 seconds
 - **Portfolio Loading:** <1 second with robust error handling
 - **Memory Usage:** <500MB during full universe scan
+- **Data Pipeline:** 99.9% uptime with 8.7M+ rows
 
 ### Reliability Metrics
 - **Uptime:** 99.9% (with error resilience)
@@ -270,10 +378,11 @@ position = {
 - **Data Privacy:** Local storage only
 - **Access Control:** Paper trading mode only
 - **Audit Trail:** Complete trade history logging
+- **Log Sanitization:** API key redaction and error suppression
 
 ---
 
-## 🎯 Version 5.5 Achievements
+## 🎯 Version 6.5 Achievements
 
 ### ✅ A+ Wealth Builder Strategy
 - **Strict Entry Rules:** 4-rule gatekeeper implementation
@@ -281,23 +390,23 @@ position = {
 - **Volume Momentum:** Added volume confirmation
 - **CAGR Quality Filter:** Strict 15% minimum
 
-### ✅ ATR-Based Exit Engine
-- **3.0x ATR Trailing Stops:** Dynamic volatility-based exits
-- **Ratchet Logic:** Stops only move up, never down
-- **Daily Stop Updates:** Automatic adjustments
-- **SMA 200 Break Exits:** Trend breakdown protection
+### ✅ Power Stock Shield
+- **Hyper-Momentum Detection:** Stochastic > 80 + vertical trend
+- **Enhanced Exit Rules:** SMA 25 break for Power Stocks
+- **Shield Protection:** Ignores SMA 200 breaks for Power Stocks
+- **Performance Boost:** Captures extended vertical trends
 
-### ✅ Portfolio Schema Migration
-- **ATR Risk Tracking:** Complete risk data for each position
-- **Legacy Compatibility:** Seamless v5.0 migration
-- **Robust Backup:** Automatic legacy backup creation
-- **Schema Validation:** Complete field verification
+### ✅ 26-Year Crucible Engine
+- **Comprehensive Backtest:** Full historical analysis
+- **Multiprocessing:** Parallel processing with memory management
+- **252-Day Bouncer:** Minimum data quality enforcement
+- **v6.0 vs v6.5 Comparison:** Direct performance analysis
 
-### ✅ Enhanced Risk Management
-- **Volatility-Adjusted Sizing:** 1.5% risk per trade
-- **Dynamic Stop Distance:** Adapts to market volatility
-- **Position Risk Tracking:** Complete ATR data
-- **Exit Engine Integration:** Daily exit checks
+### ✅ Data Pipeline Rebuild
+- **Smart Append Logic:** Prevents data destruction
+- **99.9% Uptime:** Reliable data synchronization
+- **8.7M+ Rows:** Complete historical coverage
+- **Error Isolation:** Individual ticker failures don't crash system
 
 ### ✅ Production Ready
 - **Zero Data Loss:** Robust portfolio persistence
@@ -335,11 +444,13 @@ for ticker in portfolio_positions.keys():
     atr_data[ticker] = risk_data['atr']
     sma_data[ticker] = risk_data['sma_200']
 
-# Check exit conditions
-positions_to_close = executor.check_exit_conditions(current_prices, atr_data, sma_data)
+# Check exit conditions with Power Stock Shield
+positions_to_close = executor.check_exit_conditions(
+    current_prices, atr_data, sma_data, sma_25_data
+)
 
 # Execute exits immediately
 exit_trades = executor.execute_exit_trades(positions_to_close)
 ```
 
-**Status:** 🟢 **PRODUCTION READY** - Fully operational A+ Wealth Builder trading system.
+**Status:** 🟢 **PRODUCTION READY** - Fully operational A+ Wealth Builder v6.5 trading system with Power Stock Shield.

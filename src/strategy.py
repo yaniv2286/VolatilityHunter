@@ -1,7 +1,11 @@
 import pandas as pd
 import numpy as np
-from src.config import STRATEGY_PARAMS
 from src.notifications import log_info, log_error, alert_signal
+
+# Strategy parameters (moved from missing src.config)
+STRATEGY_PARAMS = {
+    'sma_period': 200
+}
 
 # Basic sector mapping for major stocks
 SECTOR_MAPPING = {
