@@ -23,7 +23,9 @@ from src.data_loader_factory import get_data_loader
 from src.strategy import scan_all_stocks, get_portfolio_summary
 from src.notifications import log_info, log_error, log_warning
 from src.ticker_manager import TickerManager
+from src.technical_utils import get_position_risk_data, calculate_atr, calculate_sma_200
 from src.execution import get_executor
+from src.tracker import Portfolio
 from src.email_notifier import EmailNotifier
 
 def get_active_stock_list():
@@ -115,6 +117,78 @@ def main():
         print(f"  - Updated: {update_result['updated']}/{update_result['total']} stocks")
         log_info(f"Data update complete: {update_result['updated']}/{update_result['total']} stocks")
         
+        # A+ WEALTH BUILDER: EXIT ENGINE - Check existing positions BEFORE scanning for new buys
+        print("\n[STEP 3A] A+ Wealth Builder Exit Engine...")
+        log_info("Checking exit conditions for existing positions...")
+        
+        portfolio_positions = executor.state['positions']
+        executed_trades = {'sells': [], 'buys': []}  # Initialize executed trades
+        
+        if portfolio_positions:
+            print(f"  - Checking {len(portfolio_positions)} open positions for exit conditions...")
+            
+            # Collect current prices, ATR, and SMA data for all positions
+            current_prices = {}
+            atr_data = {}
+            sma_data = {}
+            sma_25_data = {}
+            
+            for ticker in portfolio_positions.keys():
+                try:
+                    risk_data = get_position_risk_data(ticker, data_loader)
+                    if risk_data:
+                        current_prices[ticker] = risk_data['price']
+                        atr_data[ticker] = risk_data['atr']
+                        sma_data[ticker] = risk_data['sma_200']
+                        sma_25_data[ticker] = risk_data['sma_25']
+                        print(f"  - {ticker}: Price=${risk_data['price']:.2f}, ATR={risk_data['atr']:.2f}, SMA200={risk_data['sma_200']:.2f}, SMA25={risk_data['sma_25']:.2f}")
+                    else:
+                        log_warning(f"Could not get risk data for {ticker}")
+                except Exception as e:
+                    log_error(f"Error getting risk data for {ticker}: {e}")
+            
+            # Check exit conditions with Power Stock Shield
+            portfolio = Portfolio()
+            positions_to_close = portfolio.check_exit_conditions(current_prices, atr_data, sma_data, sma_25_data)
+            
+            if positions_to_close:
+                print(f"  - Found {len(positions_to_close)} positions to close:")
+                for ticker, exit_price, reason in positions_to_close:
+                    print(f"    - {ticker}: ${exit_price:.2f} ({reason})")
+                
+                # Execute exit trades
+                exit_trades = []
+                for ticker, exit_price, reason in positions_to_close:
+                    # Get the position from portfolio
+                    positions = executor.get_portfolio_summary()['positions_detail']
+                    position = next((p for p in positions if p['ticker'] == ticker), None)
+                    
+                    if position:
+                        # Create sell signal
+                        sell_signal = {
+                            'ticker': ticker,
+                            'indicators': {'price': exit_price},
+                            'reason': reason
+                        }
+                        
+                        # Execute sell
+                        result = executor.execute_sell(sell_signal, {
+                            'shares': position['shares'],
+                            'entry_price': position['entry_price']
+                        })
+                        
+                        if result['success']:
+                            exit_trades.append(result['trade'])
+                
+                executed_trades['sells'].extend(exit_trades)
+                print(f"  - Executed {len(exit_trades)} exit trades")
+            else:
+                print(f"  - No exit conditions triggered")
+                log_info("No exit conditions triggered for existing positions")
+        else:
+            print(f"  - No open positions to check")
+            log_info("No open positions to check")
+        
         # Step 4: Scan for Trading Signals
         print("\n[STEP 4] Scanning for Trading Signals...")
         log_info("Scanning for trading signals...")
@@ -147,12 +221,27 @@ def main():
                            key=lambda x: x.get('quality_score', 0), reverse=True)
         sell_signals = scan_results.get('SELL', [])
         
-        # Execute trades through executor
-        executed_trades = executor.process_signals(buy_signals, sell_signals)
+        # Add ATR data to buy signals for position tracking
+        for signal in buy_signals:
+            ticker = signal['ticker']
+            risk_data = get_position_risk_data(ticker, data_loader)
+            if risk_data:
+                signal['atr_at_entry'] = risk_data['atr']
+                signal['initial_stop'] = risk_data['price'] - (3.0 * risk_data['atr'])
+            else:
+                signal['atr_at_entry'] = 0.0
+                signal['initial_stop'] = signal['indicators']['price'] * 0.90
         
-        print(f"  - Buys Executed: {len(executed_trades['buys'])}")
-        print(f"  - Sells Executed: {len(executed_trades['sells'])}")
-        print(f"  - Errors: {len(executed_trades['errors'])}")
+        # Process remaining signals through executor
+        remaining_trades = executor.process_signals(buy_signals, sell_signals)
+        
+        # Combine exit trades and signal trades
+        executed_trades['buys'].extend(remaining_trades.get('buys', []))
+        executed_trades['sells'].extend(remaining_trades.get('sells', []))
+        
+        print(f"  - Exit Trades Executed: {len(executed_trades['sells'])}")
+        print(f"  - Buy Trades Executed: {len(executed_trades['buys'])}")
+        print(f"  - Total Trades Executed: {len(executed_trades['sells']) + len(executed_trades['buys'])}")
         
         # Show top signals
         if summary['buy_signals'] > 0:

@@ -17,28 +17,61 @@ finalize_config.py
 add_api_key.py
 fix_paths.py
 temp_*
+check_*.py
+debug_*.py
+test_*.py
+manual_*.py
+migrate_*.py
+force_update.py
 
-# --- Data (Heavy Files) ---
+# --- Data (Heavy Files - NEVER PUSH) ---
 data/*.parquet
 data/*.csv
 data/portfolio.json
+data/portfolio_backup.json
+data/portfolio_legacy_backup.json
+data/performance_tracker.json
+data/trade_verification.json
 data/market_data/
 data/tickers.txt
 
-# --- Logs & Output ---
+# --- Logs & Output (NEVER PUSH) ---
 logs/*.log
 *.log
 *.log.err
+volatility_hunter.log
 test_data/
 mock_data/
+
+# --- Backtest Results (NEVER PUSH) ---
+*.csv
+portfolio_history_*.csv
+trade_history_*.csv
+tradingview_*.csv
+*_report.csv
+*_comparison*.csv
+*_verification*.csv
+stress_test_history.csv
+
+# --- Visualizations (NEVER PUSH) ---
+*.png
+*.jpg
+*.jpeg
+atr_comparison.png
+market_regime_comparison.png
+volatility_sizing_comparison.png
 
 # --- IDE & OS ---
 .idea/
 .vscode/
 .DS_Store
 Thumbs.db
+.ipynb_checkpoints/
 
 # --- Build Artifacts ---
 build/
 dist/
 *.spec
+
+# --- Virtual Environment Backups ---
+venv_*_backup/

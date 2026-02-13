@@ -1,8 +1,8 @@
 # 🏗️ VolatilityHunter Architecture
 
 **Project:** VolatilityHunter  
-**Version:** 5.0 (Stable | Paper Trading)  
-**Status:** AUTONOMOUS | PAPER TRADING  
+**Version:** 5.5 (A+ Wealth Builder | Stable | Paper Trading)  
+**Status:** AUTONOMOUS | PAPER TRADING | A+ OPTIMIZATION  
 
 ---
 
@@ -50,17 +50,26 @@
 - Robust JSON loading with `.get()` methods to prevent crashes
 - Automatic backup restoration with `_backup.json` fallback
 
+#### **Step 3A: A+ Wealth Builder Exit Engine**
+- **BEFORE** scanning for new buys (critical order)
+- Iterates through all open positions
+- Calculates current ATR and SMA 200 for each position
+- Updates trailing stops: `new_stop = highest_price - (3.0 * ATR)`
+- **Ratchet Logic:** Only moves stop UP, never down
+- Checks exit conditions: Price < SMA 200 OR Price < stop_price
+- Executes immediate sells on exit triggers
+
 #### **Step C: Market Analysis**
-- Scans 2,149 tickers for Volatility/Mean Reversion signals
-- Applies Wealth Builder strategy rules
-- Calculates SMA 200, Stochastic indicators
+- Scans 2,149 tickers for A+ Wealth Builder signals
+- Applies strict 4-rule entry criteria
+- Calculates SMA 200, Stochastic %K (10,3,3), Volume SMA
 - Filters by historical CAGR > 15%
 
 #### **Step D: Trade Execution**
 - Updates Portfolio (Paper Trading mode)
 - Maintains cash balance tracking
 - Records complete trade history
-- Applies risk management rules
+- Applies ATR-based risk management
 
 #### **Step E: Reporting**
 - Generates HTML portfolio valuation reports
@@ -91,6 +100,14 @@
 
 **Solved:** The "Portfolio Amnesia" bug where trading data was lost on restart.
 
+### ATR-Based Risk Management
+**Engine:** `src/technical_utils.py` + `src/tracker.py`  
+**Components:**
+- **ATR Calculation:** Handles both 'High'/'Low' and 'high'/'low' column names
+- **Trailing Stops:** 3.0x ATR distance from highest price
+- **Ratchet Logic:** `if new_stop > old_stop:` (only moves up)
+- **Exit Conditions:** SMA 200 break OR trailing stop hit
+
 ### Logging: Comprehensive & Reliable
 **Strategy:** Defensive Programming with explicit flushing  
 **Implementation:**
@@ -109,12 +126,14 @@ VolatilityHunter/
 │   ├── main.py                 # The Hunter - Main trading execution
 │   ├── health_check.py         # The Guard - System health validation
 │   ├── update_universe.py      # The Historian - Mass data sync
+│   ├── migrate_portfolio_schema.py # The Migrator - Schema migration
 │   └── generate_snapshot.py     # Context mapping utility
 │
 ├── 📂 src/                    # Core business logic
-│   ├── tracker.py             # Portfolio management (robust loading)
+│   ├── tracker.py             # Portfolio management (ATR-enabled)
 │   ├── execution.py           # Trading execution engine
-│   ├── strategy.py            # Wealth Builder strategy logic
+│   ├── strategy.py            # A+ Wealth Builder strategy logic
+│   ├── technical_utils.py     # ATR calculations and utilities
 │   ├── data_loader_factory.py # Data source abstraction
 │   ├── storage.py             # Data persistence layer
 │   ├── config_manager.py      # Configuration management
@@ -122,8 +141,8 @@ VolatilityHunter/
 │
 ├── 📂 data/                   # Market data & state (Git Ignored)
 │   ├── *.parquet            # Individual ticker data files
-│   ├── portfolio.json        # Current portfolio state
-│   └── portfolio_backup.json # Emergency backup
+│   ├── portfolio.json        # ATR-enabled portfolio state
+│   └── portfolio_legacy_backup.json # Legacy backup
 │
 ├── 📂 logs/                   # Daily execution logs
 │   └── VH_YYYY-MM-DD.log     # Daily trading logs
@@ -145,11 +164,57 @@ VolatilityHunter/
 ```
 Tiingo API → update_universe.py → data/*.parquet
                                     ↓
-main.py → Strategy Engine → Signal Generation → Execution
+main.py → A+ Strategy Engine → Signal Generation → Execution
                                     ↓
-portfolio.json ← Trade Execution ← Paper Trading
+portfolio.json ← Trade Execution ← ATR Exit Engine ← Risk Management
                                     ↓
 HTML/Email Reports ← Portfolio Valuation ← Market Data
+```
+
+---
+
+## 🎯 A+ Wealth Builder Strategy Logic
+
+### Entry Rules (Strict Gatekeeper)
+```python
+# 1. QUALITY: Historical CAGR > 15%
+if cagr < 15.0: return HOLD
+
+# 2. TREND: Price (Adj Close) > SMA 200  
+if price <= sma_200: return HOLD
+
+# 3. SWEETSPOT: Stochastic %K (10,3,3) in [32-80]
+if not (32.0 <= stoch_k <= 80.0): return HOLD
+
+# 4. MOMENTUM: Current Volume > 30-Day Volume SMA
+if current_volume <= volume_sma: return HOLD
+
+# ALL RULES PASSED → BUY signal
+```
+
+### Exit Engine (Daily Check)
+```python
+# Update trailing stops (ratchet logic)
+new_stop = highest_price - (3.0 * current_atr)
+if new_stop > old_stop:
+    position['stop_price'] = new_stop
+
+# Check exit conditions
+if current_price < sma_200: return EXIT  # Trend break
+if current_price < position['stop_price']: return EXIT  # Trailing stop
+```
+
+### Portfolio Schema (v5.5)
+```python
+position = {
+    'shares': 100.0,
+    'entry_price': 50.00,
+    'entry_date': '2026-02-10',
+    'quality_score': 32.81,
+    'atr_at_entry': 1.25,        # ✅ NEW: ATR at entry
+    'stop_price': 46.25,         # ✅ NEW: Current trailing stop
+    'highest_price': 52.50       # ✅ NEW: Highest price seen
+}
 ```
 
 ---
@@ -208,31 +273,73 @@ HTML/Email Reports ← Portfolio Valuation ← Market Data
 
 ---
 
-## 🎯 Version 5.0 Achievements
+## 🎯 Version 5.5 Achievements
 
-### ✅ Persistence Fixed
-- Eliminated portfolio amnesia bug
-- Robust JSON loading with `.get()` methods
-- Absolute file path resolution
-- Automatic backup restoration
+### ✅ A+ Wealth Builder Strategy
+- **Strict Entry Rules:** 4-rule gatekeeper implementation
+- **Stochastic K=10:** Precision-tuned for optimal signals
+- **Volume Momentum:** Added volume confirmation
+- **CAGR Quality Filter:** Strict 15% minimum
 
-### ✅ Data Freshness
-- Full universe (2,149 tickers) updated
-- Current market data through Feb 10, 2026
-- Error-resilient mass updates
-- Progress tracking and reporting
+### ✅ ATR-Based Exit Engine
+- **3.0x ATR Trailing Stops:** Dynamic volatility-based exits
+- **Ratchet Logic:** Stops only move up, never down
+- **Daily Stop Updates:** Automatic adjustments
+- **SMA 200 Break Exits:** Trend breakdown protection
 
-### ✅ Portfolio Valuation
-- Real-time P&L calculation using current market prices
-- Accurate email reports with individual position performance
-- Robust column name detection for data compatibility
-- Fallback mechanisms for data availability
+### ✅ Portfolio Schema Migration
+- **ATR Risk Tracking:** Complete risk data for each position
+- **Legacy Compatibility:** Seamless v5.0 migration
+- **Robust Backup:** Automatic legacy backup creation
+- **Schema Validation:** Complete field verification
+
+### ✅ Enhanced Risk Management
+- **Volatility-Adjusted Sizing:** 1.5% risk per trade
+- **Dynamic Stop Distance:** Adapts to market volatility
+- **Position Risk Tracking:** Complete ATR data
+- **Exit Engine Integration:** Daily exit checks
 
 ### ✅ Production Ready
-- Zero data loss incidents
-- Comprehensive error handling
-- Automated health checks
-- Complete audit trail
-- 3-Pillar autonomous architecture
+- **Zero Data Loss:** Robust portfolio persistence
+- **Comprehensive Error Handling:** Individual ticker isolation
+- **Automated Health Checks:** Pre-market validation
+- **Complete Audit Trail:** Full trade and stop logging
 
-**Status:** 🟢 **PRODUCTION READY** - Fully operational autonomous trading system.
+---
+
+## 🔍 Technical Implementation Details
+
+### ATR Calculation (`src/technical_utils.py`)
+```python
+def calculate_atr(df, period=14):
+    # Handle both uppercase and lowercase column names
+    high_col = 'High' if 'High' in df.columns else 'high'
+    low_col = 'Low' if 'Low' in df.columns else 'low'
+    close_col = 'adjClose' if 'adjClose' in df.columns else 'Close'
+    
+    # Calculate True Range
+    high_low = df[high_col] - df[low_col]
+    high_close = np.abs(df[high_col] - df[close_col].shift(1))
+    low_close = np.abs(df[low_col] - df[close_col].shift(1))
+    
+    true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+    return true_range.rolling(window=period, min_periods=1).mean()
+```
+
+### Exit Engine Integration (`main.py`)
+```python
+# STEP 3A: A+ Wealth Builder Exit Engine (BEFORE new buys)
+for ticker in portfolio_positions.keys():
+    risk_data = get_position_risk_data(ticker, data_loader)
+    current_prices[ticker] = risk_data['price']
+    atr_data[ticker] = risk_data['atr']
+    sma_data[ticker] = risk_data['sma_200']
+
+# Check exit conditions
+positions_to_close = executor.check_exit_conditions(current_prices, atr_data, sma_data)
+
+# Execute exits immediately
+exit_trades = executor.execute_exit_trades(positions_to_close)
+```
+
+**Status:** 🟢 **PRODUCTION READY** - Fully operational A+ Wealth Builder trading system.

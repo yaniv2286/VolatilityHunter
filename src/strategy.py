@@ -91,12 +91,13 @@ def check_sector_diversification(portfolio_positions, new_ticker, max_per_sector
     
     return sector_count < max_per_sector
 
-def calculate_sma(df, period):
-    """Calculate Simple Moving Average."""
-    return df['Close'].rolling(window=period).mean()
+def calculate_sma(df, period=200):
+    """Calculate Simple Moving Average using adjClose or Close."""
+    close_col = 'adjClose' if 'adjClose' in df.columns else 'close'
+    return df[close_col].rolling(window=period).mean()
 
 def calculate_multiple_smas(df, periods=[25, 50, 100, 200]):
-    """Calculate multiple SMAs for trend analysis."""
+    """Calculate multiple SMAs for trend analysis using adjClose or Close."""
     smas = {}
     for period in periods:
         smas[f'SMA_{period}'] = calculate_sma(df, period)
@@ -104,7 +105,7 @@ def calculate_multiple_smas(df, periods=[25, 50, 100, 200]):
 
 def calculate_volume_sma(df, period=30):
     """Calculate Volume Moving Average."""
-    return df['Volume'].rolling(window=period).mean()
+    return df['volume'].rolling(window=period).mean()
 
 def check_volume_quality(df, min_days=30):
     """Check if current volume is above 30-day average."""
@@ -396,17 +397,24 @@ def is_earnings_sensitive(ticker):
     """Check if stock is known for earnings volatility."""
     return ticker in EARNINGS_SENSITIVE_STOCKS
 
-def calculate_stochastic(df, k_period=14, d_period=3, smooth=3):
-    low_min = df['Low'].rolling(window=k_period).min()
-    high_max = df['High'].rolling(window=k_period).max()
+def calculate_stochastic(df, k_period=10, d_period=3, smooth=3):
+    """Calculate Stochastic Oscillator using adjClose or Close (A+ Wealth Builder: K=10)"""
+    # Use adjusted columns if available, otherwise regular columns for consistency
+    close_col = 'adjClose' if 'adjClose' in df.columns else 'close'
+    high_col = 'adjHigh' if 'adjHigh' in df.columns else 'high'
+    low_col = 'adjLow' if 'adjLow' in df.columns else 'low'
     
-    k_raw = 100 * ((df['Close'] - low_min) / (high_max - low_min))
+    low_min = df[low_col].rolling(window=k_period).min()
+    high_max = df[high_col].rolling(window=k_period).max()
+    
+    k_raw = 100 * ((df[close_col] - low_min) / (high_max - low_min))
     k_smooth = k_raw.rolling(window=smooth).mean()
     d = k_smooth.rolling(window=d_period).mean()
     
     return k_smooth, d
 
 def calculate_cagr(df, years=2):
+    """Calculate CAGR using adjClose or Close for accuracy (A+ Wealth Builder)"""
     if len(df) < 2:
         return 0.0
     
@@ -427,8 +435,11 @@ def calculate_cagr(df, years=2):
             # Fall back to full data if not enough recent data
             recent_df = df_clean
         
-        start_price = recent_df.iloc[0]['Close']
-        end_price = recent_df.iloc[-1]['Close']
+        # Use adjClose if available, otherwise use Close
+        close_col = 'adjClose' if 'adjClose' in recent_df.columns else 'Close'
+        
+        start_price = recent_df.iloc[0][close_col]
+        end_price = recent_df.iloc[-1][close_col]
         
         actual_days = (recent_df.iloc[-1]['date'] - recent_df.iloc[0]['date']).days
         actual_years = actual_days / 365.25
@@ -443,28 +454,93 @@ def calculate_cagr(df, years=2):
         return 0.0
 
 def add_indicators(df):
+    """Add technical indicators using adjClose (A+ Wealth Builder)"""
     df = df.copy()
     
-    # Add multiple SMAs for trend analysis
+    # Add multiple SMAs for trend analysis (using adjClose)
     smas = calculate_multiple_smas(df, [25, 50, 100, 200])
     for name, sma in smas.items():
         df[name] = sma
     
     # Add volume analysis
-    df['Volume_SMA_30'] = calculate_volume_sma(df, 30)
+    df['volume_sma_30'] = calculate_volume_sma(df, 30)
     
+    # Add Stochastic with K=10 (A+ Wealth Builder specification)
     k, d = calculate_stochastic(
         df,
-        k_period=STRATEGY_PARAMS['stochastic_k_period'],
-        d_period=STRATEGY_PARAMS['stochastic_d_period'],
-        smooth=STRATEGY_PARAMS['stochastic_smooth']
+        k_period=10,  # Changed from 14 to 10
+        d_period=3,
+        smooth=3
     )
     df['Stochastic_K'] = k
     df['Stochastic_D'] = d
     
     return df
 
+def detect_patterns(df):
+    """
+    Detect visual patterns for A+ Wealth Builder Phase 1.
+    
+    Args:
+        df: DataFrame with OHLC data
+    
+    Returns:
+        dict: Pattern detection results
+    """
+    patterns = {
+        'is_engulfing': False,
+        'is_w_pattern': False
+    }
+    
+    try:
+        # Handle edge cases
+        if len(df) < 10:
+            return patterns
+        
+        # Use adjClose if available, otherwise use Close
+        close_col = 'adjClose' if 'adjClose' in df.columns else 'Close'
+        open_col = 'adjOpen' if 'adjOpen' in df.columns else 'Open'
+        high_col = 'adjHigh' if 'adjHigh' in df.columns else 'High'
+        low_col = 'adjLow' if 'adjLow' in df.columns else 'Low'
+        
+        # Get last two days for engulfing pattern
+        yesterday = df.iloc[-2]
+        today = df.iloc[-1]
+        
+        # 1. Engulfing Pattern Detection
+        # Yesterday was Red (Close < Open)
+        yesterday_red = yesterday[close_col] < yesterday[open_col]
+        
+        # Today is Green (Close > Open)
+        today_green = today[close_col] > today[open_col]
+        
+        # Today's body engulfs yesterday's body
+        today_engulfs = (today[open_col] < yesterday[close_col] and 
+                        today[close_col] > yesterday[open_col])
+        
+        patterns['is_engulfing'] = yesterday_red and today_green and today_engulfs
+        
+        # 2. W Pattern Detection
+        # Define windows
+        right_window = df.tail(5)  # Last 5 days
+        left_window = df.iloc[-10:-5]  # Days -10 to -5
+        
+        # Find minimum lows
+        right_min_low = right_window[low_col].min()
+        left_min_low = left_window[low_col].min()
+        
+        # W pattern: Right window has higher low than left window
+        patterns['is_w_pattern'] = right_min_low > left_min_low
+        
+    except Exception as e:
+        log_error(f"Error detecting patterns: {e}")
+        # Return False patterns on error
+        return patterns
+    
+    return patterns
+
 def analyze_stock(df, ticker=None):
+    """A+ Wealth Builder: Strict entry rules analysis using adjClose or Close"""
     if df is None or len(df) < STRATEGY_PARAMS['sma_period']:
         return {
             'signal': 'INSUFFICIENT_DATA',
@@ -475,7 +551,9 @@ def analyze_stock(df, ticker=None):
     df = add_indicators(df)
     
     latest = df.iloc[-1]
-    price = latest['Close']
+    # Use adjClose if available, otherwise use Close
+    close_col = 'adjClose' if 'adjClose' in df.columns else 'Close'
+    price = latest[close_col]
     sma_200 = latest['SMA_200']
     stoch_k = latest['Stochastic_K']
     
@@ -500,164 +578,113 @@ def analyze_stock(df, ticker=None):
             'quality_score': quality_score
         }
     
-    if cagr < STRATEGY_PARAMS['min_cagr']:
+    # A+ WEALTH BUILDER: STRICT ENTRY RULES
+    # 1. QUALITY: Historical CAGR > 15%
+    if cagr < 15.0:  # A+ Wealth Builder: Strict 15% minimum
         return {
             'signal': 'HOLD',
-            'reason': f'CAGR ({cagr:.2f}%) below minimum ({STRATEGY_PARAMS["min_cagr"]}%)',
+            'reason': f'CAGR ({cagr:.2f}%) below A+ Wealth Builder minimum (15%)',
             'indicators': indicators,
             'quality_score': quality_score
         }
     
-    # CRITICAL: Complete Professional Trading Checklist Analysis
-    volume_ok, volume_reason = check_volume_quality(df)
-    volume_consistent, volume_increasing, volume_consistency_reason = check_volume_consistency(df)
-    w_pattern, w_reason = detect_w_formation(df)
-    engulfing_candle, engulfing_reason = detect_engulfing_candle(df)
-    k_above_d, stochastic_trend_up, stochastic_reason = check_stochastic_crossover(df)
-    earnings_safe, earnings_reason = check_earnings_safety(ticker) if ticker else (True, "No ticker provided")
-    
-    # Additional pattern analysis
-    head_and_shoulders, hns_reason = detect_head_and_shoulders(df)
-    is_power_stock, power_stock_reason = check_power_stock_exception(df)
-    is_friday = is_friday_trading()
-    
-    # Add comprehensive indicators
-    indicators.update({
-        'sma_25': float(latest['SMA_25']) if pd.notna(latest['SMA_25']) else None,
-        'sma_50': float(latest['SMA_50']) if pd.notna(latest['SMA_50']) else None,
-        'sma_100': float(latest['SMA_100']) if pd.notna(latest['SMA_100']) else None,
-        'volume_ratio': float(latest['Volume'] / latest['Volume_SMA_30']) if pd.notna(latest['Volume_SMA_30']) and latest['Volume_SMA_30'] > 0 else None,
-        'w_pattern': w_pattern,
-        'volume_ok': volume_ok,
-        'volume_consistent': volume_consistent,
-        'volume_increasing': volume_increasing,
-        'engulfing_candle': engulfing_candle,
-        'k_above_d': k_above_d,
-        'stochastic_trend_up': stochastic_trend_up,
-        'head_and_shoulders': head_and_shoulders,
-        'is_power_stock': is_power_stock,
-        'is_friday': is_friday
-    })
-    
+    # 2. TREND: Price (Adj Close) > SMA 200
     price_above_sma = price > sma_200
-    in_sweet_spot = (STRATEGY_PARAMS['sweet_spot_lower'] <= stoch_k <= STRATEGY_PARAMS['sweet_spot_upper'])
-    
-    # PROFESSIONAL CHECKLIST: All critical elements must pass
-    checklist_pass = True
-    failure_reasons = []
-    
-    # 1. Trend: Price above SMA 200
     if not price_above_sma:
-        checklist_pass = False
-        failure_reasons.append("Price below SMA 200")
-    
-    # 2. Sweet Spot: Stochastic K in 32-80% range
-    if not in_sweet_spot:
-        checklist_pass = False
-        failure_reasons.append(f"Stochastic K ({stoch_k:.2f}) outside sweet spot")
-    
-    # 3. Stochastic Crossover: K above D (RED > YELLOW)
-    if not k_above_d:
-        checklist_pass = False
-        failure_reasons.append(f"Stochastic K not above D ({stochastic_reason})")
-    
-    # 4. Trend Direction: Stochastics trending upward
-    if not stochastic_trend_up:
-        checklist_pass = False
-        failure_reasons.append(f"Stochastics not trending up ({stochastic_reason})")
-    
-    # 5. Volume Confirmation: Above 30-day average
-    if not volume_ok:
-        checklist_pass = False
-        failure_reasons.append(f"Volume insufficient ({volume_reason})")
-    
-    # 6. Volume Consistency: Consistent or increasing
-    if not volume_consistent:
-        checklist_pass = False
-        failure_reasons.append(f"Volume inconsistent ({volume_consistency_reason})")
-    
-    # 7. Candlestick Confirmation: Engulfing pattern preferred
-    # Note: Not a hard requirement, but enhances signal quality
-    
-    # 8. Earnings Safety: No upcoming earnings
-    if not earnings_safe:
-        checklist_pass = False
-        failure_reasons.append(f"Earnings risk ({earnings_reason})")
-    
-    # Final decision based on checklist
-    if checklist_pass:
-        reason_parts = [
-            f'PROFESSIONAL CHECKLIST PASS',
-            f'Price > SMA 200 (${sma_200:.2f})',
-            f'Stochastic K ({stoch_k:.2f}) in sweet spot with K>D and uptrend',
-            f'Volume confirmed ({volume_reason}) and consistent ({volume_consistency_reason})',
-            f'Earnings safe ({earnings_reason})'
-        ]
-        
-        # Add bonus confirmations
-        if engulfing_candle:
-            reason_parts.append(f'BONUS: Engulfing candle ({engulfing_reason})')
-        if w_pattern:
-            reason_parts.append(f'BONUS: W pattern ({w_reason})')
-        if volume_increasing:
-            reason_parts.append('BONUS: Volume increasing')
-        
-        return {
-            'signal': 'BUY',
-            'reason': ' | '.join(reason_parts),
-            'indicators': indicators,
-            'quality_score': quality_score * 1.5  # Bonus for passing full checklist
-        }
-    else:
-        # Check for SELL signals
-        sell_reasons = []
-        
-        # 1. Trend Break: Price below SMA 200
-        if not price_above_sma:
-            sell_reasons.append(f'Price below SMA 200 (trend break)')
-        
-        # 2. Head & Shoulders Pattern (bearish reversal)
-        if head_and_shoulders:
-            sell_reasons.append(f'Head & Shoulders pattern detected ({hns_reason})')
-        
-        # 3. Stochastic Breakdown (below sweet spot)
-        if stoch_k < STRATEGY_PARAMS['sweet_spot_lower']:
-            sell_reasons.append(f'Stochastic breakdown (K: {stoch_k:.2f} below 32%)')
-        
-        # If any SELL conditions met, return SELL signal
-        if sell_reasons:
-            return {
-                'signal': 'SELL',
-                'reason': ' | '.join(sell_reasons),
-                'indicators': indicators,
-                'quality_score': quality_score
-            }
-        
-        # Check for Power Stock exception (hold overbought strong stocks)
-        if is_power_stock:
-            return {
-                'signal': 'HOLD',
-                'reason': f'POWER STOCK EXCEPTION - Hold overbought strong stock ({power_stock_reason})',
-                'indicators': indicators,
-                'quality_score': quality_score * 1.2  # Bonus for power stock
-            }
-        
-        # Friday Rule awareness
-        if is_friday:
-            return {
-                'signal': 'HOLD',
-                'reason': f'FRIDAY RULE - Profit taking day | CHECKLIST FAIL: {" | ".join(failure_reasons)}',
-                'indicators': indicators,
-                'quality_score': quality_score
-            }
-        
-        # Default HOLD for failed checklist
         return {
             'signal': 'HOLD',
-            'reason': f'CHECKLIST FAIL: {" | ".join(failure_reasons)}',
+            'reason': f'Price (${price:.2f}) below SMA 200 (${sma_200:.2f}) - TREND FAILED',
             'indicators': indicators,
             'quality_score': quality_score
         }
+    
+    # 3. SWEETSPOT: Stochastic %K (10, 3, 3) is >= 32 AND <= 80
+    in_sweet_spot = (32.0 <= stoch_k <= 80.0)  # A+ Wealth Builder: Strict bounds
+    if not in_sweet_spot:
+        return {
+            'signal': 'HOLD',
+            'reason': f'Stochastic K ({stoch_k:.2f}) outside A+ Wealth Builder sweet spot [32-80]',
+            'indicators': indicators,
+            'quality_score': quality_score
+        }
+    
+    # 4. MOMENTUM: Current Volume > 30-Day Volume SMA
+    current_volume = latest['Volume']
+    volume_sma = latest['Volume_SMA_30']
+    volume_momentum = current_volume > volume_sma if pd.notna(volume_sma) and volume_sma > 0 else False
+    
+    if not volume_momentum:
+        return {
+            'signal': 'HOLD',
+            'reason': f'Volume ({current_volume:,.0f}) below 30-day SMA ({volume_sma:,.0f}) - MOMENTUM FAILED',
+            'indicators': indicators,
+            'quality_score': quality_score
+        }
+    
+    # A+ WEALTH BUILDER: ALL RULES PASSED - NOW CHECK PATTERNS
+    patterns = detect_patterns(df)
+    
+    # PHASE 1: VISUAL PATTERN RECOGNITION - STRICT REQUIREMENT
+    has_pattern = patterns['is_engulfing'] or patterns['is_w_pattern']
+    
+    if not has_pattern:
+        return {
+            'signal': 'HOLD',
+            'reason': 'No Visual Pattern (Engulfing or W) - A+ Wealth Builder Phase 1 requirement',
+            'indicators': indicators,
+            'quality_score': quality_score
+        }
+    
+    # PHASE 2: POWER STOCK DETECTION
+    # Calculate additional SMAs for Power Stock status
+    sma_25 = df['Close'].rolling(window=25, min_periods=1).mean().iloc[-1]
+    sma_50 = df['Close'].rolling(window=50, min_periods=1).mean().iloc[-1]
+    sma_100 = df['Close'].rolling(window=100, min_periods=1).mean().iloc[-1]
+    
+    # Power Stock criteria: Extreme momentum with vertical trend
+    is_power_stock = (
+        stoch_k > 80 and  # Extreme overbought
+        price > sma_25 and price > sma_50 and price > sma_100 and price > sma_200 and  # Price above all SMAs
+        current_volume > volume_sma  # Volume momentum
+    )
+    
+    # Add Power Stock status to indicators
+    indicators['is_power_stock'] = is_power_stock
+    indicators['sma_25'] = float(sma_25) if pd.notna(sma_25) else None
+    indicators['sma_50'] = float(sma_50) if pd.notna(sma_50) else None
+    indicators['sma_100'] = float(sma_100) if pd.notna(sma_100) else None
+    
+    # Log Power Stock entry
+    if is_power_stock:
+        log_info(f"[POWER STOCK] {ticker} has entered hyper-momentum. Holding through overbought zone.")
+    
+    # Build reason parts with pattern bonuses
+    reason_parts = [
+        'A+ WEALTH BUILDER: ALL ENTRY RULES PASSED',
+        f'TREND: Price (${price:.2f}) > SMA 200 (${sma_200:.2f})',
+        f'SWEETSPOT: Stochastic K ({stoch_k:.2f}) in [32-80]',
+        f'MOMENTUM: Volume ({current_volume:,.0f}) > 30-day SMA ({volume_sma:,.0f})',
+        f'QUALITY: CAGR ({cagr:.1f}%) > 15%'
+    ]
+    
+    # Add pattern bonuses to reason
+    if patterns['is_engulfing']:
+        reason_parts.append('BONUS: Engulfing Candle Detected')
+    
+    if patterns['is_w_pattern']:
+        reason_parts.append('BONUS: W Pattern Detected (Higher Low)')
+    
+    # Add Power Stock bonus
+    if is_power_stock:
+        reason_parts.append('POWER STOCK: Hyper-momentum detected - Enhanced holding rules')
+        quality_score *= 1.5  # Additional bonus for Power Stock status
+    
+    return {
+        'signal': 'BUY',
+        'reason': ' | '.join(reason_parts),
+        'indicators': indicators,
+        'quality_score': quality_score * 2.5  # Higher bonus for pattern confirmation
+    }
 
 def scan_all_stocks(stock_data_dict):
     results = {

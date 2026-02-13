@@ -1,68 +1,75 @@
 {
-  "cash": 55000.0,
+  "cash": 64447.72570094899,
   "positions": {
     "MNKD": {
       "shares": 865.0518717136496,
       "entry_price": 5.78000020980835,
       "entry_date": "2026-02-10",
       "quality_score": 32.81287927467231,
-      "execution_mode": "PAPER"
-    },
-    "SCHW": {
-      "shares": 48.11393464298735,
-      "entry_price": 103.91999816894531,
-      "entry_date": "2026-02-10",
-      "quality_score": 27.56740207671413,
-      "execution_mode": "PAPER"
+      "execution_mode": "PAPER",
+      "atr_at_entry": 0.32848333333333307,
+      "stop_price": 4.844550000000001,
+      "highest_price": 5.83
     },
     "AEP": {
       "shares": 41.74493789440434,
       "entry_price": 119.7750015258789,
       "entry_date": "2026-02-10",
       "quality_score": 26.49401697957558,
-      "execution_mode": "PAPER"
-    },
-    "LNC": {
-      "shares": 120.16342049166231,
-      "entry_price": 41.61000061035156,
-      "entry_date": "2026-02-10",
-      "quality_score": 25.96116527217059,
-      "execution_mode": "PAPER"
-    },
-    "GAP": {
-      "shares": 178.6990736884183,
-      "entry_price": 27.979999542236328,
-      "entry_date": "2026-02-10",
-      "quality_score": 25.49309458418955,
-      "execution_mode": "PAPER"
+      "execution_mode": "PAPER",
+      "atr_at_entry": 2.6543202133500023,
+      "stop_price": 113.26703935994999,
+      "highest_price": 121.23
     },
     "UMBF": {
       "shares": 39.326726632083755,
       "entry_price": 127.13999938964844,
       "entry_date": "2026-02-10",
       "quality_score": 24.414048568312364,
-      "execution_mode": "PAPER"
+      "execution_mode": "PAPER",
+      "atr_at_entry": 3.6380666666666692,
+      "stop_price": 121.9558,
+      "highest_price": 132.87
     },
     "SIMO": {
       "shares": 42.041536930715054,
       "entry_price": 118.93000030517578,
       "entry_date": "2026-02-10",
       "quality_score": 24.264303288238217,
-      "execution_mode": "PAPER"
+      "execution_mode": "PAPER",
+      "atr_at_entry": 10.264916666666664,
+      "stop_price": 100.52525,
+      "highest_price": 131.32
     },
     "OPLN": {
       "shares": 166.44473527347847,
       "entry_price": 30.040000915527344,
       "entry_date": "2026-02-10",
       "quality_score": 24.005963627645713,
-      "execution_mode": "PAPER"
+      "execution_mode": "PAPER",
+      "atr_at_entry": 0.6725,
+      "stop_price": 27.472499999999997,
+      "highest_price": 29.49
     },
     "ONB": {
       "shares": 204.66639122148072,
       "entry_price": 24.43000030517578,
       "entry_date": "2026-02-10",
       "quality_score": 23.901911220013314,
-      "execution_mode": "PAPER"
+      "execution_mode": "PAPER",
+      "atr_at_entry": 0.5708333333333346,
+      "stop_price": 23.817499999999995,
+      "highest_price": 25.53
+    },
+    "HASI": {
+      "shares": 145.3065975638485,
+      "entry_price": 34.40999984741211,
+      "entry_date": "2026-02-10",
+      "quality_score": 23.503536420723478,
+      "execution_mode": "PAPER",
+      "atr_at_entry": 1.0008000000000006,
+      "stop_price": 33.6776,
+      "highest_price": 36.68
     }
   },
   "trade_history": [
@@ -164,6 +171,53 @@
       "execution_mode": "PAPER",
       "quality_score": 23.901911220013314,
       "reason": "PROFESSIONAL CHECKLIST PASS | Price > SMA 200 ($21.77) | Stochastic K (73.07) in sweet spot with K>D and uptrend | Volume confirmed (Volume ratio: 1.54) and consistent (Consistent=True, Increasing=False, Current_vs_Avg=True) | Earnings safe (Simulation mode - earnings check bypassed) | BONUS: W pattern (W pattern: left=22.87, right=23.37) | BONUS: Volume increasing"
+    },
+    {
+      "type": "BUY",
+      "ticker": "HASI",
+      "shares": 145.3065975638485,
+      "price": 34.40999984741211,
+      "cost": 5000.0,
+      "timestamp": "2026-02-10T21:24:16.135399",
+      "execution_mode": "PAPER",
+      "quality_score": 23.503536420723478,
+      "reason": "PROFESSIONAL CHECKLIST PASS | Price > SMA 200 ($29.02) | Stochastic K (77.26) in sweet spot with K>D and uptrend | Volume confirmed (Volume ratio: 1.19) and consistent (Consistent=True, Increasing=False, Current_vs_Avg=True) | Earnings safe (Simulation mode - earnings check bypassed) | BONUS: W pattern (W pattern: left=33.29, right=33.64) | BONUS: Volume increasing"
+    },
+    {
+      "type": "SELL",
+      "ticker": "SCHW",
+      "shares": 48.11393464298735,
+      "entry_price": 103.91999816894531,
+      "exit_price": 99.25,
+      "profit_loss": -224.6919866835051,
+      "profit_loss_pct": -4.493839733670102,
+      "timestamp": "2026-02-13T12:17:51.282935",
+      "execution_mode": "PAPER",
+      "reason": "SMA_200_BREAK"
+    },
+    {
+      "type": "SELL",
+      "ticker": "LNC",
+      "shares": 120.16342049166231,
+      "entry_price": 41.61000061035156,
+      "exit_price": 39.33,
+      "profit_loss": -273.97267206292145,
+      "profit_loss_pct": -5.479453441258429,
+      "timestamp": "2026-02-13T12:17:51.299706",
+      "execution_mode": "PAPER",
+      "reason": "SMA_200_BREAK"
+    },
+    {
+      "type": "SELL",
+      "ticker": "GAP",
+      "shares": 178.6990736884183,
+      "entry_price": 27.979999542236328,
+      "exit_price": 27.68,
+      "profit_loss": -53.60964030458126,
+      "profit_loss_pct": -1.0721928060916253,
+      "timestamp": "2026-02-13T12:17:51.317903",
+      "execution_mode": "PAPER",
+      "reason": "SMA_200_BREAK"
     }
   ],
   "execution_mode": "PAPER"

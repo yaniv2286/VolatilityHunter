@@ -128,6 +128,158 @@ class Portfolio:
         except Exception as e:
             log_warning(f"Error saving portfolio: {e}")
     
+    def update_trailing_stops(self, current_prices, atr_data=None):
+        """
+        Update trailing stops for all open positions (A+ Wealth Builder).
+        
+        Args:
+            current_prices: Dict of {ticker: current_price}
+            atr_data: Dict of {ticker: current_atr} for ATR-based stops
+        
+        Returns:
+            List of positions that hit their stop loss
+        """
+        positions_to_close = []
+        
+        for ticker, position in self.state['positions'].items():
+            current_price = current_prices.get(ticker)
+            if current_price is None:
+                continue
+            
+            # Update highest price seen
+            old_highest = position.get('highest_price', position['entry_price'])
+            new_highest = max(old_highest, current_price)
+            position['highest_price'] = new_highest
+            
+            # Calculate new trailing stop
+            if atr_data and ticker in atr_data:
+                # ATR-based stop: Highest Price - (3.0 * ATR)
+                current_atr = atr_data[ticker]
+                new_stop = new_highest - (3.0 * current_atr)
+            else:
+                # Fallback to 10% fixed stop
+                new_stop = new_highest * 0.90
+            
+            # Only move stop up, never down
+            old_stop = position.get('stop_price', position['entry_price'] * 0.90)
+            if new_stop > old_stop:
+                position['stop_price'] = new_stop
+                log_info(f"Updated Stop for {ticker}: ${old_stop:.2f} -> ${new_stop:.2f}")
+            
+            # Check if stop loss triggered
+            if current_price < position['stop_price']:
+                positions_to_close.append((ticker, current_price, 'TRAILING_STOP'))
+        
+        return positions_to_close
+    
+    def check_exit_conditions(self, current_prices, atr_data=None, sma_data=None, sma_25_data=None):
+        """
+        Check all exit conditions for open positions (A+ Wealth Builder with Power Stock Shield).
+        
+        Args:
+            current_prices: Dict of {ticker: current_price}
+            atr_data: Dict of {ticker: current_atr}
+            sma_data: Dict of {ticker: sma_200}
+            sma_25_data: Dict of {ticker: sma_25} for Power Stock Shield
+        
+        Returns:
+            List of (ticker, exit_price, reason) tuples for positions to close
+        """
+        positions_to_close = []
+        
+        # First update trailing stops
+        stop_hits = self.update_trailing_stops(current_prices, atr_data)
+        positions_to_close.extend(stop_hits)
+        
+        # Check exit conditions with Power Stock Shield
+        if sma_data:
+            for ticker, position in self.state['positions'].items():
+                if ticker in [pos[0] for pos in positions_to_close]:  # Skip if already closing
+                    continue
+                
+                current_price = current_prices.get(ticker)
+                sma_200 = sma_data.get(ticker)
+                sma_25 = sma_25_data.get(ticker) if sma_25_data else None
+                
+                if current_price is None or sma_200 is None:
+                    continue
+                
+                # Check if this is a Power Stock position
+                is_power_stock = position.get('is_power_stock', False)
+                
+                if is_power_stock:
+                    # POWER STOCK SHIELD: Enhanced exit rules
+                    # Only exit if Price < SMA 25 (fast trend line) OR trailing stop hit
+                    if sma_25 is not None and current_price < sma_25:
+                        positions_to_close.append((ticker, current_price, 'POWER_STOCK_SMA_25_BREAK'))
+                        log_info(f"[POWER STOCK EXIT] {ticker}: SMA 25 break - Power Stock shield breached")
+                    # Trailing stop already handled above
+                    
+                else:
+                    # STANDARD EXIT RULES: SMA 200 break
+                    if current_price < sma_200:
+                        positions_to_close.append((ticker, current_price, 'SMA_200_BREAK'))
+        
+        return positions_to_close
+    
+    def execute_exit_trades(self, positions_to_close):
+        """
+        Execute exit trades for positions that triggered exit conditions.
+        
+        Args:
+            positions_to_close: List of (ticker, exit_price, reason) tuples
+        
+        Returns:
+            List of executed trade dicts
+        """
+        executed_trades = []
+        
+        for ticker, exit_price, reason in positions_to_close:
+            if ticker not in self.state['positions']:
+                continue
+            
+            position = self.state['positions'][ticker]
+            entry_price = position['entry_price']
+            shares = position['shares']
+            
+            # Calculate P&L
+            entry_value = entry_price * shares
+            exit_value = exit_price * shares
+            profit_loss = exit_value - entry_value
+            profit_loss_pct = (profit_loss / entry_value) * 100
+            
+            # Execute sell
+            self.state['cash'] += exit_value
+            
+            # Log trade
+            trade = {
+                'type': 'SELL',
+                'ticker': ticker,
+                'shares': shares,
+                'entry_price': entry_price,
+                'entry_date': position['entry_date'],
+                'exit_price': exit_price,
+                'exit_date': datetime.now().strftime('%Y-%m-%d'),
+                'profit_loss': profit_loss,
+                'profit_loss_pct': profit_loss_pct,
+                'reason': reason,
+                'stop_price': position.get('stop_price'),
+                'highest_price': position.get('highest_price')
+            }
+            
+            self.state['trade_history'].append(trade)
+            executed_trades.append(trade)
+            
+            # Remove position
+            del self.state['positions'][ticker]
+            
+            log_info(f"[EXIT] {reason} {ticker}: {shares:.2f} shares @ ${exit_price:.2f} | P/L: ${profit_loss:.2f} ({profit_loss_pct:.2f}%)")
+            
+            # Force save after exit
+            self._save_state()
+        
+        return executed_trades
+    
     def _check_risk_management_trades(self, current_prices, trades_executed):
         """Check for stop-loss, take-profit, and technical exit opportunities."""
         from src.config_manager import get_config
@@ -356,12 +508,19 @@ class Portfolio:
                 # Execute buy immediately
                 self.state['cash'] -= cost
                 
-                # Add position
+                # Add position with ATR-based trailing stop data (A+ Wealth Builder)
+                # Check if this is a Power Stock
+                is_power_stock = signal.get('indicators', {}).get('is_power_stock', False)
+                
                 self.state['positions'][ticker] = {
                     'shares': shares,
                     'entry_price': current_price,
                     'entry_date': datetime.now().strftime('%Y-%m-%d'),
-                    'quality_score': signal.get('quality_score', 0)
+                    'quality_score': signal.get('quality_score', 0),
+                    'atr_at_entry': signal.get('atr_at_entry', 0.0),  # ATR value at entry
+                    'stop_price': signal.get('initial_stop', current_price * 0.90),  # Initial trailing stop
+                    'highest_price': current_price,  # Track highest price for trailing stop
+                    'is_power_stock': is_power_stock  # Power Stock status for enhanced exit rules
                 }
                 
                 # Log trade
