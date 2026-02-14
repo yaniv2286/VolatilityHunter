@@ -20,13 +20,99 @@ from datetime import datetime
 from src.config import STOCK_LIST, STOCK_UNIVERSE_MODE, TICKER_FILTERS, TICKER_LIST_FILE, DATA_SOURCE
 from src.data_loader import get_stock_data
 from src.data_loader_factory import get_data_loader
-from src.strategy import scan_all_stocks, get_portfolio_summary
+from src.strategy_v7_2 import analyze_stock_v7_2, check_exit_conditions_v7_2, add_indicators_v7_2
 from src.notifications import log_info, log_error, log_warning
 from src.ticker_manager import TickerManager
 from src.technical_utils import get_position_risk_data, calculate_atr, calculate_sma_200
 from src.execution import get_executor
 from src.tracker import Portfolio
 from src.email_notifier import EmailNotifier
+
+def scan_all_stocks_v7_2(stock_data_dict):
+    """
+    v7.2: Scan all stocks using Hybrid Blueprint Logic
+    """
+    results = {
+        'BUY': [],
+        'SELL': [],
+        'HOLD': [],
+        'ERROR': []
+    }
+    
+    for ticker, df in stock_data_dict.items():
+        try:
+            analysis = analyze_stock_v7_2(df, ticker)
+            signal = analysis['signal']
+            
+            result = {
+                'ticker': ticker,
+                'signal': signal,
+                'reason': analysis['reason'],
+                'indicators': analysis['indicators'],
+                'quality_score': analysis.get('quality_score', 0),
+                'is_power_stock': analysis.get('is_power_stock', False)  # v7.2: Power Stock status
+            }
+            
+            if signal in ['BUY', 'SELL', 'HOLD', 'INSUFFICIENT_DATA']:
+                if signal == 'INSUFFICIENT_DATA':
+                    results['ERROR'].append(result)
+                else:
+                    results[signal].append(result)
+                    
+                if signal in ['BUY', 'SELL']:
+                    from src.notifications import alert_signal
+                    alert_signal(
+                        ticker,
+                        signal,
+                        analysis['indicators'].get('price', 0),
+                        analysis['indicators']
+                    )
+            
+        except Exception as e:
+            log_error(f"Error analyzing {ticker}: {e}")
+            results['ERROR'].append({
+                'ticker': ticker,
+                'signal': 'ERROR',
+                'reason': str(e),
+                'indicators': {}
+            })
+    
+    return results
+
+def get_portfolio_summary_v7_2(scan_results):
+    """v7.2: Get portfolio summary with Power Stock tracking"""
+    summary = {
+        'total_stocks': sum(len(v) for v in scan_results.values()),
+        'buy_signals': len(scan_results.get('BUY', [])),
+        'sell_signals': len(scan_results.get('SELL', [])),
+        'hold_signals': len(scan_results.get('HOLD', [])),
+        'errors': len(scan_results.get('ERROR', [])),
+        'buy_list': [s['ticker'] for s in scan_results.get('BUY', [])],
+        'sell_list': [s['ticker'] for s in scan_results.get('SELL', [])],
+        'power_stocks': [s['ticker'] for s in scan_results.get('BUY', []) if s.get('is_power_stock', False)]
+    }
+    return summary
+
+def check_v7_2_exit_conditions(portfolio_positions, stock_data):
+    """
+    v7.2: Check exit conditions for all portfolio positions
+    """
+    positions_to_close = []
+    
+    for ticker, position in portfolio_positions.items():
+        if ticker in stock_data:
+            df = stock_data[ticker]
+            df_with_indicators = add_indicators_v7_2(df)
+            
+            should_exit, exit_reason = check_exit_conditions_v7_2(df_with_indicators, position)
+            
+            if should_exit:
+                latest = df_with_indicators.iloc[-1]
+                current_price = latest['adjClose'] if 'adjClose' in latest else latest['close']
+                positions_to_close.append((ticker, current_price, exit_reason))
+    
+    return positions_to_close
+
 
 def get_active_stock_list():
     """Get the complete universe of 2,150 US stocks for production."""
@@ -117,39 +203,25 @@ def main():
         print(f"  - Updated: {update_result['updated']}/{update_result['total']} stocks")
         log_info(f"Data update complete: {update_result['updated']}/{update_result['total']} stocks")
         
-        # A+ WEALTH BUILDER: EXIT ENGINE - Check existing positions BEFORE scanning for new buys
-        print("\n[STEP 3A] A+ Wealth Builder Exit Engine...")
-        log_info("Checking exit conditions for existing positions...")
+        # v7.2 HYBRID STRATEGY: EXIT ENGINE - Check existing positions BEFORE scanning for new buys
+        print("\n[STEP 3A] v7.2 Hybrid Exit Engine...")
+        log_info("Checking v7.2 exit conditions for existing positions...")
         
         portfolio_positions = executor.state['positions']
         executed_trades = {'sells': [], 'buys': []}  # Initialize executed trades
         
         if portfolio_positions:
-            print(f"  - Checking {len(portfolio_positions)} open positions for exit conditions...")
+            print(f"  - Checking {len(portfolio_positions)} open positions for v7.2 exit conditions...")
             
-            # Collect current prices, ATR, and SMA data for all positions
-            current_prices = {}
-            atr_data = {}
-            sma_data = {}
-            sma_25_data = {}
-            
+            # Load stock data for exit analysis
+            exit_stock_data = {}
             for ticker in portfolio_positions.keys():
-                try:
-                    risk_data = get_position_risk_data(ticker, data_loader)
-                    if risk_data:
-                        current_prices[ticker] = risk_data['price']
-                        atr_data[ticker] = risk_data['atr']
-                        sma_data[ticker] = risk_data['sma_200']
-                        sma_25_data[ticker] = risk_data['sma_25']
-                        print(f"  - {ticker}: Price=${risk_data['price']:.2f}, ATR={risk_data['atr']:.2f}, SMA200={risk_data['sma_200']:.2f}, SMA25={risk_data['sma_25']:.2f}")
-                    else:
-                        log_warning(f"Could not get risk data for {ticker}")
-                except Exception as e:
-                    log_error(f"Error getting risk data for {ticker}: {e}")
+                df = get_stock_data(ticker)
+                if df is not None:
+                    exit_stock_data[ticker] = df
             
-            # Check exit conditions with Power Stock Shield
-            portfolio = Portfolio()
-            positions_to_close = portfolio.check_exit_conditions(current_prices, atr_data, sma_data, sma_25_data)
+            # Check v7.2 exit conditions
+            positions_to_close = check_v7_2_exit_conditions(portfolio_positions, exit_stock_data)
             
             if positions_to_close:
                 print(f"  - Found {len(positions_to_close)} positions to close:")
@@ -159,39 +231,33 @@ def main():
                 # Execute exit trades
                 exit_trades = []
                 for ticker, exit_price, reason in positions_to_close:
-                    # Get the position from portfolio
-                    positions = executor.get_portfolio_summary()['positions_detail']
-                    position = next((p for p in positions if p['ticker'] == ticker), None)
+                    position = portfolio_positions[ticker]
                     
-                    if position:
-                        # Create sell signal
-                        sell_signal = {
-                            'ticker': ticker,
-                            'indicators': {'price': exit_price},
-                            'reason': reason
-                        }
-                        
-                        # Execute sell
-                        result = executor.execute_sell(sell_signal, {
-                            'shares': position['shares'],
-                            'entry_price': position['entry_price']
-                        })
-                        
-                        if result['success']:
-                            exit_trades.append(result['trade'])
+                    # Create sell signal
+                    sell_signal = {
+                        'ticker': ticker,
+                        'indicators': {'price': exit_price},
+                        'reason': reason
+                    }
+                    
+                    # Execute sell
+                    result = executor.execute_sell(sell_signal, position)
+                    
+                    if result['success']:
+                        exit_trades.append(result['trade'])
                 
                 executed_trades['sells'].extend(exit_trades)
-                print(f"  - Executed {len(exit_trades)} exit trades")
+                print(f"  - Executed {len(exit_trades)} v7.2 exit trades")
             else:
-                print(f"  - No exit conditions triggered")
-                log_info("No exit conditions triggered for existing positions")
+                print(f"  - No v7.2 exit conditions triggered")
+                log_info("No v7.2 exit conditions triggered for existing positions")
         else:
             print(f"  - No open positions to check")
             log_info("No open positions to check")
         
-        # Step 4: Scan for Trading Signals
-        print("\n[STEP 4] Scanning for Trading Signals...")
-        log_info("Scanning for trading signals...")
+        # Step 4: Scan for Trading Signals using v7.2 Hybrid Strategy
+        print("\n[STEP 4] Scanning for v7.2 Hybrid Trading Signals...")
+        log_info("Scanning for v7.2 hybrid trading signals...")
         
         # Load stock data for analysis
         stock_data = {}
@@ -200,39 +266,36 @@ def main():
             if df is not None:
                 stock_data[ticker] = df
         
-        # Generate signals
-        scan_results = scan_all_stocks(stock_data)
-        summary = get_portfolio_summary(scan_results)
+        # Generate v7.2 signals
+        scan_results = scan_all_stocks_v7_2(stock_data)
+        summary = get_portfolio_summary_v7_2(scan_results)
         
         print(f"  - Total Stocks: {summary['total_stocks']}")
         print(f"  - BUY Signals: {summary['buy_signals']}")
         print(f"  - SELL Signals: {summary['sell_signals']}")
         print(f"  - HOLD Signals: {summary['hold_signals']}")
         print(f"  - Errors: {summary['errors']}")
+        if summary['power_stocks']:
+            print(f"  - Power Stocks: {len(summary['power_stocks'])} ({', '.join(summary['power_stocks'])})")
         
-        log_info(f"Scan complete: {summary['buy_signals']} BUY, {summary['sell_signals']} SELL")
+        log_info(f"v7.2 scan complete: {summary['buy_signals']} BUY, {summary['sell_signals']} SELL, {len(summary['power_stocks'])} Power Stocks")
         
-        # Step 5: Execute Trading Signals
-        print("\n[STEP 5] Executing Trading Signals...")
-        log_info("Executing trading signals...")
+        # Step 5: Execute v7.2 Trading Signals
+        print("\n[STEP 5] Executing v7.2 Trading Signals...")
+        log_info("Executing v7.2 trading signals...")
         
-        # Sort signals by quality
+        # Sort signals by quality (v7.2 includes Power Stock bonus)
         buy_signals = sorted(scan_results.get('BUY', []), 
                            key=lambda x: x.get('quality_score', 0), reverse=True)
         sell_signals = scan_results.get('SELL', [])
         
-        # Add ATR data to buy signals for position tracking
+        # Add v7.2 specific data to buy signals
         for signal in buy_signals:
             ticker = signal['ticker']
-            risk_data = get_position_risk_data(ticker, data_loader)
-            if risk_data:
-                signal['atr_at_entry'] = risk_data['atr']
-                signal['initial_stop'] = risk_data['price'] - (3.0 * risk_data['atr'])
-            else:
-                signal['atr_at_entry'] = 0.0
-                signal['initial_stop'] = signal['indicators']['price'] * 0.90
+            # v7.2: Indicators already include ATR, SMAs, and Power Stock status
+            # No additional data loading needed
         
-        # Process remaining signals through executor
+        # Process remaining signals through executor (v7.2 compatible)
         remaining_trades = executor.process_signals(buy_signals, sell_signals)
         
         # Combine exit trades and signal trades
@@ -243,11 +306,12 @@ def main():
         print(f"  - Buy Trades Executed: {len(executed_trades['buys'])}")
         print(f"  - Total Trades Executed: {len(executed_trades['sells']) + len(executed_trades['buys'])}")
         
-        # Show top signals
+        # Show top v7.2 signals
         if summary['buy_signals'] > 0:
-            print(f"\n[TOP BUY SIGNALS]:")
+            print(f"\n[TOP v7.2 BUY SIGNALS]:")
             for i, signal in enumerate(buy_signals[:5]):  # Show top 5
-                print(f"  {i+1}. {signal['ticker']}: ${signal['indicators']['price']:.2f} | Quality: {signal.get('quality_score', 0):.2f}")
+                power_status = "POWER STOCK" if signal.get('is_power_stock', False) else "Standard"
+                print(f"  {i+1}. {signal['ticker']}: ${signal['indicators']['price']:.2f} | Quality: {signal.get('quality_score', 0):.2f} | {power_status}")
                 print(f"     Reason: {signal['reason']}")
         
         if summary['sell_signals'] > 0:

@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional
 from src.notifications import log_info, log_warning, log_error
 from src.strategy import check_sector_diversification
+from src.strategy_v7_2 import analyze_stock_v7_2, check_exit_conditions_v7_2, calculate_position_size_v7_2, add_indicators_v7_2
 
 class Executor(ABC):
     """Abstract base class for trading execution"""
@@ -69,16 +70,16 @@ class Executor(ABC):
         return True
     
     def calculate_position_size(self, signal: Dict, available_cash: float) -> float:
-        """Calculate position size based on strategy"""
-        position_size = 5000.0  # Default $5,000 per position
+        """Calculate position size using v7.2 1% risk rule"""
+        entry_price = signal['indicators']['price']
         
-        # Could implement dynamic sizing based on:
-        # - Signal quality score
-        # - Volatility
-        # - Risk tolerance
-        # - Portfolio concentration
+        # Calculate stop loss price (SMA 200 for standard trades)
+        stop_loss_price = signal['indicators'].get('sma_200', entry_price * 0.95)
         
-        return min(position_size, available_cash)
+        # Use v7.2 position sizing (1% risk rule)
+        shares = calculate_position_size_v7_2(available_cash, entry_price, stop_loss_price)
+        
+        return shares * entry_price  # Return position value
 
 
 class PaperExecutor(Executor):
@@ -167,11 +168,19 @@ class PaperExecutor(Executor):
             log_error(f"Error saving portfolio: {e}")
     
     def execute_buy(self, signal: Dict, available_cash: float) -> Dict:
-        """Execute a paper buy order"""
+        """Execute a paper buy order using v7.2 hybrid strategy"""
         ticker = signal['ticker']
         current_price = signal['indicators']['price']
         
-        # Calculate position size
+        # v7.2: Penny Stock Filter - Minimum price $1.00
+        if current_price < 1.00:
+            return {
+                'success': False,
+                'reason': f'Penny stock filter: Price ${current_price:.2f} below $1.00 minimum',
+                'trade': None
+            }
+        
+        # Calculate position size using v7.2 1% risk rule
         position_size = self.calculate_position_size(signal, available_cash)
         
         if position_size > available_cash:
@@ -181,17 +190,23 @@ class PaperExecutor(Executor):
                 'trade': None
             }
         
-        shares = position_size / current_price
-        cost = shares * current_price
+        entry_price = current_price
+        stop_loss_price = signal['indicators'].get('sma_200', entry_price * 0.95)
+        shares = calculate_position_size_v7_2(available_cash, entry_price, stop_loss_price)
+        cost = shares * entry_price
         
-        # Update portfolio state
+        # Update portfolio state with v7.2 features
         self.state['cash'] -= cost
         self.state['positions'][ticker] = {
             'shares': shares,
-            'entry_price': current_price,
+            'entry_price': entry_price,
+            'stop_loss_price': stop_loss_price,
             'entry_date': datetime.now().strftime('%Y-%m-%d'),
             'quality_score': signal.get('quality_score', 0),
-            'execution_mode': 'PAPER'
+            'execution_mode': 'PAPER',
+            'is_power_stock': signal.get('is_power_stock', False),  # v7.2: Power Stock status
+            'highest_price': entry_price,  # v7.2: Track highest price for trailing stop
+            'ticker': ticker  # v7.2: Add ticker for exit logic
         }
         
         # Record trade
@@ -204,13 +219,17 @@ class PaperExecutor(Executor):
             'timestamp': datetime.now().isoformat(),
             'execution_mode': 'PAPER',
             'quality_score': signal.get('quality_score', 0),
-            'reason': signal.get('reason', '')
+            'reason': signal.get('reason', ''),
+            'is_power_stock': signal.get('is_power_stock', False),  # v7.2: Track Power Stock status
+            'stop_loss_price': stop_loss_price  # v7.2: Track stop loss
         }
         
         self.state['trade_history'].append(trade)
         self._save_portfolio_state()
         
-        log_info(f"[PAPER BUY] {ticker}: {shares:.2f} shares @ ${current_price:.2f} | Cost: ${cost:.2f}")
+        # v7.2: Enhanced logging
+        power_status = "POWER STOCK" if signal.get('is_power_stock', False) else "Standard"
+        log_info(f"[PAPER BUY] {ticker}: {shares:.0f} shares @ ${entry_price:.2f} | Cost: ${cost:.2f} | {power_status}")
         
         return {
             'success': True,
@@ -219,12 +238,13 @@ class PaperExecutor(Executor):
         }
     
     def execute_sell(self, signal: Dict, position: Dict) -> Dict:
-        """Execute a paper sell order"""
+        """Execute a paper sell order using v7.2 hybrid strategy"""
         ticker = signal['ticker']
         current_price = signal['indicators']['price']
         
         shares = position['shares']
         entry_price = position['entry_price']
+        is_power_stock = position.get('is_power_stock', False)  # v7.2: Check Power Stock status
         
         # Calculate P&L
         entry_value = entry_price * shares
@@ -236,7 +256,7 @@ class PaperExecutor(Executor):
         self.state['cash'] += exit_value
         del self.state['positions'][ticker]
         
-        # Record trade
+        # Record trade with v7.2 features
         trade = {
             'type': 'SELL',
             'ticker': ticker,
@@ -247,13 +267,17 @@ class PaperExecutor(Executor):
             'profit_loss_pct': profit_loss_pct,
             'timestamp': datetime.now().isoformat(),
             'execution_mode': 'PAPER',
-            'reason': signal.get('reason', '')
+            'reason': signal.get('reason', ''),
+            'is_power_stock': is_power_stock,  # v7.2: Track if it was a Power Stock
+            'highest_price': position.get('highest_price', entry_price)  # v7.2: Track highest price reached
         }
         
         self.state['trade_history'].append(trade)
         self._save_portfolio_state()
         
-        log_info(f"[PAPER SELL] {ticker}: {shares:.2f} shares @ ${current_price:.2f} | P/L: ${profit_loss:.2f} ({profit_loss_pct:.2f}%)")
+        # v7.2: Enhanced logging with Power Stock status
+        power_status = "POWER STOCK" if is_power_stock else "Standard"
+        log_info(f"[PAPER SELL] {ticker}: {shares:.0f} shares @ ${current_price:.2f} | P/L: ${profit_loss:.2f} ({profit_loss_pct:.2f}%) | {power_status}")
         
         return {
             'success': True,
@@ -427,6 +451,42 @@ class PaperExecutor(Executor):
             'errors': trades_executed['errors'],
             'detailed_trade_log': detailed_trade_log
         }
+
+    def check_v7_2_exit_conditions(self, ticker: str, df_data: Dict) -> Optional[Dict]:
+        """
+        v7.2: Check if position should be sold using hybrid exit logic
+        Returns sell signal if exit conditions are met
+        """
+        if ticker not in self.state['positions']:
+            return None
+        
+        position = self.state['positions'][ticker]
+        
+        # Add indicators to the data
+        df_with_indicators = add_indicators_v7_2(df_data[ticker])
+        
+        # Check v7.2 exit conditions
+        should_exit, exit_reason = check_exit_conditions_v7_2(df_with_indicators, position)
+        
+        if should_exit:
+            # Create sell signal
+            latest = df_with_indicators.iloc[-1]
+            current_price = latest['adjClose'] if 'adjClose' in latest else latest['close']
+            
+            # Update position state before creating signal
+            self.state['positions'][ticker].update(position)
+            
+            return {
+                'ticker': ticker,
+                'signal': 'SELL',
+                'reason': f'v7.2 Exit: {exit_reason}',
+                'indicators': {
+                    'price': current_price,
+                    'is_power_stock': position.get('is_power_stock', False)
+                }
+            }
+        
+        return None
 
 
 class LiveExecutor(Executor):

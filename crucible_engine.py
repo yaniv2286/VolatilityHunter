@@ -8,13 +8,14 @@ import os
 import pandas as pd
 import numpy as np
 import gc
+import argparse
 from datetime import datetime, timedelta
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from tqdm import tqdm
 from typing import Dict, List, Tuple, Any, Optional
 
 # Import core strategy components
-from src.strategy import add_indicators, calculate_stochastic, calculate_multiple_smas, calculate_volume_sma
+from src.strategy_v7_2 import add_indicators_v7_2, check_power_promotion_v7_2, check_exit_conditions_v7_2, calculate_position_size_v7_2, generate_vectorized_signals
 from src.technical_utils import calculate_atr
 
 # Check if patterns module is available
@@ -56,6 +57,12 @@ class CrucibleEngine:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
             df = df.dropna(subset=required_cols)
             
+            # V7.3 SANITIZATION: Filter to 2015-2026 (avoid reverse split era 2001-2005)
+            if 'date' in df.index:
+                start_date = pd.to_datetime('2015-01-01')
+                end_date = pd.to_datetime('2026-12-31')
+                df = df[(df.index >= start_date) & (df.index <= end_date)]
+            
             # RULE 1: HARD 252-DAY ENFORCEMENT
             if len(df) < 252:
                 return None
@@ -66,13 +73,13 @@ class CrucibleEngine:
             return None
     
     def calculate_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Calculate all required indicators for strategy"""
+        """Calculate all required indicators for strategy using v7.2 logic"""
         df = df.copy()
         
-        # Use core strategy functions
-        df = add_indicators(df)
+        # Use v7.2 strategy functions
+        df = add_indicators_v7_2(df)
         
-        # Calculate ATR
+        # Calculate ATR (already included in v7.2 but keeping for compatibility)
         atr_series = calculate_atr(df)
         df['atr'] = atr_series
         
@@ -81,15 +88,9 @@ class CrucibleEngine:
         df['cagr'] = (df[close_col] / df[close_col].shift(252) - 1) * 100
         df['cagr'] = df['cagr'].fillna(0.0)  # Replace NaN with 0.0
         
-        # Standardize column names
+        # Standardize column names for compatibility
         column_mapping = {
-            'Stochastic_K': 'stoch_k',
-            'Stochastic_D': 'stoch_d',
-            'Volume_SMA_30': 'volume_sma_30',
-            'SMA_200': 'sma_200',
-            'SMA_25': 'sma_25',
-            'SMA_50': 'sma_50',
-            'SMA_100': 'sma_100'
+            'volume_sma': 'volume_sma_30'  # Map v7.2 name to expected name
         }
         
         for old_col, new_col in column_mapping.items():
@@ -116,27 +117,17 @@ class CrucibleEngine:
         )
     
     def generate_signals(self, df: pd.DataFrame, version: str = 'v6.0') -> pd.DataFrame:
-        """Generate trading signals for specified version - ENTRY SIGNALS ONLY"""
-        signals = pd.DataFrame(index=df.index, columns=['signal'], dtype=int)
-        signals['signal'] = 0
+        """V7.3 Vectorized Signal Generation - No Python loops!"""
+        # Use vectorized signal generation - applies all guardrails at once
+        signals, df_with_guardrails = generate_vectorized_signals(df)
         
-        close_col = 'adjClose' if 'adjClose' in df.columns else 'close'
-        
-        # Entry conditions (same for both versions) - REMOVED PATTERN LOGIC
-        entry_condition = (
-            (df[close_col] > df['sma_200']) &
-            (df['stoch_k'] >= 32) & (df['stoch_k'] <= 80) &
-            (df['volume'] > df['volume_sma_30']) &
-            (df['cagr'] > 15.0)
-        )
-        
-        # Apply entry signals ONLY - NO EXIT SIGNALS
-        signals.loc[entry_condition, 'signal'] = 1
+        # Store the enhanced dataframe for use in trading simulation
+        self.df_with_guardrails = df_with_guardrails
         
         return signals
     
-    def simulate_trading(self, df: pd.DataFrame, ticker: str, version: str = 'v6.0') -> List[Dict]:
-        """Simulate trading for single ticker - FIXED VERSION"""
+    def simulate_trading(self, df: pd.DataFrame, ticker: str, version: str) -> List[Dict]:
+        """V7.3 Optimized Trading Simulation - Only loop during active trades"""
         
         df_indicators = self.calculate_indicators(df)
         signals = self.generate_signals(df_indicators, version)
@@ -145,104 +136,166 @@ class CrucibleEngine:
         position = None
         close_col = 'adjClose' if 'adjClose' in df_indicators.columns else 'close'
         
-        for idx, row in enumerate(df_indicators.itertuples()):
-            date = getattr(row, 'Index')
-            current_price = getattr(row, close_col)
+        # Track portfolio equity
+        current_equity = self.initial_capital
+        
+        # V7.3 OPTIMIZATION: Get only dates with signals or active positions
+        signal_dates = signals[signals['signal'] == 1].index.tolist()
+        
+        # If no signals, return empty trades immediately
+        if not signal_dates:
+            return trades
+        
+        # Process only relevant dates: entry dates and periods when positions are active
+        processed_dates = set()
+        current_signal_idx = 0
+        
+        while current_signal_idx < len(signal_dates):
+            entry_date = signal_dates[current_signal_idx]
             
-            # Entry signal
-            if signals.loc[date, 'signal'] == 1 and position is None:
-                # Fixed realistic position sizing
-                atr_value = getattr(row, 'atr')
+            # Add entry date to processed dates
+            processed_dates.add(entry_date)
+            
+            # Get entry data
+            if entry_date not in df_indicators.index:
+                current_signal_idx += 1
+                continue
                 
-                # Use fixed position sizing for realistic backtesting
-                # Option 1: Fixed shares (simple and realistic)
-                shares_to_buy = 1000  # Fixed 1000 shares per trade
-                
-                # Option 2: ATR-based with caps (more sophisticated)
-                # if atr_value > 0:
-                #     risk_per_trade = 1000  # Risk $1000 per trade
-                #     atr_stop_distance = 3.0 * atr_value
-                #     shares_by_risk = risk_per_trade / atr_stop_distance
-                #     shares_to_buy = max(100, min(int(shares_by_risk), 5000))  # Min 100, max 5000 shares
-                # else:
-                #     shares_to_buy = 1000  # Default if ATR is 0
-                
-                position = {
-                    'ticker': ticker,
-                    'entry_date': date,
-                    'entry_price': current_price,
-                    'shares': shares_to_buy,
-                    'entry_cost': shares_to_buy * current_price,
-                    'highest_price': current_price,
-                    'version': version,
-                    'is_power_stock': False
-                }
+            entry_row = df_indicators.loc[entry_date]
+            current_price = entry_row[close_col]
+            
+            # V7.3 GUARDRAILS: Skip if price filters fail (already applied in signal generation)
+            if current_price > 500 or current_price < 1.00:
+                current_signal_idx += 1
                 continue
             
-            # Exit logic
-            if position is not None:
-                # Update highest price for trailing stops
-                if current_price > position['highest_price']:
-                    position['highest_price'] = current_price
+            # Position sizing with Ironclad Math Guardrails
+            atr_value = entry_row['atr']
+            stop_loss_price = current_price - (3.0 * atr_value) if atr_value > 0 else current_price * 0.95
+            
+            # Get 30-day average volume for 'Too Big' filter
+            avg_volume_30d = entry_row.get('volume_sma', 0)
+            
+            shares_to_buy = calculate_position_size_v7_2(current_equity, current_price, stop_loss_price, avg_volume_30d)
+            
+            # Skip if position sizing returns 0
+            if shares_to_buy == 0:
+                current_signal_idx += 1
+                continue
+            
+            # Create position
+            position = {
+                'ticker': ticker,
+                'entry_date': entry_date,
+                'entry_price': current_price,
+                'shares': shares_to_buy,
+                'entry_cost': shares_to_buy * current_price,
+                'highest_price': current_price,
+                'version': version,
+                'is_power_stock': False,
+                'power_promotion_date': None,
+                'stop_loss_price': stop_loss_price,
+                'portfolio_equity_at_entry': current_equity
+            }
+            
+            # V7.3 OPTIMIZATION: Find exit date efficiently
+            exit_date = None
+            exit_reason = None
+            
+            # Search forward from entry date to find exit
+            date_idx = df_indicators.index.get_loc(entry_date)
+            
+            for future_idx in range(date_idx + 1, len(df_indicators)):
+                future_date = df_indicators.index[future_idx]
+                future_row = df_indicators.iloc[future_idx]
+                future_price = future_row[close_col]
                 
-                # Check Power Stock status (v6.5 only)
-                if version == 'v6.5':
-                    if self.detect_power_stock(df_indicators, df_indicators.index.get_loc(date)):
-                        position['is_power_stock'] = True
+                # Update highest price for trailing stops
+                if future_price > position['highest_price']:
+                    position['highest_price'] = future_price
+                
+                # Check Power Stock promotion (v6.5 only)
+                if version == 'v6.5' and not position.get('is_power_stock', False):
+                    # Use vectorized power confirmation
+                    if future_date in self.df_with_guardrails.index:
+                        power_confirmed = self.df_with_guardrails.loc[future_date, 'power_confirmation_2day']
+                        if power_confirmed:
+                            position['is_power_stock'] = True
+                            position['power_promotion_date'] = future_date
                 
                 # Check exit conditions
                 should_exit = False
-                exit_reason = ''
-                
                 if version == 'v6.0':
                     # v6.0: SMA 200 break OR ATR stop
-                    if current_price < getattr(row, 'sma_200'):
+                    if future_price < future_row['sma_200']:
                         should_exit = True
                         exit_reason = 'SMA_200_BREAK'
-                    elif current_price < (position['highest_price'] - 3 * getattr(row, 'atr')):
+                    elif future_price < (position['highest_price'] - 3 * future_row['atr']):
                         should_exit = True
                         exit_reason = 'ATR_STOP'
-                        
                 else:  # v6.5
-                    # v6.5 Power Shield Logic
                     is_power_stock = position.get('is_power_stock', False)
-                    
                     if is_power_stock:
                         # Power Stock: SMA 25 break OR ATR stop
-                        if current_price < getattr(row, 'sma_25'):
+                        if future_price < future_row['sma_25']:
                             should_exit = True
                             exit_reason = 'POWER_STOCK_SMA_25_BREAK'
-                        elif current_price < (position['highest_price'] - 3 * getattr(row, 'atr')):
+                        elif future_price < (position['highest_price'] - 3 * future_row['atr']):
                             should_exit = True
                             exit_reason = 'POWER_STOCK_ATR_STOP'
                     else:
-                        # Standard: SMA 200 break OR ATR stop
-                        if current_price < getattr(row, 'sma_200'):
-                            should_exit = True
-                            exit_reason = 'SMA_200_BREAK'
-                        elif current_price < (position['highest_price'] - 3 * getattr(row, 'atr')):
-                            should_exit = True
-                            exit_reason = 'ATR_STOP'
+                        # Standard: Use Blueprint Exit (Stochastic Roll-over) or SMA 200
+                        if future_date in self.df_with_guardrails.index:
+                            stoch_roll_over = self.df_with_guardrails.loc[future_date, 'stoch_roll_over']
+                            if stoch_roll_over:
+                                should_exit = True
+                                exit_reason = 'Blueprint Exit: Stoch_K < Stoch_D (Roll-over)'
+                            elif future_price < future_row['sma_200']:
+                                should_exit = True
+                                exit_reason = 'Safety: Price < SMA_200'
                 
                 if should_exit:
-                    # Create trade record
-                    trade = {
-                        'ticker': ticker,
-                        'version': version,
-                        'entry_date': position['entry_date'],
-                        'exit_date': date,
-                        'entry_price': position['entry_price'],
-                        'exit_price': current_price,
-                        'shares': position['shares'],
-                        'profit_loss': (current_price - position['entry_price']) * position['shares'],
-                        'profit_loss_pct': ((current_price - position['entry_price']) / position['entry_price']) * 100,
-                        'duration': (date - position['entry_date']).days,
-                        'is_power_stock': position.get('is_power_stock', False),
-                        'exit_reason': exit_reason
-                    }
-                    
-                    trades.append(trade)
-                    position = None
+                    exit_date = future_date
+                    break
+            
+            # Create trade record if exit found
+            if exit_date:
+                exit_price = df_indicators.loc[exit_date, close_col]
+                trade_pnl = (exit_price - position['entry_price']) * position['shares']
+                
+                trade = {
+                    'ticker': ticker,
+                    'version': version,
+                    'entry_date': position['entry_date'],
+                    'exit_date': exit_date,
+                    'entry_price': position['entry_price'],
+                    'exit_price': exit_price,
+                    'shares': position['shares'],
+                    'profit_loss': trade_pnl,
+                    'profit_loss_pct': ((exit_price - position['entry_price']) / position['entry_price']) * 100,
+                    'duration': (exit_date - position['entry_date']).days,
+                    'is_power_stock': position['is_power_stock'],
+                    'power_promotion_date': position.get('power_promotion_date'),
+                    'exit_reason': exit_reason,
+                    'portfolio_equity_at_entry': position['portfolio_equity_at_entry']
+                }
+                
+                trades.append(trade)
+                current_equity += trade_pnl
+                
+                # Find next signal after this exit
+                current_signal_idx = 0
+                for i, signal_date in enumerate(signal_dates):
+                    if signal_date > exit_date:
+                        current_signal_idx = i
+                        break
+                else:
+                    break  # No more signals after this exit
+            else:
+                # No exit found, move to next signal
+                current_signal_idx += 1
+            
+            position = None
         
         return trades
     
@@ -519,7 +572,11 @@ class CrucibleEngine:
         for version in versions:
             if all_results[version]:
                 df = pd.DataFrame(all_results[version])
-                filename = f"backtest_results_{version.replace('.', '_')}.csv"
+                # Use custom output path if provided, otherwise default
+                if hasattr(self, 'output_path') and self.output_path:
+                    filename = self.output_path.replace('{version}', version.replace('.', '_'))
+                else:
+                    filename = f"backtest_results_{version.replace('.', '_')}.csv"
                 df.to_csv(filename, index=False)
                 print(f"  Saved {len(df)} trades to {filename}")
         
@@ -528,5 +585,31 @@ class CrucibleEngine:
         print(f"🎯 v6.5 Power Hunter is working beautifully!")
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='VolatilityHunter Crucible Engine - Master Backtest')
+    parser.add_argument('--mode', type=str, default='sequential', 
+                       help='Backtest mode: sequential, parallel, or hybrid')
+    parser.add_argument('--risk', type=float, default=0.01, 
+                       help='Risk per trade (default: 0.01 = 1%)')
+    parser.add_argument('--output', type=str, default=None, 
+                       help='Output CSV file path (use {version} placeholder for version-specific files)')
+    
+    args = parser.parse_args()
+    
     engine = CrucibleEngine()
-    engine.run_crucible_sequential()
+    
+    # Set custom parameters
+    if args.output:
+        engine.output_path = args.output
+        print(f"📁 Output path: {args.output}")
+    
+    print(f"⚙️ Mode: {args.mode}")
+    print(f"⚠️ Risk: {args.risk:.2%}")
+    
+    # Run appropriate mode
+    if args.mode == 'parallel':
+        engine.run_crucible()
+    elif args.mode == 'hybrid':
+        print("🔄 Running hybrid mode (multiprocessing with v7.3 guardrails)...")
+        engine.run_crucible()  # Use the same multiprocessing method
+    else:
+        engine.run_crucible_sequential()

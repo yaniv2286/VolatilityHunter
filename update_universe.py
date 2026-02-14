@@ -77,6 +77,12 @@ def smart_update_ticker(ticker, headers, force_full_refresh=False):
         new_df = pd.DataFrame(data)
         new_df['date'] = pd.to_datetime(new_df['date'])
         
+        # V7.3 SANITIZATION: Price ceiling filter to reject split-adjustment ghosts
+        if 'adjClose' in new_df.columns:
+            max_price = new_df['adjClose'].max()
+            if max_price > 500:
+                return {'success': False, 'reason': f'Price ceiling violation: ${max_price:.2f} > $500 (split-adjustment ghost)'}
+        
         # Standardize column names to match existing parquet format
         new_df = new_df.rename(columns={
             'open': 'open',
