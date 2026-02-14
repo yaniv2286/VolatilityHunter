@@ -57,11 +57,8 @@ class CrucibleEngine:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
             df = df.dropna(subset=required_cols)
             
-            # V7.3 SANITIZATION: Filter to 2015-2026 (avoid reverse split era 2001-2005)
-            if 'date' in df.index:
-                start_date = pd.to_datetime('2015-01-01')
-                end_date = pd.to_datetime('2026-12-31')
-                df = df[(df.index >= start_date) & (df.index <= end_date)]
+            # V7.3 FULL ERA: No date restrictions - process all available data (2000-2026)
+            # This enables testing Ironclad Guardrails against 2008 crash and full market history
             
             # RULE 1: HARD 252-DAY ENFORCEMENT
             if len(df) < 252:
@@ -458,6 +455,31 @@ class CrucibleEngine:
         print(f"Power Stock Trades: {len(v65_power_stocks)}")
         print(f"Power Stock Win Rate: {v65_power_win_rate:.2%}")
         print("=" * 80)
+        
+        # Save detailed results to CSV
+        print(f"\nSaving detailed results...")
+        
+        # Save v6.0 results
+        if all_v60_trades:
+            v60_df = pd.DataFrame(all_v60_trades)
+            if hasattr(self, 'output_path') and self.output_path:
+                filename = self.output_path.replace('{version}', 'v6_0')
+            else:
+                filename = "backtest_results_v6_0.csv"
+            v60_df.to_csv(filename, index=False)
+            print(f"  Saved {len(v60_df)} trades to {filename}")
+        
+        # Save v6.5 results  
+        if all_v65_trades:
+            v65_df = pd.DataFrame(all_v65_trades)
+            if hasattr(self, 'output_path') and self.output_path:
+                filename = self.output_path.replace('{version}', 'v6_5')
+            else:
+                filename = "backtest_results_v6_5.csv"
+            v65_df.to_csv(filename, index=False)
+            print(f"  Saved {len(v65_df)} trades to {filename}")
+        
+        print(f"\nMULTIPROCESSING BACKTEST COMPLETE!")
     
     def run_crucible_sequential(self) -> None:
         """Run the complete 20-year backtest comparison - SEQUENTIAL VERSION"""
@@ -591,7 +613,7 @@ if __name__ == "__main__":
     parser.add_argument('--risk', type=float, default=0.01, 
                        help='Risk per trade (default: 0.01 = 1%)')
     parser.add_argument('--output', type=str, default=None, 
-                       help='Output CSV file path (use {version} placeholder for version-specific files)')
+                       help='Output CSV file path (use version placeholder for version-specific files)')
     
     args = parser.parse_args()
     
@@ -600,16 +622,16 @@ if __name__ == "__main__":
     # Set custom parameters
     if args.output:
         engine.output_path = args.output
-        print(f"📁 Output path: {args.output}")
+        print(f"Output path: {args.output}")
     
-    print(f"⚙️ Mode: {args.mode}")
-    print(f"⚠️ Risk: {args.risk:.2%}")
+    print(f"Mode: {args.mode}")
+    print(f"Risk: {args.risk:.2%}")
     
     # Run appropriate mode
     if args.mode == 'parallel':
         engine.run_crucible()
     elif args.mode == 'hybrid':
-        print("🔄 Running hybrid mode (multiprocessing with v7.3 guardrails)...")
+        print("Running hybrid mode (multiprocessing with v7.3 guardrails)...")
         engine.run_crucible()  # Use the same multiprocessing method
     else:
         engine.run_crucible_sequential()
