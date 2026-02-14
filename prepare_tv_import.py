@@ -10,7 +10,7 @@ def prepare_tv_import():
     
     # Load the data
     print('📊 Loading backtest results...')
-    trades = pd.read_csv('backtest_results_v6_5.csv')
+    trades = pd.read_csv('data/full_era_v6_5.csv')
     
     print(f'✅ Loaded {len(trades):,} total trades')
     
@@ -46,20 +46,21 @@ def prepare_tv_import():
     print(f'✅ Remaining trades after cleaning: {len(trades):,}')
     print(f'✅ Clean rate: {len(trades)/original_count*100:.1f}%')
     
-    # 2. SELECT TOP 500 VALID TRADES (ORDERED BY DATE)
-    print('\n📅 SELECTING TOP 500 VALID TRADES BY DATE...')
+    # 2. SELECT TOP 250 COMPLETE TRADES (ORDERED BY DATE)
+    print('\n📅 SELECTING TOP 250 COMPLETE TRADES BY DATE...')
     print('-' * 55)
     
     # Sort by entry_date to get chronological history
     trades_sorted = trades.sort_values('entry_date')
     
-    # Take first 500 trades (chronological)
-    top_trades = trades_sorted.head(500)
+    # Take first 250 trades (chronological) - this will create 500 rows (250 buys + 250 sells)
+    top_trades = trades_sorted.head(250)
     
-    print(f'✅ Selected {len(top_trades):,} trades')
+    print(f'✅ Selected {len(top_trades):,} complete trades')
     print(f'• Date range: {top_trades["entry_date"].min()} to {top_trades["entry_date"].max()}')
     print(f'• Average profit: {top_trades["profit_loss_pct"].mean():.2f}%')
     print(f'• Win rate: {(top_trades["profit_loss"] > 0).mean() * 100:.1f}%')
+    print(f'• Will generate {len(top_trades) * 2} total rows (buys + sells)')
     
     # 3. DYNAMIC EXCHANGE MAPPING
     print('\n📋 DYNAMIC EXCHANGE MAPPING...')
@@ -114,7 +115,8 @@ def prepare_tv_import():
     tv_data = []
     
     for _, trade in top_trades.iterrows():
-        tv_trade = {
+        # Create BUY row
+        buy_trade = {
             'Symbol': map_symbol(trade['ticker']),
             'Side': 'buy',
             'Qty': int(trade['shares']),
@@ -122,7 +124,18 @@ def prepare_tv_import():
             'Commission': 0,
             'Closing Time': format_date(trade['entry_date'])
         }
-        tv_data.append(tv_trade)
+        tv_data.append(buy_trade)
+        
+        # Create SELL row
+        sell_trade = {
+            'Symbol': map_symbol(trade['ticker']),
+            'Side': 'sell',
+            'Qty': int(trade['shares']),
+            'Fill Price': round(trade['exit_price'], 2),
+            'Commission': 0,
+            'Closing Time': format_date(trade['exit_date'])
+        }
+        tv_data.append(sell_trade)
     
     # Create DataFrame with exact TradingView column order
     tv_df = pd.DataFrame(tv_data, columns=['Symbol', 'Side', 'Qty', 'Fill Price', 'Commission', 'Closing Time'])
@@ -131,7 +144,7 @@ def prepare_tv_import():
     print('\n💾 SAVING TRADINGVIEW FILE...')
     print('-' * 30)
     
-    output_file = 'tv_final_sync_v6_5.csv'
+    output_file = 'tv_full_era_v6_5.csv'
     tv_df.to_csv(output_file, index=False)
     
     print(f'✅ Saved to: {output_file}')
@@ -145,14 +158,20 @@ def prepare_tv_import():
     print(f'• Original trades: {original_count:,}')
     print(f'• After price ceiling ($500): {original_count - removed_ceiling:,}')
     print(f'• After price floor ($1.00): {len(trades):,}')
-    print(f'• Exported to TV: {len(tv_df):,}')
+    print(f'• Complete trades selected: {len(top_trades):,}')
+    print(f'• Total TV rows (buys + sells): {len(tv_df):,}')
     print(f'• Export rate: {len(tv_df)/original_count*100:.2f}%')
     
     print(f'\n📈 TRADE STATISTICS:')
-    print(f'• Avg shares per trade: {tv_df["Qty"].mean():.0f}')
-    print(f'• Avg fill price: ${tv_df["Fill Price"].mean():.2f}')
-    print(f'• Price range: ${tv_df["Fill Price"].min():.2f} - ${tv_df["Fill Price"].max():.2f}')
-    print(f'• Total shares traded: {tv_df["Qty"].sum():,}')
+    buy_rows = tv_df[tv_df['Side'] == 'buy']
+    sell_rows = tv_df[tv_df['Side'] == 'sell']
+    print(f'• Buy rows: {len(buy_rows)}')
+    print(f'• Sell rows: {len(sell_rows)}')
+    print(f'• Avg shares per trade: {buy_rows["Qty"].mean():.0f}')
+    print(f'• Avg buy price: ${buy_rows["Fill Price"].mean():.2f}')
+    print(f'• Avg sell price: ${sell_rows["Fill Price"].mean():.2f}')
+    print(f'• Buy price range: ${buy_rows["Fill Price"].min():.2f} - ${buy_rows["Fill Price"].max():.2f}')
+    print(f'• Total shares traded: {buy_rows["Qty"].sum():,}')
     
     print(f'\n🎯 EXCHANGE DISTRIBUTION:')
     exchange_counts = tv_df['Symbol'].apply(lambda x: x.split(':')[0]).value_counts()
@@ -173,16 +192,17 @@ def prepare_tv_import():
     print(f'\n🎯 TRADINGVIEW IMPORT READY!')
     print('=' * 70)
     print(f'📁 File: {output_file}')
-    print(f'📊 Trades: {len(tv_df)}')
+    print(f'📊 Complete trades: {len(top_trades)}')
+    print(f'📈 Total rows (buys + sells): {len(tv_df)}')
     print(f'💰 Total P&L of exported trades: ${top_trades["profit_loss"].sum():,.0f}')
     print(f'📈 Avg profit per exported trade: {top_trades["profit_loss_pct"].mean():.2f}%')
     print(f'🛡️ Safety filters: Price ceiling $500, Floor $1.00')
-    print(f'✅ Ready for TradingView Portfolio import!')
+    print(f'✅ Ready for TradingView Portfolio import with complete round-trip trades!')
     
-    # Sample of the file content
-    print(f'\n📋 SAMPLE FILE CONTENT (First 3 rows):')
+    # Sample of the file content (showing buy/sell pairs)
+    print(f'\n📋 SAMPLE FILE CONTENT (First 6 rows - 3 complete trades):')
     print('-' * 50)
-    print(tv_df.head(3).to_string(index=False))
+    print(tv_df.head(6).to_string(index=False))
 
 if __name__ == "__main__":
     prepare_tv_import()
