@@ -1,8 +1,8 @@
 # 🏗️ VolatilityHunter Architecture
 
 **Project:** VolatilityHunter  
-**Version:** 6.5 (A+ Wealth Builder | Power Stock Shield | Paper Trading)  
-**Status:** PRODUCTION READY | AUTONOMOUS | 26-YEAR BACKTESTED  
+**Version:** 6.5 Power Hunter | Crucible Validated | TradingView Ready  
+**Status:** PRODUCTION READY | AUTONOMOUS | 26-YEAR BACKTESTED | 102,483 TRADES ANALYZED  
 
 ---
 
@@ -62,7 +62,7 @@
 
 #### **Step D: Market Analysis**
 - Scans 2,147 tickers for A+ Wealth Builder signals
-- Applies strict 4-rule entry criteria
+- Applies strict 5-rule entry criteria
 - Calculates SMA 200, Stochastic %K (10,3,3), Volume SMA
 - Filters by historical CAGR > 15%
 - Detects visual patterns (W-Pattern/Engulfing)
@@ -81,7 +81,91 @@
 
 ---
 
-## 🔧 Key Technical Decisions
+## � The Crucible Engine (26-Year Backtest)
+
+### Core Implementation
+```python
+class CrucibleEngine:
+    def __init__(self, initial_capital: float = 100000):
+        self.initial_capital = initial_capital
+        self.data_dir = 'data'
+```
+
+### Key Features
+#### **252-Day Bouncer (Rule 1)**
+```python
+if len(df) < 252:
+    return None  # HARD ENFORCEMENT - No exceptions
+```
+
+#### **Multiprocessing & Memory Management (Rule 3)**
+```python
+with ProcessPoolExecutor(max_workers=4) as executor:
+    # Worker function with explicit cleanup
+    del df
+    import gc
+    gc.collect()
+```
+
+#### **v6.0 vs v6.5 Logic Comparison (Rule 4)**
+```python
+# v6.0 Exit:
+exit_condition = (price < sma_200) | (price < (highest_price - 3*ATR))
+
+# v6.5 Power Shield:
+if became_power_stock:
+    # Remove SMA 200 exit, keep only ATR stop
+    if not (price < (highest_price - 3*ATR)):
+        signals.iloc[i] = 0  # Cancel SMA 200 exit
+```
+
+#### **Performance Metrics (Rule 5)**
+- **CAGR**: Compound Annual Growth Rate
+- **Max Drawdown**: Peak-to-trough decline
+- **Win Rate**: Percentage of profitable trades
+- **Profit Factor**: Total wins / total losses
+- **Total Trades**: Number of completed trades
+
+### Crucible Results Summary
+| Metric | v6.0 Pattern Hunter | v6.5 Power Hunter | Improvement |
+|--------|-------------------|-------------------|-------------|
+| **Total Trades** | 53,875 | 102,483 | +90.2% |
+| **Win Rate** | 32.11% | 45.59% | +42.0% |
+| **Power Stock WR** | N/A | 68.34% | - |
+| **Drawdown** | Higher | Lower | Better Risk Control |
+
+---
+
+## 📈 TradingView Integration
+
+### Export Engine (`prepare_tv_import.py`)
+```python
+# Dynamic Exchange Mapping
+def map_symbol(ticker):
+    if ticker_upper in nasdaq_tickers:
+        return f'NASDAQ:{ticker_upper}'
+    elif ticker_upper in amex_tickers:
+        return f'AMEX:{ticker_upper}'
+    else:
+        return f'NYSE:{ticker_upper}'
+```
+
+### Safety Filters
+- **Price Ceiling**: $500 (removes reverse-split ghosts)
+- **Price Floor**: $1.00 (removes penny stocks)
+- **Data Cleaning**: Invalid entries filtered
+- **Chronological Order**: 2001-2002 period for visualization
+
+### Export Format
+```csv
+Symbol,Side,Qty,Fill Price,Commission,Closing Time
+NASDAQ:AAPL,buy,1000,150.25,0,2021-01-15
+NYSE:JPM,buy,1000,125.50,0,2021-01-16
+```
+
+---
+
+## �🔧 Key Technical Decisions
 
 ### Data Storage: Local Parquet Files
 **Location:** `data/` directory  
@@ -128,7 +212,9 @@ VolatilityHunter/
 │   ├── main.py                 # The Hunter - Main trading execution
 │   ├── health_check.py         # The Guard - System health validation
 │   ├── update_universe.py      # The Historian - Smart data sync
-│   └── crucible_engine.py       # The Crucible - 26-year backtest engine
+│   ├── crucible_engine.py       # The Crucible - 26-year backtest engine
+│   ├── prepare_tv_import.py    # TradingView export engine
+│   └── final_audit.py          # Architect audit tools
 │
 ├── 📂 src/                    # Core business logic
 │   ├── tracker.py             # Portfolio management (ATR-enabled)
@@ -143,7 +229,9 @@ VolatilityHunter/
 ├── 📂 data/                   # Market data & state (Git Ignored)
 │   ├── *.parquet            # Individual ticker data files
 │   ├── portfolio.json        # ATR-enabled portfolio state
-│   └── portfolio_backup.json # Legacy backup
+│   ├── backtest_results_v6_0.csv  # v6.0 Crucible results
+│   ├── backtest_results_v6_5.csv  # v6.5 Crucible results
+│   └── tv_final_sync_v6_5.csv     # TradingView import
 │
 ├── 📂 logs/                   # Daily execution logs
 │   └── VH_YYYY-MM-DD.log     # Daily trading logs
@@ -176,13 +264,15 @@ main.py → A+ Strategy Engine → Signal Generation → Execution
 portfolio.json ← Trade Execution ← ATR Exit Engine ← Risk Management
                                     ↓
 HTML/Email Reports ← Portfolio Valuation ← Market Data
+                                    ↓
+TradingView Export ← prepare_tv_import.py ← Backtest Results
 ```
 
 ---
 
 ## 🎯 A+ Wealth Builder Strategy Logic
 
-### Entry Rules (Strict 4-Gate System)
+### Entry Rules (Strict 5-Gate System)
 ```python
 # 1. QUALITY: Historical CAGR > 15%
 if cagr < 15.0: return HOLD
@@ -196,7 +286,7 @@ if not (32.0 <= stoch_k <= 80.0): return HOLD
 # 4. MOMENTUM: Current Volume > 30-Day Volume SMA
 if current_volume <= volume_sma: return HOLD
 
-# PHASE 1: VISUAL PATTERN RECOGNITION
+# 5. PATTERN: Visual confirmation
 has_pattern = patterns['is_engulfing'] or patterns['is_w_pattern']
 if not has_pattern: return HOLD
 
@@ -277,85 +367,15 @@ if position_cost > max_position_cost:
 
 ---
 
-## 🔥 The Crucible Engine (26-Year Backtest)
-
-### Core Implementation
-```python
-class CrucibleEngine:
-    def __init__(self, initial_capital: float = 100000):
-        self.initial_capital = initial_capital
-        self.data_dir = 'data'
-```
-
-### Key Features
-#### **252-Day Bouncer (Rule 1)**
-```python
-if len(df) < 252:
-    return None  # HARD ENFORCEMENT - No exceptions
-```
-
-#### **Multiprocessing & Memory Management (Rule 3)**
-```python
-with ProcessPoolExecutor(max_workers=4) as executor:
-    # Worker function with explicit cleanup
-    del df
-    import gc
-    gc.collect()
-```
-
-#### **v6.0 vs v6.5 Logic Comparison (Rule 4)**
-```python
-# v6.0 Exit:
-exit_condition = (price < sma_200) | (price < (highest_price - 3*ATR))
-
-# v6.5 Power Shield:
-if became_power_stock:
-    # Remove SMA 200 exit, keep only ATR stop
-    if not (price < (highest_price - 3*ATR)):
-        signals.iloc[i] = 0  # Cancel SMA 200 exit
-```
-
-#### **Performance Metrics (Rule 5)**
-- **CAGR**: Compound Annual Growth Rate
-- **Max Drawdown**: Peak-to-trough decline
-- **Win Rate**: Percentage of profitable trades
-- **Profit Factor**: Total wins / total losses
-- **Total Trades**: Number of completed trades
-
----
-
-## �️ Reliability Features
-
-### Health Monitoring
-- Pre-market system checks
-- API availability validation
-- Disk space monitoring
-- Configuration integrity checks
-- System resource tracking (psutil integration)
-
-### Data Integrity
-- Parquet file validation
-- Portfolio JSON schema checking
-- Backup file rotation
-- Atomic write operations
-- Smart append logic preventing data destruction
-
-### Error Recovery
-- Automatic backup restoration
-- Individual ticker error isolation
-- Graceful degradation modes
-- Comprehensive error logging with sanitization
-
----
-
-## 📈 Performance Metrics
+##  Performance Metrics
 
 ### System Performance
 - **Startup Time:** <5 seconds
 - **Market Scan:** 2,147 stocks in <30 seconds
-- **Portfolio Loading:** <1 second with robust error handling
-- **Memory Usage:** <500MB during full universe scan
+- **Portfolio Loading:** <1 second with error resilience
+- **Memory Usage:** <500MB during full scan
 - **Data Pipeline:** 99.9% uptime with 8.7M+ rows
+- **Crucible Backtest:** 102,483 trades in <1 hour
 
 ### Reliability Metrics
 - **Uptime:** 99.9% (with error resilience)
@@ -382,10 +402,10 @@ if became_power_stock:
 
 ---
 
-## 🎯 Version 6.5 Achievements
+## 🎯 Version 6.5 Power Hunter Achievements
 
 ### ✅ A+ Wealth Builder Strategy
-- **Strict Entry Rules:** 4-rule gatekeeper implementation
+- **Strict Entry Rules:** 5-rule gatekeeper implementation
 - **Stochastic K=10:** Precision-tuned for optimal signals
 - **Volume Momentum:** Added volume confirmation
 - **CAGR Quality Filter:** Strict 15% minimum
@@ -401,6 +421,13 @@ if became_power_stock:
 - **Multiprocessing:** Parallel processing with memory management
 - **252-Day Bouncer:** Minimum data quality enforcement
 - **v6.0 vs v6.5 Comparison:** Direct performance analysis
+- **Results:** 102,483 trades analyzed and validated
+
+### ✅ TradingView Integration
+- **Portfolio Import Ready:** Clean 500-trade export
+- **Dynamic Exchange Mapping:** NASDAQ/NYSE/AMEX assignment
+- **Safety Filters:** Reverse-split and penny stock removal
+- **Exact Format:** TradingView-compatible column headers
 
 ### ✅ Data Pipeline Rebuild
 - **Smart Append Logic:** Prevents data destruction
@@ -412,7 +439,7 @@ if became_power_stock:
 - **Zero Data Loss:** Robust portfolio persistence
 - **Comprehensive Error Handling:** Individual ticker isolation
 - **Automated Health Checks:** Pre-market validation
-- **Complete Audit Trail:** Full trade and stop logging
+- **Complete Audit Trail:** Full trade and stop update logging
 
 ---
 
@@ -453,4 +480,23 @@ positions_to_close = executor.check_exit_conditions(
 exit_trades = executor.execute_exit_trades(positions_to_close)
 ```
 
-**Status:** 🟢 **PRODUCTION READY** - Fully operational A+ Wealth Builder v6.5 trading system with Power Stock Shield.
+### TradingView Export (`prepare_tv_import.py`)
+```python
+# Safety Filters
+price_ceiling_filter = trades['entry_price'] <= 500
+price_floor_filter = trades['entry_price'] >= 1.00
+trades = trades[price_ceiling_filter & price_floor_filter]
+
+# Dynamic Exchange Mapping
+def map_symbol(ticker):
+    if ticker_upper in nasdaq_tickers:
+        return f'NASDAQ:{ticker_upper}'
+    elif ticker_upper in amex_tickers:
+        return f'AMEX:{ticker_upper}'
+    else:
+        return f'NYSE:{ticker_upper}'
+```
+
+---
+
+**Status:** 🟢 **PRODUCTION READY** - Fully operational A+ Wealth Builder v6.5 Power Hunter trading system with Crucible Engine validation and TradingView integration.
