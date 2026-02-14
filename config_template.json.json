@@ -1,9 +1,0 @@
-{
-    "TIME_OFFSET": 0,
-    "EMAIL_RECIPIENTS": [
-        "lugassy.ai@gmail.com"
-    ],
-    "RISK_TOLERANCE": "MEDIUM",
-    "DATA_SOURCE": "TIINGO",
-    "TRADING_MODE": "PAPER"
-}
