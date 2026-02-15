@@ -10,7 +10,8 @@ from datetime import datetime, timedelta
 import json
 from typing import Dict, List, Tuple, Any
 
-from src.strategy import analyze_stock, scan_all_stocks
+# from src.strategy import analyze_stock, scan_all_stocks  # Disabled - using v7.2 strategy
+from src.strategy_v7_2 import analyze_stock_v7_2
 from src.storage import DataStorage
 from src.tracker import Portfolio
 from src.notifications import log_info, log_error, log_warning

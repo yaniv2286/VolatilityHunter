@@ -1,5 +1,6 @@
 import requests
 import pandas as pd
+import time
 from datetime import datetime, timedelta
 from src.config import TIINGO_KEY, TIINGO_BASE_URL, BATCH_SIZE, STOCK_LIST
 from src.storage import DataStorage
@@ -22,27 +23,27 @@ def fetch_tiingo_data(tickers, start_date=None, end_date=None):
     
     results = {}
     
-    for i in range(0, len(tickers), BATCH_SIZE):
-        batch = tickers[i:i + BATCH_SIZE]
-        ticker_string = ','.join(batch)
-        
-        url = f"{TIINGO_BASE_URL}/prices"
-        params = {
-            'tickers': ticker_string,
-            'startDate': start_date,
-            'endDate': end_date,
-            'resampleFreq': 'daily'
-        }
-        
+    # Process one ticker at a time to avoid URL length limits
+    for i, ticker in enumerate(tickers):
         try:
-            log_info(f"Fetching batch: {batch}")
+            log_info(f"Fetching {ticker} ({i+1}/{len(tickers)})")
+            
+            url = f"{TIINGO_BASE_URL}/prices"
+            params = {
+                'tickers': ticker,
+                'startDate': start_date,
+                'endDate': end_date,
+                'resampleFreq': 'daily'
+            }
+            
             response = requests.get(url, headers=headers, params=params, timeout=30)
             response.raise_for_status()
             data = response.json()
             
-            for item in data:
-                ticker = item.get('ticker')
-                if ticker and 'priceData' in item:
+            if data and len(data) > 0:
+                item = data[0]
+                ticker_name = item.get('ticker')
+                if ticker_name and 'priceData' in item:
                     df = pd.DataFrame(item['priceData'])
                     if not df.empty:
                         df['date'] = pd.to_datetime(df['date'])
@@ -55,13 +56,27 @@ def fetch_tiingo_data(tickers, start_date=None, end_date=None):
                         })
                         df = df[['date', 'Open', 'High', 'Low', 'Close', 'Volume']]
                         df = df.sort_values('date').reset_index(drop=True)
-                        results[ticker] = df
-                        log_info(f"Fetched {len(df)} rows for {ticker}")
+                        results[ticker_name] = df
+                        log_info(f"Fetched {len(df)} rows for {ticker_name}")
+                    else:
+                        log_warning(f"No price data available for {ticker}")
+                else:
+                    log_warning(f"Invalid data format for {ticker}")
+            else:
+                log_warning(f"No data returned for {ticker}")
             
+            # Rate limiting: small delay between requests
+            time.sleep(0.1)
+            
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 404:
+                log_warning(f"Ticker {ticker} not found on Tiingo (possibly delisted)")
+            else:
+                log_error(f"HTTP error fetching {ticker}: {e}")
         except requests.exceptions.RequestException as e:
-            log_error(f"Failed to fetch batch {batch}: {e}")
+            log_error(f"Network error fetching {ticker}: {e}")
         except Exception as e:
-            log_error(f"Error processing batch {batch}: {e}")
+            log_error(f"Error processing {ticker}: {e}")
     
     return results
 

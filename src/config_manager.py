@@ -7,6 +7,10 @@ import os
 from enum import Enum
 from typing import Dict, Any
 from dataclasses import dataclass
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 class TradingMode(Enum):
     SIMULATION = "simulation"

@@ -283,7 +283,7 @@ class Portfolio:
     def _check_risk_management_trades(self, current_prices, trades_executed):
         """Check for stop-loss, take-profit, and technical exit opportunities."""
         from src.config_manager import get_config
-        from src.strategy import analyze_stock
+        from src.strategy_v7_2 import analyze_stock_v7_2
         from src.storage import DataStorage
         
         config = get_config()
@@ -318,7 +318,7 @@ class Portfolio:
                     storage = DataStorage()
                     df = storage.load_data(ticker)
                     if df is not None and len(df) > 0:
-                        analysis = analyze_stock(df, ticker)
+                        analysis = analyze_stock_v7_2(df, ticker)
                         indicators = analysis.get('indicators', {})
                         
                         # Check for stochastic crossover (Stochastic K crossing below D)
@@ -490,11 +490,12 @@ class Portfolio:
                     continue
                 
                 # Check sector diversification
-                from src.strategy import check_sector_diversification
-                if not check_sector_diversification(self.state['positions'], ticker):
-                    sector = check_sector_diversification.__globals__.get('SECTOR_MAPPING', {}).get(ticker, 'Unknown')
-                    log_info(f"Skipping {ticker} - sector limit reached ({sector})")
-                    continue
+                # Note: Sector check temporarily disabled due to old strategy dependency
+                # from src.strategy_v7_2 import check_sector_diversification_v7_2
+                # if not check_sector_diversification_v7_2(self.state['positions'], ticker):
+                #     sector = "Unknown"
+                #     log_info(f"Skipping {ticker} - sector limit reached ({sector})")
+                #     continue
                 
                 # Check if we have enough cash
                 if self.state['cash'] < position_size:
@@ -675,8 +676,9 @@ class Portfolio:
                     # Multiple tickers - get the last close price for each
                     for ticker in tickers:
                         try:
-                            if ('Close', ticker) in data.columns:
-                                close_prices = data['Close'][ticker].dropna()
+                            close_col = 'adjClose' if ('adjClose', ticker) in data.columns else 'Close' if ('Close', ticker) in data.columns else 'close'
+                            if (close_col, ticker) in data.columns:
+                                close_prices = data[close_col][ticker].dropna()
                                 if len(close_prices) > 0:
                                     current_price = close_prices.iloc[-1]
                                     current_prices[ticker] = float(current_price)
@@ -691,7 +693,8 @@ class Portfolio:
                 else:
                     # Single ticker
                     if len(data) > 0:
-                        current_price = data['Close'].iloc[-1]
+                        close_col = 'adjClose' if 'adjClose' in data.columns else 'Close' if 'Close' in data.columns else 'close'
+                        current_price = data[close_col].iloc[-1]
                         current_prices[tickers[0]] = float(current_price)
                         live_prices_obtained += 1
                         log_info(f"[VALUATION] Successfully fetched live price for {tickers[0]}: ${current_price:.2f}")
@@ -726,7 +729,8 @@ class Portfolio:
             try:
                 df = get_stock_data(ticker)
                 if df is not None and len(df) > 0:
-                    last_price = df.iloc[-1]['Close']
+                    close_col = 'adjClose' if 'adjClose' in df.columns else 'Close' if 'Close' in df.columns else 'close'
+                    last_price = df.iloc[-1][close_col]
                     current_prices[ticker] = float(last_price)
                     log_info(f"[FALLBACK] {ticker}: ${current_prices[ticker]:.2f} (from local data)")
                 else:

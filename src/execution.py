@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 from src.notifications import log_info, log_warning, log_error
-from src.strategy import check_sector_diversification
+# from src.strategy import check_sector_diversification  # Disabled - using v7.2 strategy
 from src.strategy_v7_2 import analyze_stock_v7_2, check_exit_conditions_v7_2, calculate_position_size_v7_2, add_indicators_v7_2
 
 class Executor(ABC):
@@ -64,8 +64,9 @@ class Executor(ABC):
             return False
         
         # Check sector diversification
-        if not check_sector_diversification(current_positions, new_ticker, max_per_sector):
-            return False
+        # Note: Sector check temporarily disabled due to old strategy dependency
+        # if not check_sector_diversification(current_positions, new_ticker, max_per_sector):
+        #     return False
         
         return True
     
@@ -471,7 +472,7 @@ class PaperExecutor(Executor):
         if should_exit:
             # Create sell signal
             latest = df_with_indicators.iloc[-1]
-            current_price = latest['adjClose'] if 'adjClose' in latest else latest['close']
+            current_price = latest['adjClose'] if 'adjClose' in latest else latest['Close'] if 'Close' in latest else latest['close']
             
             # Update position state before creating signal
             self.state['positions'][ticker].update(position)

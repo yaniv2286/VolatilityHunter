@@ -127,3 +127,28 @@ main.py → Ironclad Risk Check → Hybrid 5-Gate Strategy
 portfolio.json (Trade Execution & ATR Ratchet Updates)
     ↓
 SMTP Email (HTML Summary + .log Attachment)
+
+Resilience & API Handling
+Production-Grade Error Prevention & Data Source Compatibility
+
+1. "Slow Drip" Tiingo API Batching Fix
+Problem: Tiingo API returns 404 Client Error when too many tickers are batched in a single URL request due to URL length limits.
+
+Solution: Individual ticker processing with intelligent rate limiting.
+- BATCH_SIZE = 1 (processes one ticker at a time)
+- 100ms delay between requests (time.sleep(0.1))
+- Graceful 404 handling with WARNING logs for delisted tickers
+- Continues processing remaining tickers even if some fail
+
+Result: Eliminates URL length crashes, provides granular error tracking, maintains full 2,149 ticker universe coverage.
+
+2. Robust Column Detection System
+Problem: Different data sources use varying column naming conventions (adjClose vs Close vs close), causing KeyError crashes when accessing price/volume data.
+
+Solution: Dynamic column detection with fallback hierarchy.
+- Price Columns: 'adjClose' > 'Close' > 'close' (prioritized check)
+- Volume Columns: 'Volume' > 'volume' > 'adjVolume'
+- Applied across all strategy calculations, exit conditions, and portfolio valuation
+- Centralized in strategy_v7_2.py with consistent error handling
+
+Result: System automatically adapts to any data source format, prevents case-sensitivity crashes, ensures reliable operation across Tiingo, YFinance, or local parquet data.

@@ -1,16 +1,6 @@
 {
-  "cash": 64447.72570094899,
+  "cash": 44808.03942932883,
   "positions": {
-    "MNKD": {
-      "shares": 865.0518717136496,
-      "entry_price": 5.78000020980835,
-      "entry_date": "2026-02-10",
-      "quality_score": 32.81287927467231,
-      "execution_mode": "PAPER",
-      "atr_at_entry": 0.32848333333333307,
-      "stop_price": 4.844550000000001,
-      "highest_price": 5.83
-    },
     "AEP": {
       "shares": 41.74493789440434,
       "entry_price": 119.7750015258789,
@@ -19,57 +9,84 @@
       "execution_mode": "PAPER",
       "atr_at_entry": 2.6543202133500023,
       "stop_price": 113.26703935994999,
-      "highest_price": 121.23
+      "highest_price": 126.43
     },
-    "UMBF": {
-      "shares": 39.326726632083755,
-      "entry_price": 127.13999938964844,
-      "entry_date": "2026-02-10",
-      "quality_score": 24.414048568312364,
+    "ABBV": {
+      "shares": 55,
+      "entry_price": 227.5,
+      "stop_loss_price": 210.43595000000002,
+      "entry_date": "2026-02-15",
+      "quality_score": 0,
       "execution_mode": "PAPER",
-      "atr_at_entry": 3.6380666666666692,
-      "stop_price": 121.9558,
-      "highest_price": 132.87
+      "is_power_stock": false,
+      "highest_price": 227.5,
+      "ticker": "ABBV"
     },
-    "SIMO": {
-      "shares": 42.041536930715054,
-      "entry_price": 118.93000030517578,
-      "entry_date": "2026-02-10",
-      "quality_score": 24.264303288238217,
+    "ACGL": {
+      "shares": 101,
+      "entry_price": 99.85,
+      "stop_loss_price": 91.65295,
+      "entry_date": "2026-02-15",
+      "quality_score": 0,
       "execution_mode": "PAPER",
-      "atr_at_entry": 10.264916666666664,
-      "stop_price": 100.52525,
-      "highest_price": 131.32
+      "is_power_stock": false,
+      "highest_price": 99.85,
+      "ticker": "ACGL"
     },
-    "OPLN": {
-      "shares": 166.44473527347847,
-      "entry_price": 30.040000915527344,
-      "entry_date": "2026-02-10",
-      "quality_score": 24.005963627645713,
+    "ADC": {
+      "shares": 189,
+      "entry_price": 76.58,
+      "stop_loss_price": 73.2053,
+      "entry_date": "2026-02-15",
+      "quality_score": 0,
       "execution_mode": "PAPER",
-      "atr_at_entry": 0.6725,
-      "stop_price": 27.472499999999997,
-      "highest_price": 29.49
+      "is_power_stock": false,
+      "highest_price": 76.58,
+      "ticker": "ADC"
     },
-    "ONB": {
-      "shares": 204.66639122148072,
-      "entry_price": 24.43000030517578,
-      "entry_date": "2026-02-10",
-      "quality_score": 23.901911220013314,
+    "AEE": {
+      "shares": 65,
+      "entry_price": 109.34,
+      "stop_loss_price": 100.4729,
+      "entry_date": "2026-02-15",
+      "quality_score": 0,
       "execution_mode": "PAPER",
-      "atr_at_entry": 0.5708333333333346,
-      "stop_price": 23.817499999999995,
-      "highest_price": 25.53
+      "is_power_stock": false,
+      "highest_price": 109.34,
+      "ticker": "AEE"
     },
-    "HASI": {
-      "shares": 145.3065975638485,
-      "entry_price": 34.40999984741211,
-      "entry_date": "2026-02-10",
-      "quality_score": 23.503536420723478,
+    "AEM": {
+      "shares": 9,
+      "entry_price": 205.21,
+      "stop_loss_price": 151.89885,
+      "entry_date": "2026-02-15",
+      "quality_score": 0,
       "execution_mode": "PAPER",
-      "atr_at_entry": 1.0008000000000006,
-      "stop_price": 33.6776,
-      "highest_price": 36.68
+      "is_power_stock": false,
+      "highest_price": 205.21,
+      "ticker": "AEM"
+    },
+    "AEO": {
+      "shares": 62,
+      "entry_price": 24.54,
+      "stop_loss_price": 16.624100000000002,
+      "entry_date": "2026-02-15",
+      "quality_score": 0,
+      "execution_mode": "PAPER",
+      "is_power_stock": false,
+      "highest_price": 24.54,
+      "ticker": "AEO"
+    },
+    "AER": {
+      "shares": 20,
+      "entry_price": 147.76,
+      "stop_loss_price": 125.01389999999999,
+      "entry_date": "2026-02-15",
+      "quality_score": 0,
+      "execution_mode": "PAPER",
+      "is_power_stock": false,
+      "highest_price": 147.76,
+      "ticker": "AER"
     }
   },
   "trade_history": [
@@ -218,6 +235,179 @@
       "timestamp": "2026-02-13T12:17:51.317903",
       "execution_mode": "PAPER",
       "reason": "SMA_200_BREAK"
+    },
+    {
+      "type": "SELL",
+      "ticker": "OPLN",
+      "shares": 166.44473527347847,
+      "entry_price": 30.040000915527344,
+      "exit_price": 29.49,
+      "profit_loss": -91.54475678511972,
+      "profit_loss_pct": -1.8308951357023941,
+      "timestamp": "2026-02-13T12:17:51.327186",
+      "execution_mode": "PAPER",
+      "reason": "SMA_200_BREAK"
+    },
+    {
+      "type": "SELL",
+      "ticker": "MNKD",
+      "shares": 865.0518717136496,
+      "entry_price": 5.78000020980835,
+      "exit_price": 5.63,
+      "profit_loss": -129.75796225215254,
+      "profit_loss_pct": -2.595159245043051,
+      "timestamp": "2026-02-15T00:19:28.054241",
+      "execution_mode": "PAPER",
+      "reason": "Blueprint Exit: Stoch_K < Stoch_D (Roll-over)",
+      "is_power_stock": false,
+      "highest_price": 5.83
+    },
+    {
+      "type": "SELL",
+      "ticker": "UMBF",
+      "shares": 39.326726632083755,
+      "entry_price": 127.13999938964844,
+      "exit_price": 128.99,
+      "profit_loss": 72.75446827248379,
+      "profit_loss_pct": 1.4550893654496757,
+      "timestamp": "2026-02-15T00:19:28.071099",
+      "execution_mode": "PAPER",
+      "reason": "Blueprint Exit: Stoch_K < Stoch_D (Roll-over)",
+      "is_power_stock": false,
+      "highest_price": 132.87
+    },
+    {
+      "type": "SELL",
+      "ticker": "SIMO",
+      "shares": 42.041536930715054,
+      "entry_price": 118.93000030517578,
+      "exit_price": 138.35,
+      "profit_loss": 816.4466343644272,
+      "profit_loss_pct": 16.328932687288543,
+      "timestamp": "2026-02-15T00:19:28.083099",
+      "execution_mode": "PAPER",
+      "reason": "Blueprint Exit: Stoch_K < Stoch_D (Roll-over)",
+      "is_power_stock": false,
+      "highest_price": 138.35
+    },
+    {
+      "type": "SELL",
+      "ticker": "ONB",
+      "shares": 204.66639122148072,
+      "entry_price": 24.43000030517578,
+      "exit_price": 24.37,
+      "profit_loss": -12.28004593251444,
+      "profit_loss_pct": -0.24560091865028882,
+      "timestamp": "2026-02-15T00:19:28.094619",
+      "execution_mode": "PAPER",
+      "reason": "Blueprint Exit: Stoch_K < Stoch_D (Roll-over)",
+      "is_power_stock": false,
+      "highest_price": 25.53
+    },
+    {
+      "type": "SELL",
+      "ticker": "HASI",
+      "shares": 145.3065975638485,
+      "entry_price": 34.40999984741211,
+      "exit_price": 35.83,
+      "profit_loss": 206.33539071269115,
+      "profit_loss_pct": 4.126707814253823,
+      "timestamp": "2026-02-15T00:19:28.106299",
+      "execution_mode": "PAPER",
+      "reason": "Blueprint Exit: Stoch_K < Stoch_D (Roll-over)",
+      "is_power_stock": false,
+      "highest_price": 36.68
+    },
+    {
+      "type": "BUY",
+      "ticker": "ABBV",
+      "shares": 55,
+      "price": 227.5,
+      "cost": 12512.5,
+      "timestamp": "2026-02-15T00:49:45.972690",
+      "execution_mode": "PAPER",
+      "quality_score": 0,
+      "reason": "v7.2 HYBRID STRATEGY: BUY SIGNAL | Entry Zone: Stoch_K (75.80) in [32-100] | Crossover: Stoch_K (75.80) > Stoch_D (73.21) | Trend: Price ($227.50) > SMA_200 ($210.44) | Volume: Current (8,712,013) > SMA (7,476,838)",
+      "is_power_stock": false,
+      "stop_loss_price": 210.43595000000002
+    },
+    {
+      "type": "BUY",
+      "ticker": "ACGL",
+      "shares": 101,
+      "price": 99.85,
+      "cost": 10084.849999999999,
+      "timestamp": "2026-02-15T00:49:46.002150",
+      "execution_mode": "PAPER",
+      "quality_score": 0,
+      "reason": "v7.2 HYBRID STRATEGY: BUY SIGNAL | Entry Zone: Stoch_K (50.97) in [32-100] | Crossover: Stoch_K (50.97) > Stoch_D (48.64) | Trend: Price ($99.85) > SMA_200 ($91.65) | Volume: Current (2,704,159) > SMA (2,239,966)",
+      "is_power_stock": false,
+      "stop_loss_price": 91.65295
+    },
+    {
+      "type": "BUY",
+      "ticker": "ADC",
+      "shares": 189,
+      "price": 76.58,
+      "cost": 14473.619999999999,
+      "timestamp": "2026-02-15T00:49:46.022195",
+      "execution_mode": "PAPER",
+      "quality_score": 0,
+      "reason": "v7.2 HYBRID STRATEGY: BUY SIGNAL | Entry Zone: Stoch_K (90.05) in [32-100] | Crossover: Stoch_K (90.05) > Stoch_D (86.18) | Trend: Price ($76.58) > SMA_200 ($73.21) | Volume: Current (3,195,787) > SMA (1,432,356)",
+      "is_power_stock": false,
+      "stop_loss_price": 73.2053
+    },
+    {
+      "type": "BUY",
+      "ticker": "AEE",
+      "shares": 65,
+      "price": 109.34,
+      "cost": 7107.1,
+      "timestamp": "2026-02-15T00:49:46.033754",
+      "execution_mode": "PAPER",
+      "quality_score": 0,
+      "reason": "v7.2 HYBRID STRATEGY: BUY SIGNAL | Entry Zone: Stoch_K (85.45) in [32-100] | Crossover: Stoch_K (85.45) > Stoch_D (76.88) | Trend: Price ($109.34) > SMA_200 ($100.47) | Volume: Current (3,044,709) > SMA (1,683,697)",
+      "is_power_stock": false,
+      "stop_loss_price": 100.4729
+    },
+    {
+      "type": "BUY",
+      "ticker": "AEM",
+      "shares": 9,
+      "price": 205.21,
+      "cost": 1846.89,
+      "timestamp": "2026-02-15T00:49:46.045003",
+      "execution_mode": "PAPER",
+      "quality_score": 0,
+      "reason": "v7.2 HYBRID STRATEGY: BUY SIGNAL | Entry Zone: Stoch_K (67.46) in [32-100] | Crossover: Stoch_K (67.46) > Stoch_D (62.00) | Trend: Price ($205.21) > SMA_200 ($151.90) | Volume: Current (3,761,520) > SMA (2,956,340)",
+      "is_power_stock": false,
+      "stop_loss_price": 151.89885
+    },
+    {
+      "type": "BUY",
+      "ticker": "AEO",
+      "shares": 62,
+      "price": 24.54,
+      "cost": 1521.48,
+      "timestamp": "2026-02-15T00:49:46.055539",
+      "execution_mode": "PAPER",
+      "quality_score": 0,
+      "reason": "v7.2 HYBRID STRATEGY: BUY SIGNAL | Entry Zone: Stoch_K (50.33) in [32-100] | Crossover: Stoch_K (50.33) > Stoch_D (44.65) | Trend: Price ($24.54) > SMA_200 ($16.62) | Volume: Current (6,186,853) > SMA (5,670,660)",
+      "is_power_stock": false,
+      "stop_loss_price": 16.624100000000002
+    },
+    {
+      "type": "BUY",
+      "ticker": "AER",
+      "shares": 20,
+      "price": 147.76,
+      "cost": 2955.2,
+      "timestamp": "2026-02-15T00:49:46.068017",
+      "execution_mode": "PAPER",
+      "quality_score": 0,
+      "reason": "v7.2 HYBRID STRATEGY: BUY SIGNAL | Entry Zone: Stoch_K (89.17) in [32-100] | Crossover: Stoch_K (89.17) > Stoch_D (76.73) | Trend: Price ($147.76) > SMA_200 ($125.01) | Volume: Current (1,820,837) > SMA (1,179,401)",
+      "is_power_stock": false,
+      "stop_loss_price": 125.01389999999999
     }
   ],
   "execution_mode": "PAPER"

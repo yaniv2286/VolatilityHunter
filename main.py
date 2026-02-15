@@ -10,7 +10,7 @@ import sys
 script_dir = os.path.dirname(os.path.abspath(__file__))
 os.chdir(script_dir)
 sys.path.append(script_dir)
-print(f"📍 Working Directory set to: {os.getcwd()}")
+print(f"Working Directory set to: {os.getcwd()}")
 
 # CRITICAL: Setup logging FIRST before any other imports that might use logging
 from src.notifications import setup_logging
@@ -108,7 +108,7 @@ def check_v7_2_exit_conditions(portfolio_positions, stock_data):
             
             if should_exit:
                 latest = df_with_indicators.iloc[-1]
-                current_price = latest['adjClose'] if 'adjClose' in latest else latest['close']
+                current_price = latest['adjClose'] if 'adjClose' in latest else latest['Close'] if 'Close' in latest else latest['close']
                 positions_to_close.append((ticker, current_price, exit_reason))
     
     return positions_to_close
@@ -221,7 +221,17 @@ def main():
                     exit_stock_data[ticker] = df
             
             # Check v7.2 exit conditions
-            positions_to_close = check_v7_2_exit_conditions(portfolio_positions, exit_stock_data)
+            positions_to_close = []
+            for ticker, position in portfolio_positions.items():
+                if ticker in exit_stock_data:
+                    df = exit_stock_data[ticker]
+                    df_with_indicators = add_indicators_v7_2(df)
+                    should_exit, exit_reason = check_exit_conditions_v7_2(df_with_indicators, position)
+                    
+                    if should_exit:
+                        latest = df_with_indicators.iloc[-1]
+                        exit_price = latest['adjClose'] if 'adjClose' in latest else latest['Close'] if 'Close' in latest else latest['close']
+                        positions_to_close.append((ticker, exit_price, exit_reason))
             
             if positions_to_close:
                 print(f"  - Found {len(positions_to_close)} positions to close:")
@@ -341,10 +351,12 @@ def main():
                     
                     # Try different column name variations
                     latest_price = None
-                    if 'close' in df.columns:
-                        latest_price = df.iloc[-1]['close']
+                    if 'adjClose' in df.columns:
+                        latest_price = df.iloc[-1]['adjClose']
                     elif 'Close' in df.columns:
                         latest_price = df.iloc[-1]['Close']
+                    elif 'close' in df.columns:
+                        latest_price = df.iloc[-1]['close']
                     elif 'price' in df.columns:
                         latest_price = df.iloc[-1]['price']
                     elif 'Price' in df.columns:

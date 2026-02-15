@@ -12,8 +12,9 @@ def add_vectorized_guardrails(df):
     df = df.copy()
     
     # Vectorized dollar_volume calculation
-    close_col = 'adjClose' if 'adjClose' in df.columns else 'close'
-    df['dollar_volume'] = df[close_col] * df['volume']
+    close_col = 'adjClose' if 'adjClose' in df.columns else 'Close' if 'Close' in df.columns else 'close'
+    volume_col = 'Volume' if 'Volume' in df.columns else 'volume' if 'volume' in df.columns else 'adjVolume'
+    df['dollar_volume'] = df[close_col] * df[volume_col]
     
     # Vectorized liquidity filter
     df['liquidity_pass'] = df['dollar_volume'] >= 1000000  # $1M minimum
@@ -29,7 +30,7 @@ def add_vectorized_guardrails(df):
         (df[close_col] > df['sma_100']) &
         (df[close_col] > df['sma_200'])
     )
-    df['high_volume'] = df['volume'] > (df['volume_sma'] * 1.5)
+    df['high_volume'] = df[volume_col] > (df['volume_sma'] * 1.5)
     
     # Vectorized 2-day Power Confirmation using rolling window
     df['power_criteria'] = df['power_stoch'] & df['price_above_all_smas'] & df['high_volume']
@@ -68,10 +69,10 @@ def generate_vectorized_signals(df):
 def calculate_stochastic_v7_2(df, k_period=10, d_period=3, smooth=3):
     """Calculate Stochastic Oscillator with safety fallbacks"""
     try:
-        # Use adjusted columns if available, otherwise regular columns
-        close_col = 'adjClose' if 'adjClose' in df.columns else 'close'
-        high_col = 'adjHigh' if 'adjHigh' in df.columns else 'high'
-        low_col = 'adjLow' if 'adjLow' in df.columns else 'low'
+        # Use adjusted columns if available, otherwise regular columns (handle capitalization)
+        close_col = 'adjClose' if 'adjClose' in df.columns else 'Close' if 'Close' in df.columns else 'close'
+        high_col = 'adjHigh' if 'adjHigh' in df.columns else 'High' if 'High' in df.columns else 'high'
+        low_col = 'adjLow' if 'adjLow' in df.columns else 'Low' if 'Low' in df.columns else 'low'
         
         low_min = df[low_col].rolling(window=k_period).min()
         high_max = df[high_col].rolling(window=k_period).max()
@@ -97,26 +98,37 @@ def calculate_stochastic_v7_2(df, k_period=10, d_period=3, smooth=3):
 def calculate_sma_v7_2(df, period):
     """Calculate SMA with safety checks"""
     try:
-        close_col = 'adjClose' if 'adjClose' in df.columns else 'close'
+        close_col = 'adjClose' if 'adjClose' in df.columns else 'Close' if 'Close' in df.columns else 'close'
         return df[close_col].rolling(window=period).mean()
     except Exception as e:
         log_error(f"Error calculating SMA {period}: {e}")
-        return pd.Series([df['close'].iloc[-1]] * len(df))
+        # Use robust column detection in fallback
+        close_col = 'adjClose' if 'adjClose' in df.columns else 'Close' if 'Close' in df.columns else 'close'
+        if close_col in df.columns:
+            return pd.Series([df[close_col].iloc[-1]] * len(df))
+        else:
+            return pd.Series([0] * len(df))
 
 def calculate_volume_sma_v7_2(df, period=30):
     """Calculate Volume SMA with safety checks"""
     try:
-        return df['volume'].rolling(window=period).mean()
+        volume_col = 'Volume' if 'Volume' in df.columns else 'volume' if 'volume' in df.columns else 'adjVolume'
+        return df[volume_col].rolling(window=period).mean()
     except Exception as e:
         log_error(f"Error calculating volume SMA: {e}")
-        return pd.Series([df['volume'].mean()] * len(df))
+        # Use robust column detection in fallback
+        volume_col = 'Volume' if 'Volume' in df.columns else 'volume' if 'volume' in df.columns else 'adjVolume'
+        if volume_col in df.columns:
+            return pd.Series([df[volume_col].mean()] * len(df))
+        else:
+            return pd.Series([0] * len(df))
 
 def calculate_atr_v7_2(df, period=14):
     """Calculate ATR with safety checks"""
     try:
-        close_col = 'adjClose' if 'adjClose' in df.columns else 'close'
-        high_col = 'adjHigh' if 'adjHigh' in df.columns else 'high'
-        low_col = 'adjLow' if 'adjLow' in df.columns else 'low'
+        close_col = 'adjClose' if 'adjClose' in df.columns else 'Close' if 'Close' in df.columns else 'close'
+        high_col = 'adjHigh' if 'adjHigh' in df.columns else 'High' if 'High' in df.columns else 'high'
+        low_col = 'adjLow' if 'adjLow' in df.columns else 'Low' if 'Low' in df.columns else 'low'
         
         high_low = df[high_col] - df[low_col]
         high_close = np.abs(df[high_col] - df[close_col].shift(1))
@@ -199,7 +211,7 @@ def check_power_promotion_v7_2(df, current_position=None):
     # V7.3: Check both latest and previous day for Power Stock criteria
     for day_data, day_name in [(latest, "latest"), (previous, "previous")]:
         stoch_k = day_data['stoch_k']
-        price = day_data['adjClose'] if 'adjClose' in day_data else day_data['close']
+        price = day_data['adjClose'] if 'adjClose' in day_data else day_data['Close'] if 'Close' in day_data else day_data['close']
         
         # Get all SMAs
         sma_25 = day_data['sma_25']
@@ -208,7 +220,8 @@ def check_power_promotion_v7_2(df, current_position=None):
         sma_200 = day_data['sma_200']
         
         # Volume check
-        current_volume = day_data['volume']
+        volume_col = 'Volume' if 'Volume' in day_data else 'volume' if 'volume' in day_data else 'adjVolume'
+        current_volume = day_data[volume_col]
         volume_sma = day_data['volume_sma']
         high_volume = current_volume > (volume_sma * 1.5) if volume_sma > 0 else False
         
@@ -224,8 +237,9 @@ def check_power_promotion_v7_2(df, current_position=None):
     
     # Both days passed - promote to Power Stock
     latest_stoch_k = latest['stoch_k']
-    latest_price = latest['adjClose'] if 'adjClose' in latest else latest['close']
-    latest_volume = latest['volume']
+    latest_price = latest['adjClose'] if 'adjClose' in latest else latest['Close'] if 'Close' in latest else latest['close']
+    volume_col = 'Volume' if 'Volume' in latest else 'volume' if 'volume' in latest else 'adjVolume'
+    latest_volume = latest[volume_col]
     latest_volume_sma = latest['volume_sma']
     
     details = (f"V7.3 Power Confirmation: 2 consecutive days of "
@@ -245,7 +259,7 @@ def check_standard_exit_v7_2(df, position):
         return False, "Insufficient data"
     
     latest = df.iloc[-1]
-    price = latest['adjClose'] if 'adjClose' in latest else latest['close']
+    price = latest['adjClose'] if 'adjClose' in latest else latest['Close'] if 'Close' in latest else latest['close']
     stoch_k = latest['stoch_k']
     stoch_d = latest['stoch_d']
     
@@ -277,7 +291,7 @@ def check_power_exit_v7_2(df, position):
         return False, "Insufficient data"
     
     latest = df.iloc[-1]
-    price = latest['adjClose'] if 'adjClose' in latest else latest['close']
+    price = latest['adjClose'] if 'adjClose' in latest else latest['Close'] if 'Close' in latest else latest['close']
     
     sma_25 = latest['sma_25']
     atr = latest['atr']
@@ -316,7 +330,7 @@ def analyze_stock_v7_2(df, ticker=None):
     df = add_indicators_v7_2(df)
     
     latest = df.iloc[-1]
-    price = latest['adjClose'] if 'adjClose' in latest else latest['close']
+    price = latest['adjClose'] if 'adjClose' in latest else latest['Close'] if 'Close' in latest else latest['close']
     
     # Safety: Check for missing indicators
     if pd.isna(latest['stoch_k']) or pd.isna(latest['stoch_d']):
@@ -327,8 +341,9 @@ def analyze_stock_v7_2(df, ticker=None):
         }
     
     # V7.3 DYNAMIC GUARDRAILS: Liquidity Filter
-    price = latest['adjClose'] if 'adjClose' in latest else latest['close']
-    volume = latest['volume']
+    price = latest['adjClose'] if 'adjClose' in latest else latest['Close'] if 'Close' in latest else latest['close']
+    volume_col = 'Volume' if 'Volume' in latest else 'volume' if 'volume' in latest else 'adjVolume'
+    volume = latest[volume_col]
     dollar_volume = price * volume
     
     if dollar_volume < 1000000:  # $1M minimum daily dollar volume
@@ -395,7 +410,8 @@ def analyze_stock_v7_2(df, ticker=None):
         }
     
     # 4. Volume Check
-    current_volume = latest['volume']
+    volume_col = 'Volume' if 'Volume' in latest else 'volume' if 'volume' in latest else 'adjVolume'
+    current_volume = latest[volume_col]
     volume_sma = latest['volume_sma']
     if pd.isna(volume_sma) or volume_sma <= 0 or current_volume <= volume_sma:
         return {
@@ -451,7 +467,7 @@ def check_exit_conditions_v7_2(df, position):
     
     # Update highest price for trailing stop
     latest = df.iloc[-1]
-    current_price = latest['adjClose'] if 'adjClose' in latest else latest['close']
+    current_price = latest['adjClose'] if 'adjClose' in latest else latest['Close'] if 'Close' in latest else latest['close']
     
     if current_price > position.get('highest_price', current_price):
         position['highest_price'] = current_price
