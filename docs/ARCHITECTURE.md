@@ -1,7 +1,7 @@
 🏗️ VolatilityHunter Architecture
 Project: VolatilityHunter
 
-Current Version: 7.3 Hybrid Ironclad | Crucible Validated | TradingView Ready
+Current Version: 7.4 Unified Engine | Pre-Earnings Shield | Forward-Test Suite
 
 Status: 🟢 PRODUCTION READY | AUTONOMOUS | 26-YEAR BACKTESTED | 122,510 TRADES ANALYZED
 
@@ -22,21 +22,25 @@ Scale: Synchronizes 2,147 tickers into highly compressed Apache Parquet files.
 
 Uptime: 99.9% reliability managing over 8.7+ million rows of data.
 
-Pillar III: The Hunter (main.py)
-Schedule: 10:00 AM IST Daily | Purpose: Autonomous Trading Execution
+Pillar III: The Hunter (main_unified.py)
+Schedule: 10:00 AM IST Daily | Purpose: Unified Trading Execution
 
-Memory Load: Safely loads portfolio.json via absolute paths with automated backup fallbacks.
+Unified Execution Engine: Single entry point for all execution modes via Factory Pattern.
+
+Mode Switching: --mode live (Tiingo + portfolio.json), --mode sim --date YYYY-MM-DD (Parquet + portfolio_sim.json), --mode backtest (Future Crucible integration).
+
+Memory Load: Safely loads portfolio files via absolute paths with automated backup fallbacks.
 
 Exit Engine (First Priority): Updates ATR trailing stops (Ratchet Logic) and checks for standard/power exit triggers before buying.
 
-Market Analysis: Scans 2,147 tickers against the Hybrid Blueprint 5-Gate entry criteria.
+Market Analysis: Scans 2,147 tickers against the Hybrid Blueprint 5-Gate entry criteria with Environmental Shields.
 
 Execution & Risk: Calculates dynamic position sizing, updates cash balances, and registers trades.
 
 Reporting: Generates daily HTML valuations and sends SMTP emails with attached execution logs (.log).
 
-🎯 2. The Strategy: v7.3 Hybrid Blueprint
-Combines the "Sweet Spot" entry theory with the "Power Stock Shield" protection.
+🎯 2. The Strategy: v7.4 Hybrid Blueprint with Environmental Shields
+Combines the "Sweet Spot" entry theory with the "Power Stock Shield" protection and "Pre-Earnings Shield" safety.
 
 Entry Engine (The 5-Gate System)
 Quality: Historical CAGR > 15%.
@@ -48,6 +52,13 @@ The Sweet Spot: Stochastic %K (10,3,3) must be in the [32-80] zone.
 The Blueprint Crossover: Mandatory Stochastic %K > %D (Red over Yellow).
 
 Momentum: Current Volume > 1.5x 30-Day Volume SMA.
+
+Environmental Shields (Phase 4)
+Pre-Earnings Shield: is_earnings_safe(ticker, reference_date) prevents trades within ±3 days of earnings announcements.
+
+Volume Safety Shield: Minimum volume threshold (100,000 shares) to avoid liquidity traps.
+
+Price Safety Shield: Minimum price threshold ($5.00) to eliminate penny stocks and reverse-split ghosts.
 
 The Promotion System
 Standard Trade: Any trade entered via the base 5-Gate system.
@@ -98,7 +109,66 @@ Power Stock Win Rate: 69.33% (5,312 highly-filtered A+ setups)
 
 Billion-Dollar Data Bugs: 0 (Completely eliminated by Ironclad Guardrails)
 
-🔧 5. Technical Stack & Data Flow
+🔧 5. Unified Execution Engine Architecture
+Factory Pattern Implementation
+DataLoaderFactory: Creates appropriate data loader based on execution mode (SimulatedParquetLoader for sim, TiingoDataLoader for live).
+
+PortfolioManagerFactory: Creates appropriate portfolio manager (portfolio_sim.json for sim, portfolio.json for live).
+
+Universal Shields: Mode-agnostic safety checks that work across live and simulation environments.
+
+Mode-Based Execution
+Live Mode: --mode live (default) - Uses Tiingo API, portfolio.json, today's date as reference.
+
+Simulation Mode: --mode sim --date YYYY-MM-DD - Uses local Parquet data, portfolio_sim.json, specified date as reference.
+
+Backtest Mode: --mode backtest - Future integration with Crucible Engine for historical validation.
+
+Forward-Test Suite
+Time-Shifted Simulation: Replays trading days from 2026-01-01 to present with consolidated reporting.
+
+Email Consolidation: Single master report with daily progression table and log attachment.
+
+Position Cap Enforcement: 10-position maximum maintained across all modes.
+
+🛡️ 6. Phase 4: Environmental Shields System
+Pre-Earnings Shield Logic
+Reference Date Awareness: Uses today's date for live mode, simulation date for sim mode.
+
+Earnings Detection: Scans for earnings announcements within ±3 days of reference date.
+
+Multiple Data Sources: Checks earnings_announcement, earnings_date, earnings, earnings_surprise columns.
+
+Volume Spike Detection: Identifies potential earnings events via volume > 3x normal (3.0x threshold).
+
+Safety Enforcement: Automatically rejects trades that fail earnings safety check.
+
+Shield Integration Flow
+Universal Shields Applied First: All stocks pass through environmental shields before strategy analysis.
+
+Shield Rejection Tracking: Detailed logging of shield failures with specific reasons.
+
+Mode-Agnostic Operation: Same shield logic works for live trading and historical simulation.
+
+Comprehensive Safety: Combines earnings, volume, and price safety checks into unified protection.
+
+📊 7. Full-Era Crucible Validation (2001–2026)
+The Ironclad-protected system has been battle-tested across 25 years of market history, fully surviving the 2008 Financial Crisis and the 2020 COVID Crash.
+
+Performance Truth Summary
+Historical Coverage: Jan 2001 – Feb 2026
+
+Total Trades Analyzed: 122,510
+
+2008 Crisis Survival: 1,495 trades processed safely through the crash.
+
+Max Drawdown: -15.23% (Hedge-fund tier risk control)
+
+Power Stock Win Rate: 69.33% (5,312 highly-filtered A+ setups)
+
+Billion-Dollar Data Bugs: 0 (Completely eliminated by Ironclad Guardrails)
+
+🔧 8. Technical Stack & Data Flow
 Key Engineering Decisions
 Storage Layer: Apache Parquet for speed/compression; JSON for state persistence.
 
@@ -109,24 +179,34 @@ TradingView Exporter: Automated prepare_tv_import.py script formats backtest dat
 Directory Structure
 Plaintext
 VolatilityHunter/
-├── main.py                 # The Hunter (Daily Execution)
-├── health_check.py         # The Guard (System Diagnostics)
-├── update_universe.py      # The Historian (Data Sync)
-├── crucible_engine.py      # The Backtest Sandbox
-├── prepare_tv_import.py    # TradingView Exporter
-├── data/                   # .parquet market data & portfolio.json
-├── src/                    # Core logic (strategy, execution, tracker, utils)
-├── logs/                   # Daily VH_YYYY-MM-DD.log files
-└── docs/                   # ARCHITECTURE.md, ROADMAP.md
+├── main_unified.py          # Unified Execution Engine (All Modes)
+├── health_check.py          # The Guard (System Diagnostics)
+├── update_universe.py       # The Historian (Data Sync)
+├── crucible_engine.py       # The Backtest Sandbox
+├── prepare_tv_import.py     # TradingView Exporter
+├── src/
+│   ├── shields.py           # Environmental Shields (Phase 4)
+│   ├── data_loader_factory.py # Factory Pattern for Data Loaders
+│   └── ...                  # Core logic modules
+├── simulation/              # Forward-Test Suite
+│   ├── run_simulation_loop.py # Consolidated Simulation Runner
+│   ├── simulated_data_loader.py # Time-Shifted Data Access
+│   └── portfolio_sim.json   # Simulation Portfolio State
+├── data/                    # .parquet market data & portfolio.json
+├── logs/                    # Daily VH_YYYY-MM-DD.log files
+└── docs/                    # ARCHITECTURE.md, ROADMAP.md
+
 Data Flow Execution
 Plaintext
-Tiingo API → Parquet Files (Smart Append)
+Unified Engine (main_unified.py) → Factory Pattern (Mode-Based Injection)
     ↓
-main.py → Ironclad Risk Check → Hybrid 5-Gate Strategy
+Environmental Shields (src/shields.py) → Pre-Earnings Safety Check
     ↓
-portfolio.json (Trade Execution & ATR Ratchet Updates)
+Hybrid 5-Gate Strategy → Ironclad Risk Check → Trade Execution
     ↓
-SMTP Email (HTML Summary + .log Attachment)
+Portfolio State (portfolio.json or portfolio_sim.json) → Dynamic Valuation
+    ↓
+SMTP Email (Master Report + .log Attachment for Simulation)
 
 Resilience & API Handling
 Production-Grade Error Prevention & Data Source Compatibility

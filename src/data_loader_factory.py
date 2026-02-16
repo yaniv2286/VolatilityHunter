@@ -33,6 +33,10 @@ class TiingoLoader:
         from src.data_loader import update_all_stocks
         return update_all_stocks(full_refresh=full_refresh, stock_list=stock_list)
     
+    def get_all_data(self):
+        """Get all loaded stock data from storage."""
+        return self.storage.get_all_data()
+    
     def download_nasdaq_tickers(self):
         """Tiingo doesn't provide ticker list, use manual list."""
         from src.config import STOCK_LIST

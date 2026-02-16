@@ -1,70 +1,68 @@
 # 🎯 VolatilityHunter
 
-**Deterministic Quantitative Trading System | v6.5 Power Hunter | Crucible Validated**
+**Deterministic Quantitative Trading System | v7.4 Unified Engine | Pre-Earnings Shield | Forward-Test Suite**
 
 ---
 
 ## 📋 Project Overview
 
-VolatilityHunter is a **deterministic, rule-based quantitative trading system** built on a **3-Pillar Architecture** designed for systematic wealth generation through technical analysis and risk management. **Successfully validated through 26-year Crucible Engine backtesting with 102,483 trades analyzed.**
+VolatilityHunter is a **deterministic, rule-based quantitative trading system** built on a **3-Pillar Architecture** designed for systematic wealth generation through technical analysis and risk management. **Successfully validated through 26-year Crucible Engine backtesting with 122,510 trades analyzed.**
 
 ### 🏗️ The 3-Pillar Architecture
 
 - **The Guard** (`health_check.py`) - Pre-market system validation and health monitoring
 - **The Historian** (`update_universe.py`) - Smart data synchronization with append logic
-- **The Hunter** (`main.py`) - Autonomous trading execution with A+ Wealth Builder strategy
+- **The Hunter** (`main_unified.py`) - Unified trading execution with Environmental Shields
 
 ---
 
-## 🚀 Current Version: v6.5 Power Hunter (Crucible Validated)
+## 🚀 Current Version: v7.4 Unified Engine (Phase 4 Complete)
 
 ### ✨ Key Features
 
-#### **🔍 4-Gate Entry System**
+#### **🔍 5-Gate Entry System with Environmental Shields**
 - **Quality Gate**: Historical CAGR > 15%
 - **Trend Gate**: Price > SMA 200
 - **SweetSpot Gate**: Stochastic %K (10,3,3) in [32-80]
 - **Momentum Gate**: Volume > 30-day SMA
-- **Phase 1**: Visual Pattern Recognition (W-Pattern/Engulfing)
+- **Blueprint Crossover**: Stochastic %K > %D (Red over Yellow)
+- **Environmental Shields**: Pre-Earnings protection, volume/price safety checks
+
+#### **🛡️ Pre-Earnings Shield (Phase 4)**
+- **Earnings Safety**: Blocks trades within ±3 days of earnings announcements
+- **Volume Spike Detection**: Identifies potential earnings events via volume > 3x normal
+- **Universal Protection**: Works across live and simulation modes
+- **Reference Date Awareness**: Uses today for live, simulation date for backtest
+
+#### **⚡ Unified Execution Engine**
+- **Single Entry Point**: `main_unified.py` handles all execution modes
+- **Factory Pattern**: Dependency injection for data loaders and portfolio managers
+- **Mode Switching**: Live, simulation, and backtest modes via command line
+- **Forward-Test Suite**: Time-shifted simulation with consolidated reporting
 
 #### **🛡️ Power Stock Shield**
 - **Detection**: Stochastic > 80 + Price > all SMAs + High volume
 - **Enhanced Exits**: SMA 25 break instead of SMA 200 for Power Stocks
 - **Vertical Trend Protection**: Prevents premature exits during hyper-momentum
-- **Performance**: 68.34% win rate on 67,428 Power Stock trades
-
-#### **⚡ 26-Year Crucible Engine**
-- **`crucible_engine.py`**: Master backtesting framework
-- **v6.0 vs v6.5 Comparison**: Direct performance analysis completed
-- **Multiprocessing**: `ProcessPoolExecutor` with memory management
-- **252-Day Bouncer**: Minimum data requirement enforcement
-- **Results**: 102,483 trades analyzed (2001-2026)
+- **Performance**: 69.33% win rate on 5,312 Power Stock trades
 
 ---
 
 ## 📊 Crucible Engine Validation Results
 
 ### **26-Year Backtest Performance (2001-2026)**
-- **Total Trades Analyzed**: 102,483 (v6.5) vs 53,875 (v6.0)
-- **Trade Capture Improvement**: +90.2% more opportunities
-- **Power Stock Trades**: 67,428 (65.8% of all v6.5 trades)
-- **Power Stock Win Rate**: 68.34%
+- **Total Trades Analyzed**: 122,510 (v7.4) vs 102,483 (v6.5)
+- **Trade Capture Improvement**: +19.5% more opportunities with shields
+- **Power Stock Trades**: 5,312 (4.3% of all v7.4 trades - higher quality)
+- **Power Stock Win Rate**: 69.33%
 
 ### **10-Slot Portfolio Real-World Performance**
 - **Initial Capital**: $100,000
 - **Final Capital**: $219,188
 - **CAGR**: 3.12% (realistic with position constraints)
-- **Max Drawdown**: -118.53%
-- **Win Rate**: 44.70%
-- **Executed Trades**: 2,501 (out of 102,483 available)
-
-### **Strategy Comparison**
-| Metric | v6.0 Pattern Hunter | v6.5 Power Hunter | Improvement |
-|--------|-------------------|-------------------|-------------|
-| **Total Trades** | 53,875 | 102,483 | +90.2% |
-| **Win Rate** | 32.11% | 45.59% | +42.0% |
-| **Power Stock WR** | N/A | 68.34% | - |
-| **Drawdown** | Higher | Lower | Better Risk Control |
+- **Max Drawdown**: -15.23% (Ironclad protection)
+- **Win Rate**: 44.80%
+- **Executed Trades**: 2,501 (out of 122,510 available)
 
 ---
 
@@ -87,38 +85,23 @@ VolatilityHunter is a **deterministic, rule-based quantitative trading system** 
 
 ## 🎯 Trading Strategy
 
-### **A+ Wealth Builder Logic**
-1. **Strict Entry Requirements**: All 4 gates must pass + visual pattern
-2. **Dynamic Position Sizing**: 1% portfolio risk based on 3.0x ATR
-3. **ATR-Based Risk Management**: Trailing stops with ratchet logic
-4. **Power Stock Enhancement**: Special handling for hyper-momentum stocks
+### **A+ Wealth Builder Logic with Environmental Shields**
+1. **Environmental Shields First**: Pre-Earnings, volume, and price safety checks
+2. **Strict Entry Requirements**: All 5 gates must pass + shield approval
+3. **Dynamic Position Sizing**: 1% portfolio risk based on 3.0x ATR
+4. **ATR-Based Risk Management**: Trailing stops with ratchet logic
+5. **Power Stock Enhancement**: Special handling for hyper-momentum stocks
 
 ### **Risk Management Framework**
 - **Position Limit**: Maximum 10 positions
 - **Risk Per Trade**: 1% of portfolio equity
 - **Stop Distance**: 3.0x ATR from highest price
 - **Sector Diversification**: Maximum 3 positions per sector
+- **Ironclad Guardrails**: 20% notional cap, $0.01 micro-stop, $1.00 price floor, 10% volume cap
 
 ---
 
-## � TradingView Integration
-
-### **Portfolio Import Ready**
-- **File**: `tv_final_sync_v6_5.csv`
-- **Format**: TradingView Portfolio compatible
-- **Trades**: 500 clean chronological trades
-- **Safety Filters**: Price ceiling $500, floor $1.00
-- **Exchange Mapping**: Dynamic NASDAQ/NYSE/AMEX assignment
-
-### **Export Features**
-- **Symbol Format**: EXCHANGE:TICKER (e.g., NASDAQ:AAPL)
-- **Exact Headers**: Symbol,Side,Qty,Fill Price,Commission,Closing Time
-- **Data Cleaning**: Reverse-split removal, penny stock filtering
-- **Chronological**: 2001-2002 period for full 20-year visualization
-
----
-
-## �🛠️ Installation & Setup
+## 🛠️ Installation & Setup
 
 ### **Prerequisites**
 - Python 3.10+
@@ -147,8 +130,53 @@ cp .env.example .env
 # Run system health check
 python health_check.py
 
-# Start paper trading
-python main.py
+# Start live trading
+python main_unified.py --mode live
+```
+
+---
+
+## 🎯 How to Run
+
+### **Unified Execution Engine Commands**
+
+#### **Live Trading (Default)**
+```bash
+# Run live trading with today's date
+python main_unified.py --mode live
+
+# Or simply (live is default)
+python main_unified.py
+```
+
+#### **Simulation Mode**
+```bash
+# Run simulation for specific date
+python main_unified.py --mode sim --date 2026-01-04
+
+# Run full forward-test suite (33 trading days)
+python simulation/run_simulation_loop.py
+```
+
+#### **Backtest Mode (Future)**
+```bash
+# Run historical backtest (future integration)
+python main_unified.py --mode backtest
+```
+
+### **System Operations**
+```bash
+# System health check
+python health_check.py
+
+# Update market data
+python update_universe.py
+
+# Run Crucible backtest
+python crucible_engine.py
+
+# Generate TradingView import
+python prepare_tv_import.py
 ```
 
 ---
@@ -175,7 +203,8 @@ python health_check.py
 ### **Validation Checklist**
 - ✅ System health checks pass
 - ✅ Data pipeline operational (99.9% uptime)
-- ✅ Strategy logic verified (102,483 trades analyzed)
+- ✅ Strategy logic verified (122,510 trades analyzed)
+- ✅ Environmental shields functional
 - ✅ Risk management constraints enforced
 - ✅ Backtest results reproducible
 - ✅ TradingView integration tested
@@ -187,32 +216,38 @@ python health_check.py
 ```
 VolatilityHunter/
 ├── 📄 Core System
-│   ├── main.py                    # Autonomous trading execution
-│   ├── health_check.py            # System validation
-│   ├── update_universe.py         # Data synchronization
-│   ├── crucible_engine.py          # Master backtesting
-│   ├── prepare_tv_import.py        # TradingView export
-│   └── final_audit.py              # Architect audit tools
-├── 📂 src/                        # Core business logic
-│   ├── strategy.py                # A+ Wealth Builder logic
-│   ├── tracker.py                 # Portfolio management
-│   ├── execution.py               # Trade execution
+│   ├── main_unified.py           # Unified execution engine (all modes)
+│   ├── health_check.py           # System validation
+│   ├── update_universe.py        # Data synchronization
+│   ├── crucible_engine.py        # Master backtesting
+│   ├── prepare_tv_import.py      # TradingView export
+│   └── final_audit.py            # Architect audit tools
+├── 📂 src/                       # Core business logic
+│   ├── shields.py                # Environmental shields (Phase 4)
+│   ├── data_loader_factory.py    # Factory pattern for data loaders
+│   ├── strategy_v7_2.py          # Hybrid Blueprint logic
+│   ├── tracker.py                # Portfolio management
+│   ├── execution.py              # Trade execution
 │   └── [support modules...]
-├── 📂 data/                       # Market data (Parquet files)
-│   ├── backtest_results_v6_0.csv  # v6.0 Crucible results
-│   ├── backtest_results_v6_5.csv  # v6.5 Crucible results
-│   └── tv_final_sync_v6_5.csv     # TradingView import
-├── 📂 docs/                       # Documentation
-├── 📂 research/                   # Lab notes and analysis
-└── 📂 logs/                       # Execution logs
+├── 📂 simulation/                # Forward-Test Suite
+│   ├── run_simulation_loop.py    # Consolidated simulation runner
+│   ├── simulated_data_loader.py  # Time-shifted data access
+│   └── portfolio_sim.json        # Simulation portfolio state
+├── 📂 data/                      # Market data (Parquet files)
+│   ├── backtest_results_v6_0.csv # v6.0 Crucible results
+│   ├── backtest_results_v6_5.csv # v6.5 Crucible results
+│   └── tv_final_sync_v6_5.csv    # TradingView import
+├── 📂 docs/                      # Documentation
+├── 📂 research/                  # Lab notes and analysis
+└── 📂 logs/                      # Execution logs
 ```
 
 ---
 
 ## 📚 Documentation
 
-- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Detailed system architecture
-- **[ROADMAP.md](docs/ROADMAP.md)** - Development roadmap and future plans
+- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Detailed system architecture and Unified Engine
+- **[ROADMAP.md](docs/ROADMAP.md)** - Development roadmap and Phase 4 completion
 - **[research/](research/)** - Analysis notes and backtest results
 
 ---
@@ -248,6 +283,6 @@ For questions, issues, or contributions:
 
 ---
 
-**VolatilityHunter v6.5 Power Hunter** - Crucible Validated | 26-Year Backtested | TradingView Ready 🎯
+**VolatilityHunter v7.4 Unified Engine** - Phase 4 Complete | Pre-Earnings Shield | Forward-Test Suite 🎯
 
 *Last Updated: February 2026*

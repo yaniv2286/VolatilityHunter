@@ -1,5 +1,5 @@
 {
-  "cash": 44808.03942932883,
+  "cash": -2956.3605706711837,
   "positions": {
     "AEP": {
       "shares": 41.74493789440434,
@@ -87,6 +87,94 @@
       "is_power_stock": false,
       "highest_price": 147.76,
       "ticker": "AER"
+    },
+    "AFL": {
+      "shares": 52,
+      "entry_price": 115.88,
+      "stop_loss_price": 107.38875,
+      "entry_date": "2026-02-15",
+      "quality_score": 0,
+      "execution_mode": "PAPER",
+      "is_power_stock": false,
+      "highest_price": 115.88,
+      "ticker": "AFL"
+    },
+    "AMD": {
+      "shares": 14,
+      "entry_price": 223.47,
+      "stop_loss_price": 163.23462500000002,
+      "entry_date": "2026-02-16",
+      "quality_score": 0,
+      "execution_mode": "PAPER",
+      "is_power_stock": false,
+      "highest_price": 223.47,
+      "ticker": "AMD"
+    },
+    "BA": {
+      "shares": 40,
+      "entry_price": 227.77,
+      "stop_loss_price": 205.59645,
+      "entry_date": "2026-02-16",
+      "quality_score": 0,
+      "execution_mode": "PAPER",
+      "is_power_stock": false,
+      "highest_price": 227.77,
+      "ticker": "BA"
+    },
+    "BABA": {
+      "shares": 49,
+      "entry_price": 155.74,
+      "stop_loss_price": 137.5984,
+      "entry_date": "2026-02-16",
+      "quality_score": 0,
+      "execution_mode": "PAPER",
+      "is_power_stock": false,
+      "highest_price": 155.74,
+      "ticker": "BABA"
+    },
+    "BILI": {
+      "shares": 268,
+      "entry_price": 26.37,
+      "stop_loss_price": 23.010125,
+      "entry_date": "2026-02-16",
+      "quality_score": 0,
+      "execution_mode": "PAPER",
+      "is_power_stock": false,
+      "highest_price": 26.37,
+      "ticker": "BILI"
+    },
+    "INTC": {
+      "shares": 76,
+      "entry_price": 39.38,
+      "stop_loss_price": 27.522199999999998,
+      "entry_date": "2026-02-16",
+      "quality_score": 0,
+      "execution_mode": "PAPER",
+      "is_power_stock": false,
+      "highest_price": 39.38,
+      "ticker": "INTC"
+    },
+    "SLB": {
+      "shares": 194,
+      "entry_price": 40.2,
+      "stop_loss_price": 35.56645,
+      "entry_date": "2026-02-16",
+      "quality_score": 0,
+      "execution_mode": "PAPER",
+      "is_power_stock": false,
+      "highest_price": 40.2,
+      "ticker": "SLB"
+    },
+    "SOFI": {
+      "shares": 146,
+      "entry_price": 27.46,
+      "stop_loss_price": 21.307100000000002,
+      "entry_date": "2026-02-16",
+      "quality_score": 0,
+      "execution_mode": "PAPER",
+      "is_power_stock": false,
+      "highest_price": 27.46,
+      "ticker": "SOFI"
     }
   },
   "trade_history": [
@@ -408,6 +496,110 @@
       "reason": "v7.2 HYBRID STRATEGY: BUY SIGNAL | Entry Zone: Stoch_K (89.17) in [32-100] | Crossover: Stoch_K (89.17) > Stoch_D (76.73) | Trend: Price ($147.76) > SMA_200 ($125.01) | Volume: Current (1,820,837) > SMA (1,179,401)",
       "is_power_stock": false,
       "stop_loss_price": 125.01389999999999
+    },
+    {
+      "type": "BUY",
+      "ticker": "AFL",
+      "shares": 52,
+      "price": 115.88,
+      "cost": 6025.76,
+      "timestamp": "2026-02-15T00:49:46.080051",
+      "execution_mode": "PAPER",
+      "quality_score": 0,
+      "reason": "v7.2 HYBRID STRATEGY: BUY SIGNAL | Entry Zone: Stoch_K (68.50) in [32-100] | Crossover: Stoch_K (68.50) > Stoch_D (66.53) | Trend: Price ($115.88) > SMA_200 ($107.39) | Volume: Current (2,568,426) > SMA (2,352,604)",
+      "is_power_stock": false,
+      "stop_loss_price": 107.38875
+    },
+    {
+      "type": "BUY",
+      "ticker": "AMD",
+      "shares": 14,
+      "price": 223.47,
+      "cost": 3128.58,
+      "timestamp": "2026-02-16T12:17:34.038849",
+      "execution_mode": "PAPER",
+      "quality_score": 0,
+      "reason": "v7.2 HYBRID STRATEGY: BUY SIGNAL | Entry Zone: Stoch_K (79.44) in [32-100] | Crossover: Stoch_K (79.44) > Stoch_D (77.64) | Trend: Price ($223.47) > SMA_200 ($163.23) | Volume: Current (36,446,169) > SMA (33,316,675)",
+      "is_power_stock": false,
+      "stop_loss_price": 163.23462500000002
+    },
+    {
+      "type": "BUY",
+      "ticker": "BA",
+      "shares": 40,
+      "price": 227.77,
+      "cost": 9110.800000000001,
+      "timestamp": "2026-02-16T12:17:34.061360",
+      "execution_mode": "PAPER",
+      "quality_score": 0,
+      "reason": "v7.2 HYBRID STRATEGY: BUY SIGNAL | Entry Zone: Stoch_K (83.68) in [32-100] | Crossover: Stoch_K (83.68) > Stoch_D (82.41) | Trend: Price ($227.77) > SMA_200 ($205.60) | Volume: Current (11,261,006) > SMA (8,622,429)",
+      "is_power_stock": false,
+      "stop_loss_price": 205.59645
+    },
+    {
+      "type": "BUY",
+      "ticker": "BABA",
+      "shares": 49,
+      "price": 155.74,
+      "cost": 7631.26,
+      "timestamp": "2026-02-16T12:17:34.074359",
+      "execution_mode": "PAPER",
+      "quality_score": 0,
+      "reason": "v7.2 HYBRID STRATEGY: BUY SIGNAL | Entry Zone: Stoch_K (38.11) in [32-100] | Crossover: Stoch_K (38.11) > Stoch_D (27.29) | Trend: Price ($155.74) > SMA_200 ($137.60) | Volume: Current (15,778,326) > SMA (10,089,303)",
+      "is_power_stock": false,
+      "stop_loss_price": 137.5984
+    },
+    {
+      "type": "BUY",
+      "ticker": "BILI",
+      "shares": 268,
+      "price": 26.37,
+      "cost": 7067.16,
+      "timestamp": "2026-02-16T12:17:34.086935",
+      "execution_mode": "PAPER",
+      "quality_score": 0,
+      "reason": "v7.2 HYBRID STRATEGY: BUY SIGNAL | Entry Zone: Stoch_K (52.71) in [32-100] | Crossover: Stoch_K (52.71) > Stoch_D (43.14) | Trend: Price ($26.37) > SMA_200 ($23.01) | Volume: Current (3,430,041) > SMA (1,589,912)",
+      "is_power_stock": false,
+      "stop_loss_price": 23.010125
+    },
+    {
+      "type": "BUY",
+      "ticker": "INTC",
+      "shares": 76,
+      "price": 39.38,
+      "cost": 2992.88,
+      "timestamp": "2026-02-16T12:17:34.098935",
+      "execution_mode": "PAPER",
+      "quality_score": 0,
+      "reason": "v7.2 HYBRID STRATEGY: BUY SIGNAL | Entry Zone: Stoch_K (73.38) in [32-100] | Crossover: Stoch_K (73.38) > Stoch_D (60.41) | Trend: Price ($39.38) > SMA_200 ($27.52) | Volume: Current (95,396,447) > SMA (76,793,186)",
+      "is_power_stock": false,
+      "stop_loss_price": 27.522199999999998
+    },
+    {
+      "type": "BUY",
+      "ticker": "SLB",
+      "shares": 194,
+      "price": 40.2,
+      "cost": 7798.8,
+      "timestamp": "2026-02-16T12:17:34.111448",
+      "execution_mode": "PAPER",
+      "quality_score": 0,
+      "reason": "v7.2 HYBRID STRATEGY: BUY SIGNAL | Entry Zone: Stoch_K (76.34) in [32-100] | Crossover: Stoch_K (76.34) > Stoch_D (54.66) | Trend: Price ($40.20) > SMA_200 ($35.57) | Volume: Current (14,637,165) > SMA (13,390,837)",
+      "is_power_stock": false,
+      "stop_loss_price": 35.56645
+    },
+    {
+      "type": "BUY",
+      "ticker": "SOFI",
+      "shares": 146,
+      "price": 27.46,
+      "cost": 4009.1600000000003,
+      "timestamp": "2026-02-16T12:17:34.124012",
+      "execution_mode": "PAPER",
+      "quality_score": 0,
+      "reason": "v7.2 HYBRID STRATEGY: BUY SIGNAL | Entry Zone: Stoch_K (63.07) in [32-100] | Crossover: Stoch_K (63.07) > Stoch_D (61.79) | Trend: Price ($27.46) > SMA_200 ($21.31) | Volume: Current (55,065,560) > SMA (52,519,718)",
+      "is_power_stock": false,
+      "stop_loss_price": 21.307100000000002
     }
   ],
   "execution_mode": "PAPER"

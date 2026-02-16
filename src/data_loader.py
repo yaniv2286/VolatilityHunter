@@ -1,7 +1,9 @@
-import requests
 import pandas as pd
+import numpy as np
+import requests
 import time
 from datetime import datetime, timedelta
+from typing import Optional, Dict, Any
 from src.config import TIINGO_KEY, TIINGO_BASE_URL, BATCH_SIZE, STOCK_LIST
 from src.storage import DataStorage
 from src.notifications import log_info, log_error, log_warning
