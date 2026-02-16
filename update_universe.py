@@ -16,8 +16,7 @@ sys.path.append(script_dir)
 print(f"📍 Working Directory set to: {os.getcwd()}")
 
 from src.config_manager import get_config
-from src.data_loader_factory import get_data_loader
-from src.storage import DataStorage
+from src.config import TIINGO_KEY
 
 def get_smart_start_date(ticker, force_full_refresh=False):
     """
@@ -48,7 +47,7 @@ def get_smart_start_date(ticker, force_full_refresh=False):
     # No existing data, get full history
     return '2000-01-01'
 
-def smart_update_ticker(ticker, headers, force_full_refresh=False):
+def smart_update_ticker(ticker, force_full_refresh=False):
     """
     Smart update for a single ticker with data preservation
     """
@@ -62,11 +61,12 @@ def smart_update_ticker(ticker, headers, force_full_refresh=False):
         params = {
             'startDate': start_date,
             'endDate': end_date,
-            'resampleFreq': 'daily'
+            'resampleFreq': 'daily',
+            'token': TIINGO_KEY
         }
         
         import requests
-        response = requests.get(url, headers=headers, params=params, timeout=30)
+        response = requests.get(url, params=params, timeout=30)
         response.raise_for_status()
         data = response.json()
         
