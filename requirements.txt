@@ -9,3 +9,4 @@ yfinance>=0.2.44
 schedule>=1.2.0
 aiohttp>=3.11.0
 typing-extensions>=4.12.0
+watchdog>=6.0.0

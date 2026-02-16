@@ -544,14 +544,7 @@ class LiveExecutor(Executor):
     def process_signals(self, buy_signals: List[Dict], sell_signals: List[Dict], 
                        current_prices: Optional[Dict] = None) -> Dict:
         """Process trading signals with live execution"""
-        # TODO: Implement real signal processing
-        log_error("Live trading not implemented - placeholder only")
-        return {
-            'buys': [],
-            'sells': [],
-            'errors': [{'reason': 'Live trading not implemented'}],
-            'detailed_trade_log': []
-        }
+        raise NotImplementedError("Live execution is not yet configured. Use --mode sim for simulation or --mode paper for paper trading.")
 
 
 def get_executor(config_file='config.json', portfolio_file=None) -> Executor:
@@ -567,8 +560,8 @@ def get_executor(config_file='config.json', portfolio_file=None) -> Executor:
             portfolio_file = 'data/portfolio.json'
         
         if trading_mode == 'LIVE':
-            log_warning("Live trading mode selected - using placeholder implementation")
-            return LiveExecutor(config_file)
+            log_error("Live trading mode selected - not yet implemented")
+            raise NotImplementedError("Live execution is not yet configured. Use --mode sim for simulation or configure TRADING_MODE to PAPER in config.json")
         else:
             log_info(f"Paper trading mode selected")
             return PaperExecutor(portfolio_file, config_file)

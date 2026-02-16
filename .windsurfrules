@@ -1,3 +1,5 @@
+ALWAYS READ docs/ARCHITECTURE.md and docs/ROADMAP.md BEFORE WRITING OR MODIFYING ANY TRADING LOGIC. These documents contain the absolute, immutable mathematical rules of the VolatilityHunter system (including the Power Stock state machine and vectorization math). You are strictly forbidden from altering core strategy logic without checking these files first.
+
 # VolatilityHunter - Strict Operational Protocol
 # Primary Directive for All Architectural Changes
 
@@ -44,6 +46,12 @@ Design Philosophy: SOLID principles, Factory Pattern (Data), Strategy Pattern (M
 # Before modifying any cross-module logic (e.g., Executor and Portfolio), you MUST 
 # run scripts/query_brain.py to identify all files that interact with the target logic 
 # to ensure 100% synchronization and prevent stale caches.
+
+## 9. VH-BRAIN SYNCHRONIZATION RULE
+# When working on VolatilityHunter, you MUST ensure scripts/brain_watcher.py is running 
+# in a background terminal so the VH-BRAIN stays perfectly synced with your code changes.
+# The Automated Watchdog monitors src/, scripts/, simulation/, and main_unified.py for 
+# .py and .md file modifications and automatically updates the vector database.
 
 <testing_mandatory_protocol>
 TRIGGER: Any change to the 11 core components.

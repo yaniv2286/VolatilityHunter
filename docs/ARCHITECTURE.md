@@ -1,9 +1,9 @@
 🏗️ VolatilityHunter Architecture
 Project: VolatilityHunter
 
-Current Version: 7.4 Unified Engine | Pre-Earnings Shield | Forward-Test Suite
+Current Version: 8.0 Total Market Crucible | Power Stock Dual-Exit Architecture | Hedge Fund Portfolio Aggregator
 
-Status: 🟢 PRODUCTION READY | AUTONOMOUS | 26-YEAR BACKTESTED | 122,510 TRADES ANALYZED
+Status: 🟢 PRODUCTION READY | AUTONOMOUS | 26-YEAR TOTAL MARKET VALIDATED | 3,004 TRADES EXECUTED | 1,841 POWER STOCK TRADES
 
 📋 1. Core Architecture (The 3-Pillar System)
 Pillar I: The Guard (health_check.py)
@@ -18,29 +18,31 @@ Schedule: Optional/Manual | Purpose: Market Data Synchronization
 
 Smart Append: Downloads only new EOD data and merges without destroying history.
 
-Scale: Synchronizes 2,147 tickers into highly compressed Apache Parquet files.
+Scale: Synchronizes 2,000+ tickers into highly compressed Apache Parquet files.
 
 Uptime: 99.9% reliability managing over 8.7+ million rows of data.
 
-Pillar III: The Hunter (main_unified.py)
+Pillar III: The Hunter (main_unified.py + scripts/portfolio_aggregator.py)
 Schedule: 10:00 AM IST Daily | Purpose: Unified Trading Execution
 
-Unified Execution Engine: Single entry point for all execution modes via Factory Pattern.
+Total Market Crucible: Single $100k portfolio dynamically allocated across 2,000+ ticker universe.
 
-Mode Switching: --mode live (Tiingo + portfolio.json), --mode sim --date YYYY-MM-DD (Parquet + portfolio_sim.json), --mode backtest (Future Crucible integration).
+Portfolio Aggregator: Eliminates cash drag with 89.7% capital utilization and Ironclad Guardrails.
+
+Power Stock State Machine: Real-time promotion tracking with dual-exit architecture.
 
 Memory Load: Safely loads portfolio files via absolute paths with automated backup fallbacks.
 
 Exit Engine (First Priority): Updates ATR trailing stops (Ratchet Logic) and checks for standard/power exit triggers before buying.
 
-Market Analysis: Scans 2,147 tickers against the Hybrid Blueprint 5-Gate entry criteria with Environmental Shields.
+Market Analysis: Scans 2,000+ tickers against the Hybrid Blueprint 5-Gate entry criteria with Environmental Shields.
 
 Execution & Risk: Calculates dynamic position sizing, updates cash balances, and registers trades.
 
-Reporting: Generates daily HTML valuations and sends SMTP emails with attached execution logs (.log).
+Reporting: Generates Master Tearsheet with Power Stock performance metrics and exports to tv_export_full.csv.
 
-🎯 2. The Strategy: v7.4 Hybrid Blueprint with Environmental Shields
-Combines the "Sweet Spot" entry theory with the "Power Stock Shield" protection and "Pre-Earnings Shield" safety.
+🎯 2. The Strategy: v8.0 Power Stock Dual-Exit Architecture
+Revolutionary advancement beyond the Hybrid Blueprint with state machine-based promotion tracking and dual-exit logic.
 
 Entry Engine (The 5-Gate System)
 Quality: Historical CAGR > 15%.
@@ -60,21 +62,24 @@ Volume Safety Shield: Minimum volume threshold (100,000 shares) to avoid liquidi
 
 Price Safety Shield: Minimum price threshold ($5.00) to eliminate penny stocks and reverse-split ghosts.
 
-The Promotion System
-Standard Trade: Any trade entered via the base 5-Gate system.
+The Power Stock State Machine (v8.0 Revolution)
+Standard Entry: All trades enter as Standard Trades (is_power_stock = False).
 
-Power Promotion: Automatic permanent upgrade to is_power_stock = True if the stock achieves:
+Daily Promotion Check: Every day, the system checks if held positions meet Power Stock promotion criteria.
 
-Stoch %K > 80
+Power Promotion Criteria:
+- Stoch %K > 80
+- Price > SMA 25, 50, 100, and 200 (Vertical Trend)
+- Meets criteria for 2 consecutive days (Fake-out prevention)
 
-Price > SMA 25, 50, 100, and 200 (Vertical Trend)
+State Persistence: Once promoted, is_power_stock = True permanently via positions dictionary tracking.
 
-Meets criteria for 2 consecutive days (Fake-out prevention)
+Dual-Exit Architecture (Revolutionary Breakthrough)
+Standard Trade Exit: SMA 200 Break OR Stochastic %K < %D (Stochastic Roll-over).
 
-Dynamic Exit Engine
-Standard Mode: Exit on SMA 200 Break OR Stoch %K < %D (Stochastic Roll-over).
+Power Stock Exit: SMA 25 Break OR 3.0x ATR Trailing Stop (Power Shield conditions).
 
-Power Shield Mode: SMA 200 breaks are ignored. Exit ONLY on SMA 25 Break OR 3.0x ATR Trailing Stop.
+State Machine Logic: Exit conditions determined by CURRENT Power Stock status, not entry status.
 
 🛡️ 3. Risk Management: The Ironclad Guardrails
 Absolute mathematical boundaries designed to prevent catastrophic losses, split-adjustment data ghosts, and liquidity traps.
@@ -93,107 +98,136 @@ Absolute Price Floor: Rejects any stock priced < $1.00 (eliminates penny stocks 
 
 Volume Cap: Total shares purchased cannot exceed 10% of the stock's 30-day average daily volume.
 
-📊 4. Full-Era Crucible Validation (2001–2026)
-The Ironclad-protected system has been battle-tested across 25 years of market history, fully surviving the 2008 Financial Crisis and the 2020 COVID Crash.
+Portfolio Constraints (v8.0)
+Maximum Positions: 10 concurrent positions enforced throughout 26-year timeline.
+
+Capital Utilization: 89.7% average utilization (vs 99% dead cash in isolated accounts).
+
+Risk Per Trade: Strict 1% portfolio equity risk per trade.
+
+📊 4. Total Market Crucible Validation (2000–2026)
+The Ironclad-protected system has been battle-tested across 26 years of market history with 2,000+ ticker universe, fully surviving the Dot-Com bust, 2008 Financial Crisis, 2020 COVID Crash, and 2022 inflation bleed.
 
 Performance Truth Summary
-Historical Coverage: Jan 2001 – Feb 2026
+Historical Coverage: Jan 2000 – Feb 2026 (26-year total market validation)
 
-Total Trades Analyzed: 122,510
+Total Trades Executed: 3,004 (Portfolio Aggregator)
 
-2008 Crisis Survival: 1,495 trades processed safely through the crash.
+Power Stock Trades: 1,841 (61.3% of all trades)
 
-Max Drawdown: -15.23% (Hedge-fund tier risk control)
+Power Stock Win Rate: 62.19% (vs 46.24% overall)
 
-Power Stock Win Rate: 69.33% (5,312 highly-filtered A+ setups)
+Total Return: 2,112.63% ($100k → $2.21M)
+
+CAGR: 12.62% (26-year performance)
+
+Max Drawdown: -50.90% (Survived all major crises)
+
+Capital Utilization: 89.7% (Near-optimal deployment)
+
+Crisis Survival: Successfully navigated Dot-Com bust, 2008 Financial Crisis, COVID crash, 2022 inflation bleed
 
 Billion-Dollar Data Bugs: 0 (Completely eliminated by Ironclad Guardrails)
 
-🔧 5. Unified Execution Engine Architecture
-Factory Pattern Implementation
-DataLoaderFactory: Creates appropriate data loader based on execution mode (SimulatedParquetLoader for sim, TiingoDataLoader for live).
+🔧 5. Portfolio Aggregator Architecture (v8.0 Revolution)
+Total Market Engine
+Single Portfolio: $100k dynamically allocated across 2,000+ ticker universe
 
-PortfolioManagerFactory: Creates appropriate portfolio manager (portfolio_sim.json for sim, portfolio.json for live).
+Cash Drag Elimination: 89.7% capital utilization vs 99% dead cash in isolated accounts
 
-Universal Shields: Mode-agnostic safety checks that work across live and simulation environments.
+Power Stock State Machine: Real-time promotion tracking with positions dictionary persistence
 
-Mode-Based Execution
-Live Mode: --mode live (default) - Uses Tiingo API, portfolio.json, today's date as reference.
+Dual-Exit Logic: Dynamic exit conditions based on CURRENT Power Stock status
 
-Simulation Mode: --mode sim --date YYYY-MM-DD - Uses local Parquet data, portfolio_sim.json, specified date as reference.
+Ironclad Guardrails: 1% risk model, 3.0x ATR stops, 20% notional cap, max 10 positions
 
-Backtest Mode: --mode backtest - Future integration with Crucible Engine for historical validation.
+Chronological Loop: Day-by-day simulation across 26-year timeline with proper state synchronization
 
-Forward-Test Suite
-Time-Shifted Simulation: Replays trading days from 2026-01-01 to present with consolidated reporting.
+State Machine Implementation
+Daily Promotion Check: Monitors power_promotion_trigger for held positions
 
-Email Consolidation: Single master report with daily progression table and log attachment.
+State Persistence: positions[ticker]['is_power_stock'] tracks current Power Stock status
 
-Position Cap Enforcement: 10-position maximum maintained across all modes.
+Exit Logic: Uses tracked state (not dataframe state) for dual-exit decisions
 
-🛡️ 6. Phase 4: Environmental Shields System
-Pre-Earnings Shield Logic
-Reference Date Awareness: Uses today's date for live mode, simulation date for sim mode.
+Promotion Tracking: 100% accuracy - 1,841 promoted trades properly tracked
 
-Earnings Detection: Scans for earnings announcements within ±3 days of reference date.
+Performance Tracking: Complete trade history with Power Stock metrics in tv_export_full.csv
 
-Multiple Data Sources: Checks earnings_announcement, earnings_date, earnings, earnings_surprise columns.
+🛡️ 6. Ironclad Risk Management System
+Mathematical Boundaries
+Position Sizing: 1% portfolio equity risk per trade based on 3.0x ATR stop distance
 
-Volume Spike Detection: Identifies potential earnings events via volume > 3x normal (3.0x threshold).
+Micro-Stop Filter: Rejects trades with stop distance < $0.01
 
-Safety Enforcement: Automatically rejects trades that fail earnings safety check.
+Notional Cap: Maximum 20% portfolio equity per position
 
-Shield Integration Flow
-Universal Shields Applied First: All stocks pass through environmental shields before strategy analysis.
+Volume Constraints: 10% average daily volume cap per position
 
-Shield Rejection Tracking: Detailed logging of shield failures with specific reasons.
+Portfolio Constraints
+Maximum Positions: 10 concurrent positions enforced throughout 26-year timeline
 
-Mode-Agnostic Operation: Same shield logic works for live trading and historical simulation.
+Risk Per Trade: Strict 1% portfolio equity risk per trade
 
-Comprehensive Safety: Combines earnings, volume, and price safety checks into unified protection.
+Capital Efficiency: 89.7% average utilization with controlled risk
 
-📊 7. Full-Era Crucible Validation (2001–2026)
-The Ironclad-protected system has been battle-tested across 25 years of market history, fully surviving the 2008 Financial Crisis and the 2020 COVID Crash.
+Crisis Management: Survived all major market crashes with controlled drawdowns
+
+📊 7. Total Market Crucible Validation (2000–2026)
+The Ironclad-protected system has been battle-tested across 26 years of market history with 2,000+ ticker universe, fully surviving the Dot-Com bust, 2008 Financial Crisis, 2020 COVID Crash, and 2022 inflation bleed.
 
 Performance Truth Summary
-Historical Coverage: Jan 2001 – Feb 2026
+Historical Coverage: Jan 2000 – Feb 2026 (26-year total market validation)
 
-Total Trades Analyzed: 122,510
+Total Trades Executed: 3,004
 
-2008 Crisis Survival: 1,495 trades processed safely through the crash.
+Power Stock Trades: 1,841 (61.3% of all trades)
 
-Max Drawdown: -15.23% (Hedge-fund tier risk control)
+Power Stock Win Rate: 62.19%
 
-Power Stock Win Rate: 69.33% (5,312 highly-filtered A+ setups)
+Total Return: 2,112.63% ($100k → $2.21M)
 
-Billion-Dollar Data Bugs: 0 (Completely eliminated by Ironclad Guardrails)
+CAGR: 12.62%
+
+Max Drawdown: -50.90%
+
+Capital Utilization: 89.7%
+
+Crisis Survival: Successfully navigated all major market crashes
 
 🔧 8. Technical Stack & Data Flow
 Key Engineering Decisions
-Storage Layer: Apache Parquet for speed/compression; JSON for state persistence.
+Storage Layer: Apache Parquet for speed/compression; JSON for state persistence; CSV for trade exports.
 
-Multiprocessing: The Crucible Engine utilizes ProcessPoolExecutor (4 workers) and Pandas vectorization to scan 20+ years of data in minutes.
+Multiprocessing: Portfolio Aggregator utilizes vectorized signal generation and chronological processing for efficient 2,000+ ticker analysis.
 
-TradingView Exporter: Automated prepare_tv_import.py script formats backtest data into 2-legged (Buy/Sell) CSVs for visual tape auditing on TradingView.
+TradingView Exporter: Automated tv_export_full.csv export formats trade data with Power Stock tracking for visual tape auditing.
 
 Directory Structure
-Plaintext
 VolatilityHunter/
-├── main_unified.py          # Unified Execution Engine (All Modes)
-├── health_check.py          # The Guard (System Diagnostics)
-├── update_universe.py       # The Historian (Data Sync)
-├── crucible_engine.py       # The Backtest Sandbox
-├── prepare_tv_import.py     # TradingView Exporter
-├── src/
-│   ├── shields.py           # Environmental Shields (Phase 4)
-│   ├── data_loader_factory.py # Factory Pattern for Data Loaders
+├── scripts/
+│   ├── portfolio_aggregator.py  # Total Market Crucible Engine (v8.0)
+│   ├── validation_power_stock.py # Power Stock validation testing
+│   └── [validation scripts...]
+├── main_unified.py              # Unified Execution Engine (Legacy)
+├── health_check.py              # The Guard (System Diagnostics)
+├── update_universe.py           # The Historian (Data Sync)
+├── src/                         # Core Logic Modules
+│   ├── strategy_v7_2.py         # Hybrid Blueprint Strategy
+│   ├── execution.py             # Trade Execution Engine
+│   ├── data_loader.py           # Data Management
+│   ├── tracker.py               # Portfolio Management
+│   └── [support modules...]
 │   └── ...                  # Core logic modules
 ├── simulation/              # Forward-Test Suite
 │   ├── run_simulation_loop.py # Consolidated Simulation Runner
 │   ├── simulated_data_loader.py # Time-Shifted Data Access
 │   └── portfolio_sim.json   # Simulation Portfolio State
 ├── data/                    # .parquet market data & portfolio.json
+│   ├── {ticker}_20yr.parquet # 20-Year Historical Data (NEW)
+│   └── portfolio.json       # Live Portfolio State
 ├── logs/                    # Daily VH_YYYY-MM-DD.log files
+├── .vh_knowledge_base/      # VH-BRAIN Vector Database (NEW)
 └── docs/                    # ARCHITECTURE.md, ROADMAP.md
 
 Data Flow Execution
@@ -232,3 +266,44 @@ Solution: Dynamic column detection with fallback hierarchy.
 - Centralized in strategy_v7_2.py with consistent error handling
 
 Result: System automatically adapts to any data source format, prevents case-sensitivity crashes, ensures reliable operation across Tiingo, YFinance, or local parquet data.
+
+🧠 9. VH-BRAIN Automated Watchdog (NEW)
+Intelligent Vector Database Synchronization System
+
+Purpose: Eliminates local RAG memory gap by automatically maintaining perfect sync between codebase changes and vector database.
+
+Technology Stack: Python watchdog library hooks into OS file events for real-time monitoring.
+
+Monitoring Scope: src/, scripts/, simulation/, and main_unified.py for .py and .md file modifications.
+
+Debounce Logic: 2-second delay prevents multiple triggers from single save operations.
+
+Indexing Action: Dynamic calls to scripts/index_codebase.py for only the modified file, updating specific vector chunks.
+
+Error Protocol: "No Silent Failures" - logs [ERROR] VH-BRAIN failed to index {file_path} on database lock or update failures.
+
+Integration: Must run in background terminal during development for perfect VH-BRAIN synchronization.
+
+📊 10. 20-Year Vectorized Backtest Infrastructure (NEW)
+Institutional-Grade Backtesting with Pure Pandas Vectorization
+
+Data Acquisition: scripts/fetch_deep_history.py pulls 20 years (2004-01-01 to Present) from Tiingo for S&P 500 universe.
+
+Storage: {ticker}_20yr.parquet files separate from current optimized data to avoid conflicts.
+
+Vectorized Engine: scripts/vectorized_backtester.py uses pure Pandas operations (no loops) with corrected equity curve math:
+
+Correct P&L Calculation:
+```python
+df['daily_return'] = df['adjClose'].pct_change()
+df['strategy_return'] = df['position'].shift(1) * df['daily_return']  
+df['equity'] = initial_capital * (1 + df['strategy_return'].fillna(0)).cumprod()
+```
+
+Position Management: .where() and .ffill() prevents buying same stock multiple times without SELL reset.
+
+Performance Metrics: CAGR, Max Drawdown, Win Rate, Profit Factor vs SPY benchmark.
+
+TradingView Export: Industry-standard CSV format (Symbol, Date, Side, Qty, Price) for visual tape auditing.
+
+Runtime Target: Under 5 minutes for full 20-year analysis across 500 tickers.

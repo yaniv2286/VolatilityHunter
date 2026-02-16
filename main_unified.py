@@ -436,7 +436,7 @@ def main():
         sys.exit(0)
         
     except Exception as e:
-        # CRITICAL: Enhanced exception handling with traceback
+        # CRITICAL: Enhanced exception handling with full traceback
         execution_failed = True
         import traceback
         traceback_details = traceback.format_exc()
