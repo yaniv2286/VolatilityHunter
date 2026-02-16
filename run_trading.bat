@@ -1,5 +1,5 @@
 @echo off
 cd /d "D:\GitHub\VolatilityHunter"
 call venv\Scripts\activate.bat
-python main.py --mode live
+python main_unified.py --mode live
 pause

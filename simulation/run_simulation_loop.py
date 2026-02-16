@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Time-Shifted Forward Test - Replay Loop
-Runs daily simulations from 2026-01-01 to today with proper delays.
+Runs daily simulations from specified date range with proper delays.
 """
 
 import os
@@ -9,6 +9,7 @@ import sys
 import json
 import time
 import subprocess
+import argparse
 from datetime import datetime, timedelta
 from typing import List
 
@@ -83,29 +84,60 @@ def run_simulation_for_date(target_date: str) -> tuple:
         Tuple: (success: bool, daily_summary: dict or None)
     """
     try:
-        # Run unified main.py in simulation mode
+        # Run unified main.py in simulation mode with streaming output
         cmd = [sys.executable, 'main_unified.py', '--mode', 'sim', '--date', target_date]
         
         log_info(f"Running simulation for {target_date}...")
         print(f"\n📅 Running simulation for {target_date}")
         
-        result = subprocess.run(
+        # Use Popen for real-time streaming output
+        process = subprocess.Popen(
             cmd,
             cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),  # Run from VolatilityHunter root
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
-            timeout=300  # 5 minute timeout per simulation
+            bufsize=1,  # Line buffered
+            universal_newlines=True
         )
         
-        if result.returncode == 0:
+        # Stream output in real-time
+        stdout_lines = []
+        stderr_lines = []
+        
+        while True:
+            # Read stdout
+            stdout_line = process.stdout.readline()
+            if stdout_line:
+                line = stdout_line.rstrip()
+                print(line)  # Real-time output to console
+                stdout_lines.append(line)
+            
+            # Read stderr
+            stderr_line = process.stderr.readline()
+            if stderr_line:
+                line = stderr_line.rstrip()
+                print(f"[STDERR] {line}")  # Real-time error output
+                stderr_lines.append(line)
+            
+            # Check if process has finished
+            if process.poll() is not None:
+                break
+        
+        # Get final return code
+        return_code = process.poll()
+        
+        if return_code == 0:
             log_info(f"Simulation successful for {target_date}")
             print(f"[OK] Simulation completed for {target_date}")
             
             # Parse daily summary from output
-            daily_summary = parse_daily_summary(result.stdout, target_date)
+            stdout_text = '\n'.join(stdout_lines)
+            daily_summary = parse_daily_summary(stdout_text, target_date)
             return True, daily_summary
         else:
-            log_error(f"Simulation failed for {target_date}: {result.stderr}")
+            stderr_text = '\n'.join(stderr_lines)
+            log_error(f"Simulation failed for {target_date}: {stderr_text}")
             print(f"[ERROR] Simulation failed for {target_date}")
             return False, None
             
@@ -303,14 +335,23 @@ Final Statistics:
 
 def main():
     """Main entry point for simulation loop."""
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='VolatilityHunter Time-Shifted Forward Test')
+    parser.add_argument('--start', type=str, help='Start date in YYYY-MM-DD format')
+    parser.add_argument('--end', type=str, help='End date in YYYY-MM-DD format')
+    
+    args = parser.parse_args()
+    
+    # Set date range from arguments or defaults
+    start_date = args.start if args.start else "2026-01-01"
+    end_date = args.end if args.end else datetime.now().strftime('%Y-%m-%d')
+    
     print("="*80)
     print("VolatilityHunter - Time-Shifted Forward Test")
-    print("Replay Loop: Daily Simulation from 2026-01-01 to Today")
+    print(f"Replay Loop: Daily Simulation from {start_date} to {end_date}")
     print("="*80)
     
     # Configuration
-    start_date = "2026-01-01"
-    end_date = datetime.now().strftime('%Y-%m-%d')  # Today
     delay_between_runs = 15  # 15 seconds to prevent SMTP rate limits
     
     print(f"Start Date: {start_date}")

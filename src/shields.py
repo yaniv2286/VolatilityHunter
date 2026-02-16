@@ -31,6 +31,9 @@ def is_earnings_safe(ticker: str, reference_date: str) -> bool:
         True if earnings safe, False if earnings announcement within 3 days
     """
     try:
+        # DEBUG: Log the reference date being used
+        log_info(f"[DEBUG] Earnings Shield: {ticker} checking date {reference_date}")
+        
         # Load stock data (works with both Tiingo and Parquet loaders)
         df = get_stock_data(ticker)
         if df is None or df.empty:

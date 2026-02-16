@@ -185,9 +185,11 @@ class PaperExecutor(Executor):
         position_size = self.calculate_position_size(signal, available_cash)
         
         if position_size > available_cash:
+            error_msg = f'Insufficient cash: need ${position_size:.2f}, have ${available_cash:.2f}'
+            log_error(f"[ERROR] {error_msg}")
             return {
                 'success': False,
-                'reason': f'Insufficient cash: need ${position_size:.2f}, have ${available_cash:.2f}',
+                'reason': error_msg,
                 'trade': None
             }
         
@@ -235,7 +237,8 @@ class PaperExecutor(Executor):
         return {
             'success': True,
             'reason': f'Paper buy executed for {ticker}',
-            'trade': trade
+            'trade': trade,
+            'remaining_cash': self.state['cash']  # Return updated cash balance
         }
     
     def execute_sell(self, signal: Dict, position: Dict) -> Dict:

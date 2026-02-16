@@ -106,6 +106,9 @@ def scan_all_stocks_v7_2(stock_data_dict, reference_date: str):
         'SHIELD_REJECTED': []
     }
     
+    # Major tickers for verbose diagnostics
+    verbose_tickers = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'NVDA', 'META', 'BRK.B', 'JPM', 'V']
+    
     for ticker, df in stock_data_dict.items():
         try:
             # Apply universal shields first
@@ -119,6 +122,12 @@ def scan_all_stocks_v7_2(stock_data_dict, reference_date: str):
                     'reason': f"Shields failed: {', '.join(failed_shields)}",
                     'shields': shields
                 })
+                
+                # Verbose logging for major tickers
+                if ticker in verbose_tickers:
+                    print(f"[VERBOSE] {ticker}: SHIELD REJECTED - {failed_shields}")
+                    print(f"[VERBOSE] {ticker}: Shields details: {shields}")
+                
                 continue
             
             # Shields passed - proceed with analysis
@@ -135,12 +144,23 @@ def scan_all_stocks_v7_2(stock_data_dict, reference_date: str):
             
             results[signal].append(result)
             
+            # Verbose logging for major tickers
+            if ticker in verbose_tickers:
+                print(f"[VERBOSE] {ticker}: {signal} - {analysis['reason']}")
+                indicators = analysis['indicators']
+                print(f"[VERBOSE] {ticker}: Price=${indicators.get('price', 'N/A'):.2f}, SMA200=${indicators.get('sma_200', 'N/A'):.2f}, StochK={indicators.get('stoch_k', 'N/A'):.1f}, Volume={indicators.get('volume', 'N/A'):,}")
+                print(f"[VERBOSE] {ticker}: Volume Gate: {indicators.get('volume', 0) > (indicators.get('volume_sma', 0) * 1.5)}, Trend Gate: {indicators.get('price', 0) > indicators.get('sma_200', 0)}")
+            
         except Exception as e:
             log_error(f"Error analyzing {ticker}: {e}")
             results['ERROR'].append({
                 'ticker': ticker,
                 'error': str(e)
             })
+            
+            # Verbose logging for major tickers
+            if ticker in verbose_tickers:
+                print(f"[VERBOSE] {ticker}: ERROR - {e}")
     
     return results
 
@@ -167,6 +187,10 @@ def main():
         print(f"Target Date: {target_date}")
     print("="*80)
     
+    # Critical: Initialize execution tracking
+    execution_failed = False
+    traceback_details = None
+    
     try:
         # Step 1: Dependency Injection - Create appropriate components
         print("[STEP 1] Initializing Components...")
@@ -181,8 +205,9 @@ def main():
         print(f"  - Portfolio Manager: {portfolio_file}")
         
         # Create executor
-        executor = get_executor()
-        print(f"  - Executor: Paper Trading")
+        portfolio_file_path = os.path.join(script_dir, 'simulation', 'portfolio_sim.json') if mode == 'sim' else 'data/portfolio.json'
+        executor = get_executor(portfolio_file=portfolio_file_path)
+        print(f"  - Executor: Paper Trading ({portfolio_file_path})")
         
         # Step 2: Load Stock Universe
         print("[STEP 2] Loading Stock Universe...")
@@ -195,11 +220,19 @@ def main():
         stock_data_dict = {}
         
         if mode == 'sim':
-            # Simulation mode - use SimulatedParquetLoader
-            for ticker in tickers:
+            # Simulation mode - use SimulatedParquetLoader with progress logging
+            total_tickers = len(tickers)
+            batch_size = 100  # Log progress every 100 tickers
+            
+            for i, ticker in enumerate(tickers):
                 df = data_loader.load_data(ticker)
                 if df is not None and not df.empty:
                     stock_data_dict[ticker] = df
+                
+                # Log batch progress
+                if (i + 1) % batch_size == 0 or (i + 1) == total_tickers:
+                    progress = (i + 1) / total_tickers * 100
+                    print(f"  - Processed {i + 1}/{total_tickers} tickers ({progress:.1f}%) - {len(stock_data_dict)} loaded")
         else:
             # Live mode - use standard data loader
             data_loader_instance = data_loader
@@ -274,6 +307,15 @@ def main():
             
             buy_price = signal['indicators']['price']
             
+            # Calculate trade cost first
+            position_size = executor.calculate_position_size(signal, available_cash)
+            trade_cost = position_size
+            
+            # CRITICAL: Check real-time cash before executing
+            if available_cash < trade_cost:
+                log_info(f"[CASH LIMIT] Out of cash: need ${trade_cost:.2f}, have ${available_cash:.2f} - skipping {ticker}")
+                break
+            
             buy_signal = {
                 'ticker': ticker,
                 'action': 'BUY',
@@ -285,9 +327,10 @@ def main():
             result = executor.execute_buy(buy_signal, available_cash)
             if result.get('success', False):
                 executed_trades['buys'].append(result)
+                # CRITICAL: Update available_cash immediately after each trade
                 available_cash = result.get('remaining_cash', available_cash)
                 current_position_count += 1
-                log_info(f"Executed BUY: {ticker} @ ${buy_price:.2f}")
+                log_info(f"Executed BUY: {ticker} @ ${buy_price:.2f} - Remaining cash: ${available_cash:.2f}")
                 
                 # Check position cap
                 if current_position_count >= max_positions:
@@ -298,6 +341,10 @@ def main():
         
         # Step 6: Update Portfolio Valuation
         print("[STEP 6] Updating Portfolio Valuation...")
+        
+        # CRITICAL FIX: Reload portfolio state after trade execution
+        # The executor modifies the portfolio file, but portfolio.state is stale
+        portfolio.state = portfolio._load_state()
         
         # Load updated portfolio
         updated_portfolio = portfolio.state
@@ -389,10 +436,46 @@ def main():
         sys.exit(0)
         
     except Exception as e:
+        # CRITICAL: Enhanced exception handling with traceback
+        execution_failed = True
+        import traceback
+        traceback_details = traceback.format_exc()
+        
         print(f"\n[ERROR] VolatilityHunter execution failed: {e}")
-        log_error(f"VolatilityHunter execution failed: {e}")
+        log_error(f"FATAL: {str(e)}", exc_info=True)
         print("="*80)
         sys.exit(1)
+        
+    finally:
+        # CRITICAL: Guaranteed cleanup and error notification
+        try:
+            if execution_failed and traceback_details:
+                # Force send error email on failure
+                try:
+                    email_notifier = EmailNotifier()
+                    error_subject = f"VolatilityHunter CRITICAL ERROR - {mode.upper()} mode"
+                    email_notifier.send_error_email(
+                        subject=error_subject,
+                        error_message=str(e) if 'e' in locals() else "Unknown error",
+                        traceback_details=traceback_details,
+                        mode=mode
+                    )
+                    print("[CRITICAL] Error notification sent")
+                except Exception as email_error:
+                    print(f"[CRITICAL] Failed to send error notification: {email_error}")
+                    log_error(f"Failed to send error notification: {email_error}")
+            
+            # CRITICAL: Flush all logging buffers (V5 Critical Lesson)
+            try:
+                import logging
+                logging.shutdown()
+                print("[CRITICAL] Logging buffers flushed to disk")
+            except Exception as log_error:
+                print(f"[CRITICAL] Failed to shutdown logging: {log_error}")
+            
+        except Exception as cleanup_error:
+            print(f"[CRITICAL] Cleanup error: {cleanup_error}")
+            # Last resort - don't let cleanup errors hide original errors
 
 
 if __name__ == '__main__':

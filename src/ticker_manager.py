@@ -52,15 +52,10 @@ class TickerManager:
         try:
             log_info(f"Filtering tickers: price>${min_price}, volume>{min_volume:,}, exchanges={exchanges}")
             
-            # Since Tiingo doesn't have a bulk ticker endpoint, we'll use a predefined universe
-            # This includes major indices and popular stocks
+            # CRITICAL FIX: Read from tickers.txt for 100% universe coverage
+            tickers = self._load_tickers_from_file()
             
-            # S&P 500 + NASDAQ 100 + Russell 2000 top stocks
-            # For a production system, you'd maintain this list or use a financial data provider
-            
-            tickers = self._get_major_stock_universe()
-            
-            log_info(f"Loaded {len(tickers)} tickers from major indices")
+            log_info(f"Loaded {len(tickers)} tickers from tickers.txt")
             
             # Filter by fetching current data
             filtered = self._filter_by_criteria(tickers, min_price, min_volume)
@@ -71,6 +66,30 @@ class TickerManager:
             
         except Exception as e:
             log_error(f"Error filtering tickers: {e}")
+            return []
+    
+    def _load_tickers_from_file(self):
+        """Load tickers from tickers.txt file"""
+        import os
+        
+        # Get the project root directory
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(current_dir)
+        ticker_file = os.path.join(project_root, 'tickers.txt')
+        
+        if not os.path.exists(ticker_file):
+            log_error(f"tickers.txt not found at {ticker_file}")
+            return []
+        
+        try:
+            with open(ticker_file, 'r') as f:
+                tickers = [line.strip() for line in f if line.strip()]
+            
+            log_info(f"Successfully loaded {len(tickers)} tickers from {ticker_file}")
+            return tickers
+            
+        except Exception as e:
+            log_error(f"Error reading tickers.txt: {e}")
             return []
     
     def _get_major_stock_universe(self):

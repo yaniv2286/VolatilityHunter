@@ -28,6 +28,10 @@ class TiingoLoader:
         from src.storage import DataStorage
         self.storage = DataStorage()
     
+    def load_data(self, ticker):
+        """Load data for a specific ticker from storage."""
+        return self.storage.load_data(ticker)
+    
     def update_all_stocks(self, stock_list, full_refresh=False, batch_size=50):
         """Update stocks using Tiingo API."""
         from src.data_loader import update_all_stocks

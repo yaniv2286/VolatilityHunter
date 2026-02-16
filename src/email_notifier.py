@@ -301,3 +301,64 @@ class EmailNotifier:
         except Exception as e:
             logger.error(f"❌ Report generation failed: {e}")
             return False
+    
+    def send_error_email(self, subject: str, error_message: str, traceback_details: str, mode: str = 'UNKNOWN') -> bool:
+        """
+        Send critical error email with full traceback details.
+        
+        Args:
+            subject: Email subject line
+            error_message: Primary error message
+            traceback_details: Full traceback string
+            mode: Execution mode (live/sim/backtest)
+        
+        Returns:
+            True if email sent successfully, False otherwise
+        """
+        try:
+            # Create HTML error report
+            html_body = f"""
+            <html>
+            <head>
+                <style>
+                    body {{ font-family: Arial, sans-serif; margin: 20px; }}
+                    .error-header {{ background-color: #d32f2f; color: white; padding: 15px; border-radius: 5px; }}
+                    .error-details {{ background-color: #ffebee; padding: 15px; margin: 10px 0; border-radius: 5px; }}
+                    .traceback {{ background-color: #f5f5f5; padding: 15px; font-family: monospace; font-size: 12px; white-space: pre-wrap; border-radius: 5px; }}
+                    .mode-info {{ background-color: #e3f2fd; padding: 10px; border-radius: 5px; }}
+                </style>
+            </head>
+            <body>
+                <div class="error-header">
+                    <h2>🚨 VOLATILITYHUNTER CRITICAL ERROR</h2>
+                    <p>Execution failed in {mode} mode</p>
+                </div>
+                
+                <div class="error-details">
+                    <h3>Error Details:</h3>
+                    <p><strong>Time:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+                    <p><strong>Mode:</strong> {mode.upper()}</p>
+                    <p><strong>Error:</strong> {error_message}</p>
+                </div>
+                
+                <div class="traceback">
+                    <h3>Full Traceback:</h3>
+                    <code>{traceback_details}</code>
+                </div>
+                
+                <div class="mode-info">
+                    <p><em>This is an automated error notification from VolatilityHunter.</em></p>
+                    <p><em>Please check the log files for additional details.</em></p>
+                </div>
+            </body>
+            </html>
+            """
+            
+            # Attach log file if available
+            attachment_path = self.get_daily_log_file()
+            
+            return self.send_email(subject, html_body, attachment_path)
+            
+        except Exception as e:
+            logger.error(f"❌ Error email failed to send: {e}")
+            return False
