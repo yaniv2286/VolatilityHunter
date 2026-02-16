@@ -282,3 +282,19 @@ class DataStorage:
                 tickers.add(t)
         
         return list(tickers)
+
+    def get_all_data(self):
+        """Load all available stock data from storage."""
+        all_data = {}
+        tickers = self.list_available_tickers()
+        
+        for ticker in tickers:
+            try:
+                data = self.load_data(ticker)
+                if data is not None and not data.empty:
+                    all_data[ticker] = data
+            except Exception as e:
+                log_warning(f"Failed to load data for {ticker}: {e}")
+                continue
+        
+        return all_data
