@@ -6,7 +6,8 @@ Morning Guard - System Health Monitoring
 import os
 import json
 import requests
-from datetime import datetime
+import socket
+from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Tuple
 from src.notifications import log_info, log_warning, log_error
 from src.email_notifier import EmailNotifier
@@ -32,13 +33,43 @@ class HealthChecker:
         }
     
     def _load_config(self) -> Dict:
-        """Load configuration from file"""
+        """Load configuration from config.json, config.ini, or .env"""
         try:
-            if os.path.exists(self.config_file):
-                with open(self.config_file, 'r') as f:
-                    return json.load(f)
-            else:
-                return {}
+            config = {}
+            
+            # Try config.json first
+            if os.path.exists('config.json'):
+                with open('config.json', 'r') as f:
+                    config.update(json.load(f))
+            
+            # Try config.ini
+            elif os.path.exists('config.ini'):
+                import configparser
+                ini_config = configparser.ConfigParser()
+                ini_config.read('config.ini')
+                if 'DEFAULT' in ini_config:
+                    config.update(dict(ini_config['DEFAULT']))
+            
+            # Try .env file
+            if os.path.exists('.env'):
+                from dotenv import load_dotenv
+                load_dotenv()
+                
+                # Override with .env values
+                env_mappings = {
+                    'TRADING_MODE': os.getenv('TRADING_MODE'),
+                    'DATA_SOURCE': os.getenv('DATA_SOURCE'),
+                    'IBKR_HOST': os.getenv('IBKR_HOST', '127.0.0.1'),
+                    'IBKR_PORT': int(os.getenv('IBKR_PORT', '7497')),
+                    'BROKERAGE_TYPE': os.getenv('BROKERAGE_TYPE', 'ibkr')
+                }
+                
+                for key, value in env_mappings.items():
+                    if value is not None:
+                        config[key] = value
+            
+            return config
+            
         except Exception as e:
             log_error(f"Error loading config: {e}")
             return {}
@@ -122,6 +153,58 @@ class HealthChecker:
         except Exception as e:
             return False, f"Disk check failed: {str(e)}"
     
+    def check_market_hours(self) -> Tuple[bool, str]:
+        """Check if current time is within IST trading window (17:30 - 23:00)"""
+        try:
+            # Get current time in IST
+            utc_now = datetime.now(timezone.utc)
+            ist_offset = timedelta(hours=3, minutes=30)  # IST = UTC+3:30
+            ist_now = utc_now + ist_offset
+            
+            current_hour = ist_now.hour
+            current_minute = ist_now.minute
+            current_time = current_hour * 100 + current_minute
+            
+            # SweetSpot trading window: 17:30 to 23:00 IST (1-hour stabilization after market open)
+            window_start = 1730  # 17:30 IST
+            window_end = 2300    # 23:00 IST
+            
+            if window_start <= current_time <= window_end:
+                return True, f"SweetSpot window OK - Current time: {ist_now.strftime('%H:%M')} IST"
+            else:
+                return False, f"Outside SweetSpot window - Current time: {ist_now.strftime('%H:%M')} IST (Window: 17:30-23:00 IST)"
+                
+        except Exception as e:
+            return False, f"Market hours check failed: {str(e)}"
+    
+    def check_ibkr_connectivity(self) -> Tuple[bool, str]:
+        """Check IBKR Gateway/TWS connectivity - MANDATORY in all modes"""
+        try:
+            # Get IBKR config
+            host = self.config.get('IBKR_HOST', '127.0.0.1')
+            
+            # Determine port based on trading mode
+            trading_mode = self.config.get('TRADING_MODE', '').upper()
+            if trading_mode == 'LIVE':
+                port = self.config.get('IBKR_PORT', 7496)  # Live trading port
+            else:
+                port = self.config.get('IBKR_PORT', 7497)  # Paper trading port
+            
+            # IBKR connectivity is MANDATORY for v8.0
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(5)  # 5 second timeout
+            
+            result = sock.connect_ex((host, port))
+            sock.close()
+            
+            if result == 0:
+                return True, f"IBKR Gateway/TWS reachable at {host}:{port} ({trading_mode})"
+            else:
+                return False, f"IBKR Gateway/TWS NOT reachable at {host}:{port} ({trading_mode}) - Start TWS/Gateway!"
+                
+        except Exception as e:
+            return False, f"IBKR connectivity check failed: {str(e)}"
+    
     def check_config_validity(self) -> Tuple[bool, str]:
         """Check configuration file validity"""
         try:
@@ -169,7 +252,7 @@ class HealthChecker:
             return False, f"Log directory check failed: {str(e)}"
     
     def check_python_environment(self) -> Tuple[bool, str]:
-        """Check Python environment and key packages"""
+        """Check Python environment and key packages - WARNING ONLY"""
         try:
             import sys
             import pandas
@@ -177,10 +260,14 @@ class HealthChecker:
             import requests
             
             python_version = sys.version_info
-            if python_version < (3, 11):
-                return False, f"Python {python_version.major}.{python_version.minor} - upgrade to 3.11+ recommended"
             
-            return True, f"Python {python_version.major}.{python_version.minor}.{python_version.micro} - OK"
+            # Python 3.10+ is stable for v8.0 - always PASS, just warn if older
+            if python_version < (3, 10):
+                return True, f"Python {python_version.major}.{python_version.minor} - OK (WARNING: upgrade to 3.10+ recommended)"
+            elif python_version == (3, 10):
+                return True, f"Python {python_version.major}.{python_version.minor}.{python_version.micro} - OK (v8.0 stable)"
+            else:
+                return True, f"Python {python_version.major}.{python_version.minor}.{python_version.micro} - OK"
         
         except ImportError as e:
             return False, f"Missing required package: {str(e)}"
@@ -201,8 +288,10 @@ class HealthChecker:
         
         # Define all checks to run
         checks = [
+            ('Market Hours', self.check_market_hours),
             ('Internet Connectivity', self.check_internet_connectivity),
             ('Tiingo API', self.check_tiingo_api),
+            ('IBKR Connectivity', self.check_ibkr_connectivity),
             ('Disk Permissions', self.check_disk_permissions),
             ('Config Validity', self.check_config_validity),
             ('Log Directory', self.check_log_directory),

@@ -5,6 +5,7 @@ Allows semantic search of the codebase using natural language queries
 """
 
 import os
+import os; os.environ['TOKENIZERS_PARALLELISM'] = 'false'
 import sys
 from pathlib import Path
 from typing import List, Dict, Any, Optional

@@ -5,6 +5,8 @@ Eliminates local RAG memory gap by automatically maintaining perfect sync betwee
 """
 
 import os
+os.environ['TOKENIZERS_PARALLELISM'] = 'false'
+import os
 import sys
 import time
 import threading

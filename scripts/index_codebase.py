@@ -4,10 +4,14 @@ Code Intelligence Indexer for VolatilityHunter
 Builds a semantic search index of the entire codebase for intelligent code navigation
 """
 
+import os; os.environ['TOKENIZERS_PARALLELISM'] = 'false'
 import os
 import sys
 from pathlib import Path
 from typing import List, Dict, Any
+
+# Fix HuggingFace Tokenizer Deadlock
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 # Add src to path for imports
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))

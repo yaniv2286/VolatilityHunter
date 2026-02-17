@@ -3,15 +3,17 @@ Project: VolatilityHunter
 
 Current Version: 8.0 Total Market Crucible | Power Stock Dual-Exit Architecture | Hedge Fund Portfolio Aggregator
 
-Status: 🟢 PRODUCTION READY | AUTONOMOUS | 26-YEAR TOTAL MARKET VALIDATED | 3,004 TRADES EXECUTED | 1,841 POWER STOCK TRADES
+Status: 🟢 PRODUCTION READY | AUTONOMOUS | 26-YEAR TOTAL MARKET VALIDATED | 3,004 TRADES EXECUTED | 1,841 POWER STOCK TRADES | 2,112% RETURN
 
 📋 1. Core Architecture (The 3-Pillar System)
-Pillar I: The Guard (health_check.py)
-Schedule: 09:00 AM IST Daily | Purpose: System Health Validation
+Pillar I: The Guard (health_check.py + run_trading.bat)
+Schedule: 17:30 IST Daily (10:30 AM EST) | Purpose: System Health Validation & Production Gatekeeper
 
 "Fail Fast" Philosophy: Prevents silent failures before execution begins.
 
-Validations: Internet connectivity, Tiingo API uptime, disk permissions, CPU/RAM resource monitoring.
+Validations: Internet connectivity, Tiingo API uptime, disk permissions, CPU/RAM resource monitoring, IBKR connectivity (7497/7496), SweetSpot window validation (17:30-23:00 IST).
+
+Gatekeeper Workflow: Health Check → IBKR Port Validation → Market Hours Window → Auto-Launch Live Trader.
 
 Pillar II: The Historian (update_universe.py)
 Schedule: Optional/Manual | Purpose: Market Data Synchronization
@@ -23,7 +25,7 @@ Scale: Synchronizes 2,000+ tickers into highly compressed Apache Parquet files.
 Uptime: 99.9% reliability managing over 8.7+ million rows of data.
 
 Pillar III: The Hunter (main_unified.py + scripts/portfolio_aggregator.py)
-Schedule: 10:00 AM IST Daily | Purpose: Unified Trading Execution
+Schedule: 17:30 IST Daily (10:30 AM EST) | Purpose: Unified Trading Execution
 
 Total Market Crucible: Single $100k portfolio dynamically allocated across 2,000+ ticker universe.
 
@@ -40,6 +42,8 @@ Market Analysis: Scans 2,000+ tickers against the Hybrid Blueprint 5-Gate entry 
 Execution & Risk: Calculates dynamic position sizing, updates cash balances, and registers trades.
 
 Reporting: Generates Master Tearsheet with Power Stock performance metrics and exports to tv_export_full.csv.
+
+Note: Execution delayed by 60 minutes to avoid Opening Range volatility and ensure Stochastic signal stabilization (SweetSpot window).
 
 🎯 2. The Strategy: v8.0 Power Stock Dual-Exit Architecture
 Revolutionary advancement beyond the Hybrid Blueprint with state machine-based promotion tracking and dual-exit logic.

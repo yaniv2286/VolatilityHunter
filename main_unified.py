@@ -4,6 +4,8 @@ VolatilityHunter - Unified Execution Engine
 """
 
 import os
+os.environ['TOKENIZERS_PARALLELISM'] = 'false'
+import os
 import sys
 import argparse
 from datetime import datetime
