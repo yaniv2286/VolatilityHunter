@@ -1,5 +1,6 @@
 ALWAYS READ docs/ARCHITECTURE.md and docs/ROADMAP.md BEFORE WRITING OR MODIFYING ANY TRADING LOGIC. These documents contain the absolute, immutable mathematical rules of the VolatilityHunter system (including the Power Stock state machine and vectorization math). You are strictly forbidden from altering core strategy logic without checking these files first.
 
+
 # VolatilityHunter - Strict Operational Protocol
 # Primary Directive for All Architectural Changes
 
