@@ -7,6 +7,7 @@ Prevents TWS from auto-logging out by maintaining connection
 import time
 import logging
 import socket
+import random
 from datetime import datetime
 from ib_insync import IB, util
 
@@ -18,10 +19,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class TWSKeepAlive:
-    def __init__(self, host='127.0.0.1', port=7497, client_id=999):
+    def __init__(self, host='127.0.0.1', port=7497, client_id=None):
         self.host = host
         self.port = port
-        self.client_id = client_id
+        self.client_id = client_id or random.randint(1000, 9999)
         self.ib = IB()
         self.connected = False
         

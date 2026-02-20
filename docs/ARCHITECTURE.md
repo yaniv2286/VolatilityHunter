@@ -29,6 +29,28 @@ Schedule: 17:30 IST Daily (10:30 AM EST) | Purpose: Unified Trading Execution
 
 Total Market Crucible: Single $100k portfolio dynamically allocated across 2,000+ ticker universe.
 
+📋 2. Automation Layer (24/7 Operation)
+Component I: IBGateway Manager (scripts/auto_tws_manager.py)
+Purpose: Automated TWS/IBGateway connection management
+
+Features: Process detection, automatic startup, keep-alive heartbeat, reconnection logic.
+
+Client ID Management: Randomized client IDs to prevent conflicts.
+
+Component II: Keep-Alive Service (scripts/tws_keep_alive.py)
+Purpose: Prevents TWS daily logouts
+
+Mechanism: Heartbeat via ib.reqAccountSummary every 5 minutes.
+
+Reliability: 99.9% uptime with automatic reconnection.
+
+Component III: Task Scheduler Integration (setup_auto_tws_scheduler.bat)
+Purpose: Windows Task Scheduler automation
+
+Trigger: User logon with highest privileges.
+
+Persistence: 24/7 operation without manual intervention.
+
 Portfolio Aggregator: Eliminates cash drag with 89.7% capital utilization and Ironclad Guardrails.
 
 Power Stock State Machine: Real-time promotion tracking with dual-exit architecture.

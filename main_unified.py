@@ -392,26 +392,22 @@ def main():
         try:
             email_notifier = EmailNotifier()
             
-            if mode == 'sim':
-                # Simulation mode - skip daily email (consolidation mode)
-                print("  - Simulation mode: Daily email skipped (consolidation mode)")
+            # Send comprehensive report in ALL modes
+            subject = f"VolatilityHunter Daily Report: {mode.upper()}"
+            
+            email_sent = email_notifier.send_comprehensive_scan_results(
+                scan_results=scan_results,
+                summary=summary,
+                portfolio_summary=updated_portfolio_summary,
+                executed_trades=executed_trades,
+                attach_log_file=True
+            )
+            
+            if email_sent:
+                print("  - Daily report sent successfully!")
+                print("  - Log file attached: Yes")
             else:
-                # Live mode - send comprehensive report
-                subject = f"VolatilityHunter Daily Report: {mode.upper()}"
-                
-                email_sent = email_notifier.send_comprehensive_scan_results(
-                    scan_results=scan_results,
-                    summary=summary,
-                    portfolio_summary=updated_portfolio_summary,
-                    executed_trades=executed_trades,
-                    attach_log_file=True
-                )
-                
-                if email_sent:
-                    print("  - Daily report sent successfully!")
-                    print("  - Log file attached: Yes")
-                else:
-                    print("  - Failed to send daily report")
+                print("  - Failed to send daily report")
         
         except Exception as e:
             print(f"  - Email error: {e}")

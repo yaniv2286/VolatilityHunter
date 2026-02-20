@@ -44,6 +44,20 @@ VolatilityHunter is a **deterministic, rule-based quantitative trading system** 
 - **Data Integrity**: 8.7+ million rows of clean market data
 - **Crisis Survival**: Validated across all major market crashes
 
+#### **🤖 24/7 Automated Trading**
+- **TWS/IBGateway Integration**: Fully automated connection management
+- **Keep-Alive Service**: Prevents daily TWS logouts with heartbeat mechanism
+- **Auto-Manager**: Automatic TWS/IBGateway startup and monitoring
+- **Task Scheduler**: Windows Task Scheduler integration for 24/7 operation
+- **Email Reports**: Daily automated reports with complete trade details and log files
+
+#### **📧 Comprehensive Email Notifications**
+- **All Modes**: Email reports sent in SIM, LIVE, and BACKTEST modes
+- **Trade Details**: Complete execution log with prices, shares, and rationale
+- **Portfolio Summary**: Real-time portfolio value and position details
+- **Log Attachments**: Full daily log files attached to every report
+- **Error Alerts**: Immediate email notifications for system errors
+
 ---
 
 ## 📊 Data Pipeline

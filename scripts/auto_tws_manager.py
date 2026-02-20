@@ -12,6 +12,7 @@ import logging
 import socket
 import subprocess
 import psutil
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -24,31 +25,48 @@ logger = logging.getLogger(__name__)
 
 class AutoTWSManager:
     def __init__(self):
-        self.tws_processes = ['tws.exe', 'traderworkstation.exe']
+        self.tws_processes = ['tws.exe', 'traderworkstation.exe', 'ibgateway.exe']
         self.ibgateway_processes = ['ibgateway.exe']
         self.tws_path = self.find_tws_installation()
+        self.ibgateway_path = self.find_ibgateway_installation()
         self.keep_alive_running = False
         
     def find_tws_installation(self):
         """Find TWS installation path"""
         common_paths = [
-            r"C:\Jts",
-            r"C:\IBJts",
-            r"C:\Program Files\IBJts",
-            r"C:\Program Files (x86)\IBJts",
-            r"D:\Jts",
-            r"D:\IBJts"
+            r"D:\TWS\tws\tws.exe",
+            r"D:\tws\tws.exe",
+            r"C:\Jts\tws.exe",
+            r"C:\IBJts\tws.exe",
+            r"C:\Program Files\IBJts\tws.exe",
+            r"C:\Program Files (x86)\IBJts\tws.exe"
         ]
         
         for path in common_paths:
             if Path(path).exists():
-                tws_exe = Path(path) / "tws.exe"
-                if tws_exe.exists():
-                    logger.info(f"Found TWS at: {tws_exe}")
-                    return str(tws_exe)
+                logger.info(f"Found TWS at: {path}")
+                return path
         
         logger.warning("TWS installation not found - will try default paths")
-        return "tws.exe"  # Hope it's in PATH
+        return "D:\\TWS\\tws\\tws.exe"  # Force use known path
+    
+    def find_ibgateway_installation(self):
+        """Find IBGateway installation path"""
+        common_paths = [
+            r"D:\TWS\ibgateway\ibgateway.exe",
+            r"C:\Jts\ibgateway.exe",
+            r"C:\IBJts\ibgateway.exe",
+            r"C:\Program Files\IBJts\ibgateway.exe",
+            r"C:\Program Files (x86)\IBJts\ibgateway.exe"
+        ]
+        
+        for path in common_paths:
+            if Path(path).exists():
+                logger.info(f"Found IBGateway at: {path}")
+                return path
+        
+        logger.warning("IBGateway installation not found")
+        return None
     
     def is_tws_running(self):
         """Check if TWS or IBGateway is running"""
@@ -77,8 +95,29 @@ class AutoTWSManager:
         try:
             logger.info(f"Starting TWS: {self.tws_path}")
             
-            # Try to start TWS
-            subprocess.Popen([self.tws_path], shell=True)
+            # Use full path with proper Windows command
+            if self.tws_path and os.path.exists(self.tws_path):
+                subprocess.Popen([self.tws_path], shell=True)
+            else:
+                # Try hardcoded common paths
+                common_paths = [
+                    r"C:\Jts\tws.exe",
+                    r"C:\IBJts\tws.exe",
+                    r"C:\Program Files\IBJts\tws.exe",
+                    r"C:\Program Files (x86)\IBJts\tws.exe"
+                ]
+                
+                started = False
+                for path in common_paths:
+                    if os.path.exists(path):
+                        logger.info(f"Found TWS at: {path}")
+                        subprocess.Popen([path], shell=True)
+                        started = True
+                        break
+                
+                if not started:
+                    logger.error("❌ TWS not found in common paths")
+                    return False
             
             # Wait for TWS to start
             logger.info("Waiting for TWS to start...")
