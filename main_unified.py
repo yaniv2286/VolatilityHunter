@@ -30,6 +30,7 @@ from src.execution import get_executor
 from src.tracker import Portfolio
 from src.email_notifier import EmailNotifier
 from src.shields import apply_universal_shields
+from src.portfolio_synchronizer import PortfolioSynchronizer
 import json
 
 
@@ -39,7 +40,7 @@ class DataLoaderFactory:
     @staticmethod
     def create_loader(mode: str, target_date: str = None):
         """
-        Create data loader based on execution mode
+        Create data loader based on mode
         
         Args:
             mode: Execution mode ('live', 'sim', 'backtest')
@@ -51,6 +52,12 @@ class DataLoaderFactory:
         if mode == 'sim':
             # Import SimulatedParquetLoader for simulation mode
             from simulation.simulated_data_loader import SimulatedParquetLoader
+            
+            # Handle missing target_date - use today's date as default
+            if target_date is None:
+                target_date = datetime.now().strftime('%Y-%m-%d')
+                log_info(f"No target date provided, using today's date: {target_date}")
+            
             return SimulatedParquetLoader(target_date)
         else:
             # Use standard Tiingo loader for live and backtest modes
@@ -194,7 +201,7 @@ def main():
     
     mode = args.mode
     target_date = args.date
-    reference_date = target_date if mode == 'sim' else datetime.now().strftime('%Y-%m-%d')
+    reference_date = target_date if target_date else datetime.now().strftime('%Y-%m-%d')
     
     print("="*80)
     print("VolatilityHunter - Unified Execution Engine")
@@ -219,12 +226,26 @@ def main():
         brokerage_interface = None
         if strategy_info.get('sweet_spot_enabled', False):
             try:
-                from src.brokerage_interface import BrokerageInterface
-                brokerage_interface = BrokerageInterface()
-                print(f"  - IBKR Interface: Connected for spread monitoring")
+                from src.brokerage_interface import get_brokerage_interface
+                # Use the factory to create the correct IBKR interface
+                brokerage_interface = get_brokerage_interface({
+                    'BROKERAGE_TYPE': 'ibkr',
+                    'IBKR_HOST': '127.0.0.1',
+                    'IBKR_PORT': 7497,
+                    'IBKR_CLIENT_ID': 1
+                })
+                
+                # Try to connect to IBKR
+                if brokerage_interface.connect():
+                    print(f"  - IBKR Interface: Connected for live trading")
+                else:
+                    print(f"  - IBKR Interface: Connection failed - using paper trading")
+                    brokerage_interface = None
+                    
             except Exception as e:
                 log_warning(f"Could not initialize IBKR interface: {e}")
-                print(f"  - IBKR Interface: Not available (spread monitoring disabled)")
+                print(f"  - IBKR Interface: Not available (using paper trading)")
+                brokerage_interface = None
         
         # Create trading strategy
         trading_strategy = create_trading_strategy(brokerage_interface)
@@ -241,8 +262,33 @@ def main():
         
         # Create executor
         portfolio_file_path = os.path.join(script_dir, 'simulation', 'portfolio_sim.json') if mode == 'sim' else 'data/portfolio.json'
-        executor = get_executor(portfolio_file=portfolio_file_path)
-        print(f"  - Executor: Paper Trading ({portfolio_file_path})")
+        
+        # Use IBKR executor if brokerage interface is available and in live mode
+        if mode == 'live' and brokerage_interface:
+            try:
+                # Test connection
+                if not brokerage_interface.is_connected:
+                    if not brokerage_interface.connect():
+                        print(f"  - IBKR Interface: Failed to connect - using paper trading")
+                        brokerage_interface = None
+                    else:
+                        print(f"  - IBKR Interface: Connected successfully")
+                
+                if brokerage_interface and brokerage_interface.is_connected:
+                    from src.execution import LiveExecutor
+                    executor = LiveExecutor(portfolio_file_path, brokerage_interface)
+                    print(f"  - Executor: LIVE Trading with IBKR ({portfolio_file_path})")
+                else:
+                    executor = get_executor(portfolio_file=portfolio_file_path)
+                    print(f"  - Executor: Paper Trading ({portfolio_file_path})")
+            except Exception as e:
+                print(f"  - IBKR Interface: Error - using paper trading: {e}")
+                brokerage_interface = None
+                executor = get_executor(portfolio_file=portfolio_file_path)
+                print(f"  - Executor: Paper Trading ({portfolio_file_path})")
+        else:
+            executor = get_executor(portfolio_file=portfolio_file_path)
+            print(f"  - Executor: Paper Trading ({portfolio_file_path})")
         
         # Step 2: Load Stock Universe
         print("[STEP 2] Loading Stock Universe...")
@@ -435,6 +481,44 @@ def main():
         print(f"  - Portfolio Value: ${total_value:,.2f}")
         print(f"  - Cash: ${cash:,.2f}")
         print(f"  - Positions: {len(positions)}")
+        
+        # Step 6.5: Sync Portfolio with IBKR (if in live mode)
+        if mode == 'live' and brokerage_interface and brokerage_interface.is_connected:
+            print("[STEP 6.5] Syncing Portfolio with IBKR...")
+            try:
+                synchronizer = PortfolioSynchronizer(portfolio_file_path)
+                sync_result = synchronizer.sync_portfolio_to_ibkr()
+                
+                if sync_result.get('success', False):
+                    actions = sync_result.get('actions', [])
+                    if actions:
+                        print(f"  - Synced {len(actions)} positions to IBKR")
+                        for action in actions:
+                            if action.get('success', False):
+                                print(f"    [OK] {action['action']['type'].upper()} {action['action']['shares']} shares of {action['action']['symbol']}")
+                            else:
+                                print(f"    [FAIL] Failed to {action['action']['type']} {action['action']['symbol']}: {action.get('reason', 'Unknown')}")
+                    else:
+                        print("  - Portfolio already synchronized with IBKR")
+                else:
+                    print(f"  - Sync failed: {sync_result.get('reason', 'Unknown')}")
+                    
+                # Verify synchronization
+                verification = synchronizer.verify_sync()
+                if verification.get('success', False):
+                    if verification.get('is_synchronized', False):
+                        print("  - [OK] Portfolio synchronized with TWS")
+                    else:
+                        print("  - [FAIL] Portfolio NOT synchronized with TWS")
+                        print(f"    - Missing in IBKR: {verification.get('missing_in_ibkr', [])}")
+                        print(f"    - Extra in IBKR: {verification.get('extra_in_ibkr', [])}")
+                        print(f"    - Size mismatches: {len(verification.get('size_mismatches', []))}")
+                        
+            except Exception as e:
+                print(f"  - Portfolio sync error: {e}")
+                log_error(f"Portfolio sync error: {e}")
+        else:
+            print("  - Skipping IBKR sync (not in live mode or not connected)")
         
         # Step 7: Send Report
         print("[STEP 7] Sending Report...")

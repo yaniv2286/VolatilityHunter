@@ -190,17 +190,76 @@ class HealthChecker:
             else:
                 port = self.config.get('IBKR_PORT', 7497)  # Paper trading port
             
-            # IBKR connectivity is MANDATORY for v8.0
+            # Test 1: Basic socket connectivity
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(5)  # 5 second timeout
             
             result = sock.connect_ex((host, port))
             sock.close()
             
-            if result == 0:
-                return True, f"IBKR Gateway/TWS reachable at {host}:{port} ({trading_mode})"
-            else:
+            if result != 0:
                 return False, f"IBKR Gateway/TWS NOT reachable at {host}:{port} ({trading_mode}) - Start TWS/Gateway!"
+            
+            # Test 2: Try to instantiate IBKR interface
+            try:
+                from src.brokerage_interface import get_brokerage_interface
+                ibkr_interface = get_brokerage_interface({
+                    'BROKERAGE_TYPE': 'ibkr',
+                    'IBKR_HOST': host,
+                    'IBKR_PORT': port,
+                    'IBKR_CLIENT_ID': 999
+                })
+                
+                # Test 3: Try to connect
+                if ibkr_interface.connect():
+                    # Test 4: Try a real trade (buy and immediate sell)
+                    try:
+                        import time
+                        
+                        # Get account info first
+                        account = ibkr_interface.get_account_info()
+                        cash = account.get('cash', 0)
+                        
+                        if cash >= 1000:  # Only test if we have enough cash
+                            # Buy 1 share of a cheap stock (e.g., SIRI)
+                            symbol = 'SIRI'  # Usually cheap stock
+                            shares = 1
+                            
+                            # Place buy order
+                            buy_result = ibkr_interface.place_market_order(symbol, shares, 'buy')
+                            
+                            if buy_result.get('success', False):
+                                buy_order_id = buy_result.get('order_id')
+                                
+                                # Wait a moment for order to process
+                                time.sleep(2)
+                                
+                                # Place sell order for the same stock
+                                sell_result = ibkr_interface.place_market_order(symbol, shares, 'sell')
+                                
+                                if sell_result.get('success', False):
+                                    sell_order_id = sell_result.get('order_id')
+                                    
+                                    ibkr_interface.disconnect()
+                                    return True, f"IBKR Interface fully functional with trade test at {host}:{port} ({trading_mode}) - Buy ID: {buy_order_id}, Sell ID: {sell_order_id}"
+                                else:
+                                    ibkr_interface.disconnect()
+                                    return False, f"IBKR buy order succeeded but sell failed: {sell_result.get('reason', 'Unknown')}"
+                            else:
+                                ibkr_interface.disconnect()
+                                return False, f"IBKR buy order failed: {buy_result.get('reason', 'Unknown')}"
+                        else:
+                            ibkr_interface.disconnect()
+                            return True, f"IBKR Interface connected but insufficient cash (${cash:,.2f}) for trade test at {host}:{port} ({trading_mode})"
+                            
+                    except Exception as trade_error:
+                        ibkr_interface.disconnect()
+                        return False, f"IBKR Interface connected but trade test failed: {trade_error}"
+                else:
+                    return False, f"IBKR Interface connection failed at {host}:{port} ({trading_mode})"
+                    
+            except Exception as e:
+                return False, f"IBKR Interface instantiation failed: {str(e)}"
                 
         except Exception as e:
             return False, f"IBKR connectivity check failed: {str(e)}"
