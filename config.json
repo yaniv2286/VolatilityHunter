@@ -1,9 +1,37 @@
 {
-    "TIME_OFFSET": 0,
-    "EMAIL_RECIPIENTS": [
-        "lugassy.ai@gmail.com"
-    ],
-    "RISK_TOLERANCE": "MEDIUM",
-    "DATA_SOURCE": "TIINGO",
-    "TRADING_MODE": "PAPER"
+  "TIME_OFFSET": 0,
+  "EMAIL_RECIPIENTS": [
+    "lugassy.ai@gmail.com"
+  ],
+  "RISK_TOLERANCE": "MEDIUM",
+  "DATA_SOURCE": "TIINGO",
+  "TRADING_MODE": "PAPER",
+  "STRATEGY_SELECTION": "sweet_spot",
+  "SWEET_SPOT": {
+    "enable_patterns": true,
+    "enable_spread_monitoring": true,
+    "enable_time_filters": true,
+    "pattern_weight": 0.3,
+    "min_enhanced_score": 0.6,
+    "spread_limits": {
+      "under_100_max_cents": 2,
+      "250_to_299_max_cents": 5,
+      "over_300_max_cents": 20
+    },
+    "time_filters": {
+      "enable_10_06_rule": true,
+      "enable_friday_rule": true,
+      "pre_10_06_penalty": 0.3,
+      "friday_penalty": 0.2
+    },
+    "pattern_weights": {
+      "engulfing": 0.3,
+      "hammer": 0.2,
+      "doji": -0.5,
+      "w_formation": 0.25,
+      "m_formation": -0.3,
+      "head_shoulders": -0.4,
+      "fifty_percent_rule": -0.2
+    }
+  }
 }

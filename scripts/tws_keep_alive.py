@@ -78,7 +78,7 @@ class TWSKeepAlive:
                 # Send heartbeat request to keep session alive
                 try:
                     # Request account data as heartbeat
-                    self.ib.reqAccountSummary('all', 'AccountType')
+                    self.ib.reqAccountSummary(9001, 'All', 'AccountType')
                     logger.info(f"💓 Heartbeat sent at {datetime.now().strftime('%H:%M:%S')}")
                     
                 except Exception as e:

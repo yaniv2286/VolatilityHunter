@@ -112,11 +112,12 @@ class EmailNotifier:
             return False
 
     # THE FIX: Added 'attach_log_file' argument to handle the call from main.py
-    def send_comprehensive_scan_results(self, scan_results, summary=None, portfolio_summary=None, executed_trades=None, attach_log_file=False):
+    def send_comprehensive_scan_results(self, scan_results, summary=None, portfolio_summary=None, executed_trades=None, attach_log_file=False, sweet_spot_summary=None):
         try:
             summary = summary or {}
             portfolio_summary = portfolio_summary or {}
             executed_trades = executed_trades or {}
+            sweet_spot_summary = sweet_spot_summary or {}
             
             # Extract detailed trade log
             detailed_trade_log = executed_trades.get('detailed_trade_log', [])
@@ -136,8 +137,25 @@ class EmailNotifier:
                 cash = 0.0
                 num_positions = 0
             
+            # Extract Sweet Spot metrics
+            try:
+                patterns_detected = int(sweet_spot_summary.get('patterns_detected', 0))
+                spread_filtered = int(sweet_spot_summary.get('spread_filtered', 0))
+                time_filtered = int(sweet_spot_summary.get('time_filtered', 0))
+                strategy_used = sweet_spot_summary.get('strategy_used', 'v7_2')
+                enhanced_entries = int(sweet_spot_summary.get('enhanced_entries', 0))
+                pattern_rejections = int(sweet_spot_summary.get('pattern_rejections', 0))
+            except:
+                patterns_detected = 0
+                spread_filtered = 0
+                time_filtered = 0
+                strategy_used = 'v7_2'
+                enhanced_entries = 0
+                pattern_rejections = 0
+            
             pnl_color = "green" if daily_pnl >= 0 else "red"
             return_color = "green" if total_return_dollars >= 0 else "red"
+            strategy_color = "#28a745" if strategy_used == "sweet_spot" else "#6c757d"
             
             # Build HTML sections
             html_body = f"""
@@ -164,6 +182,7 @@ class EmailNotifier:
                     <h2>VolatilityHunter Daily Report</h2>
                     <p><b>Date:</b> {self.get_local_time().strftime('%Y-%m-%d %H:%M')}</p>
                     <p><b>Mode:</b> {portfolio_summary.get('execution_mode', 'PAPER').upper()}</p>
+                    <p><b>Strategy:</b> <span style="color: {strategy_color}; font-weight: bold;">{strategy_used.upper()}</span></p>
                 </div>
                 
                 <div class="section">
@@ -185,6 +204,14 @@ class EmailNotifier:
                         <div class="metric-value">{num_positions}/10</div>
                     </div>
                 </div>
+                
+                {"<div class='section'><h3>Sweet Spot Analytics</h3>" if strategy_used == "sweet_spot" else ""}
+                {"<div class='metric'><div class='metric-label'>Patterns Detected</div><div class='metric-value'>{patterns_detected}</div></div>" if strategy_used == "sweet_spot" else ""}
+                {"<div class='metric'><div class='metric-label'>Enhanced Entries</div><div class='metric-value'>{enhanced_entries}</div></div>" if strategy_used == "sweet_spot" else ""}
+                {"<div class='metric'><div class='metric-label'>Pattern Rejections</div><div class='metric-value'>{pattern_rejections}</div></div>" if strategy_used == "sweet_spot" else ""}
+                {"<div class='metric'><div class='metric-label'>Spread Filtered</div><div class='metric-value'>{spread_filtered}</div></div>" if strategy_used == "sweet_spot" else ""}
+                {"<div class='metric'><div class='metric-label'>Time Filtered</div><div class='metric-value'>{time_filtered}</div></div>" if strategy_used == "sweet_spot" else ""}
+                {"</div>" if strategy_used == "sweet_spot" else ""}
                 
                 <div class="section">
                     <h3>Market Activity</h3>

@@ -1,11 +1,31 @@
 🏗️ VolatilityHunter Architecture
 Project: VolatilityHunter
 
-Current Version: 8.0 Total Market Crucible | Power Stock Dual-Exit Architecture | Hedge Fund Portfolio Aggregator
+Current Version: 8.0 Total Market Crucible | Power Stock Dual-Exit Architecture | Sweet Spot Blueprint Integration | Production Hedge Fund System
 
 Status: 🟢 PRODUCTION READY | AUTONOMOUS | 26-YEAR TOTAL MARKET VALIDATED | 3,004 TRADES EXECUTED | 1,841 POWER STOCK TRADES | 2,112% RETURN
 
-📋 1. Core Architecture (The 3-Pillar System)
+System Health: ✅ 8/8 HEALTH CHECKS PASSING (Feb 23, 2026)
+- ✅ Internet Connectivity: Connected (IP: 46.116.184.75)
+- ✅ Tiingo API: Valid (AAPL: $271.01)
+- ✅ IBKR Connectivity: Paper trading (Port 7497)
+- ✅ Disk Permissions: Read/Write OK
+- ✅ Config Validity: PAPER mode, TIINGO source
+- ✅ Python Environment: 3.10.9
+- ✅ Market Hours: Validated (17:30-23:00 IST SweetSpot window)
+- ✅ Email Notifications: Operational with Sweet Spot analytics
+
+🚀 NEW: Sweet Spot Blueprint Integration (Phase 10-11 Complete)
+- ✅ Pattern Recognition: Candlestick (Engulfing, Hammer, Doji) + Chart (W/M, Head & Shoulders, 50% Rule)
+- ✅ Market Microstructure: Real-time IBKR spread monitoring + Time-based filters (10:06 AM, Friday rules)
+- ✅ Enhanced Strategy: Sweet Spot strategy with v7.2 fallback + Pattern-weighted scoring
+- ✅ Strategy Factory: Seamless v7.2 ↔ Sweet Spot switching with configuration management
+- ✅ Performance Validation: Excellent (< 100ms per ticker, 2,000 ticker capability)
+- ✅ Email Analytics: Sweet Spot metrics in daily reports
+- ✅ Configuration Validation: Complete validation suite with 6/6 tests passing
+- ✅ Production Automation: Task Scheduler integration + TWS Keep-Alive + System monitoring
+
+� 1. Core Architecture (The 3-Pillar System)
 Pillar I: The Guard (health_check.py + run_trading.bat)
 Schedule: 17:30 IST Daily (10:30 AM EST) | Purpose: System Health Validation & Production Gatekeeper
 
@@ -24,32 +44,11 @@ Scale: Synchronizes 2,000+ tickers into highly compressed Apache Parquet files.
 
 Uptime: 99.9% reliability managing over 8.7+ million rows of data.
 
-Pillar III: The Hunter (main_unified.py + scripts/portfolio_aggregator.py)
+Pillar III: The Hunter (main_unified.py + scripts/portfolio_aggregator.py + Sweet Spot Strategy)
 Schedule: 17:30 IST Daily (10:30 AM EST) | Purpose: Unified Trading Execution
 
 Total Market Crucible: Single $100k portfolio dynamically allocated across 2,000+ ticker universe.
 
-📋 2. Automation Layer (24/7 Operation)
-Component I: IBGateway Manager (scripts/auto_tws_manager.py)
-Purpose: Automated TWS/IBGateway connection management
-
-Features: Process detection, automatic startup, keep-alive heartbeat, reconnection logic.
-
-Client ID Management: Randomized client IDs to prevent conflicts.
-
-Component II: Keep-Alive Service (scripts/tws_keep_alive.py)
-Purpose: Prevents TWS daily logouts
-
-Mechanism: Heartbeat via ib.reqAccountSummary every 5 minutes.
-
-Reliability: 99.9% uptime with automatic reconnection.
-
-Component III: Task Scheduler Integration (setup_auto_tws_scheduler.bat)
-Purpose: Windows Task Scheduler automation
-
-Trigger: User logon with highest privileges.
-
-Persistence: 24/7 operation without manual intervention.
 
 Portfolio Aggregator: Eliminates cash drag with 89.7% capital utilization and Ironclad Guardrails.
 
@@ -67,19 +66,21 @@ Reporting: Generates Master Tearsheet with Power Stock performance metrics and e
 
 Note: Execution delayed by 60 minutes to avoid Opening Range volatility and ensure Stochastic signal stabilization (SweetSpot window).
 
-🎯 2. The Strategy: v8.0 Power Stock Dual-Exit Architecture
-Revolutionary advancement beyond the Hybrid Blueprint with state machine-based promotion tracking and dual-exit logic.
+🎯 2. The Strategy: v8.0 Power Stock Dual-Exit Architecture + Sweet Spot Blueprint Integration
+Revolutionary advancement beyond the Hybrid Blueprint with state machine-based promotion tracking, dual-exit logic, and comprehensive pattern recognition.
 
-Entry Engine (The 5-Gate System)
-Quality: Historical CAGR > 15%.
+Entry Engine (The Enhanced 6-Gate System)
+Gate 1: Quality: Historical CAGR > 15%.
 
-Trend: Price > SMA 200.
+Gate 2: Trend: Price > SMA 200.
 
-The Sweet Spot: Stochastic %K (10,3,3) must be in the [32-80] zone.
+Gate 3: The Sweet Spot: Stochastic %K (10,3,3) must be in the [32-80] zone.
 
-The Blueprint Crossover: Mandatory Stochastic %K > %D (Red over Yellow).
+Gate 4: The Blueprint Crossover: Mandatory Stochastic %K > %D (Red over Yellow).
 
-Momentum: Current Volume > 1.5x 30-Day Volume SMA.
+Gate 5: Momentum: Current Volume > 1.5x 30-Day Volume SMA.
+
+Gate 6: Pattern Confirmation: Candlestick + Chart pattern validation (NEW).
 
 Environmental Shields (Phase 4)
 Pre-Earnings Shield: is_earnings_safe(ticker, reference_date) prevents trades within ±3 days of earnings announcements.
@@ -87,6 +88,18 @@ Pre-Earnings Shield: is_earnings_safe(ticker, reference_date) prevents trades wi
 Volume Safety Shield: Minimum volume threshold (100,000 shares) to avoid liquidity traps.
 
 Price Safety Shield: Minimum price threshold ($5.00) to eliminate penny stocks and reverse-split ghosts.
+
+Market Microstructure Filters (NEW - Sweet Spot Blueprint)
+Time Filters: 10:06 AM Rule (preference scoring) + Friday Rule (profit-taking awareness).
+
+Spread Monitor: Real-time IBKR bid/ask spread limits (< 2c under $100, < 5c $250+, < 20c $300+).
+
+Pattern Recognition System (NEW)
+Candlestick Patterns: Engulfing (strong reversal), Hammer (potential reversal), Doji (avoid - indecision).
+
+Chart Patterns: W Formations (bullish pullbacks), M Formations (bearish tops), Head & Shoulders (major bearish), 50% Rule (resistance levels).
+
+Pattern Scoring: Weighted pattern strength calculation integrated with entry decisions.
 
 The Power Stock State Machine (v8.0 Revolution)
 Standard Entry: All trades enter as Standard Trades (is_power_stock = False).
@@ -104,6 +117,8 @@ Dual-Exit Architecture (Revolutionary Breakthrough)
 Standard Trade Exit: SMA 200 Break OR Stochastic %K < %D (Stochastic Roll-over).
 
 Power Stock Exit: SMA 25 Break OR 3.0x ATR Trailing Stop (Power Shield conditions).
+
+Enhanced Exit Logic (NEW): Pattern-based early exit signals for bearish patterns.
 
 State Machine Logic: Exit conditions determined by CURRENT Power Stock status, not entry status.
 
@@ -231,42 +246,61 @@ TradingView Exporter: Automated tv_export_full.csv export formats trade data wit
 
 Directory Structure
 VolatilityHunter/
-├── scripts/
-│   ├── portfolio_aggregator.py  # Total Market Crucible Engine (v8.0)
-│   ├── validation_power_stock.py # Power Stock validation testing
-│   └── [validation scripts...]
-├── main_unified.py              # Unified Execution Engine (Legacy)
-├── health_check.py              # The Guard (System Diagnostics)
-├── update_universe.py           # The Historian (Data Sync)
-├── src/                         # Core Logic Modules
-│   ├── strategy_v7_2.py         # Hybrid Blueprint Strategy
-│   ├── execution.py             # Trade Execution Engine
-│   ├── data_loader.py           # Data Management
-│   ├── tracker.py               # Portfolio Management
-│   └── [support modules...]
-│   └── ...                  # Core logic modules
-├── simulation/              # Forward-Test Suite
-│   ├── run_simulation_loop.py # Consolidated Simulation Runner
-│   ├── simulated_data_loader.py # Time-Shifted Data Access
-│   └── portfolio_sim.json   # Simulation Portfolio State
-├── data/                    # .parquet market data & portfolio.json
-│   ├── {ticker}_20yr.parquet # 20-Year Historical Data (NEW)
-│   └── portfolio.json       # Live Portfolio State
-├── logs/                    # Daily VH_YYYY-MM-DD.log files
-├── .vh_knowledge_base/      # VH-BRAIN Vector Database (NEW)
-└── docs/                    # ARCHITECTURE.md, ROADMAP.md
+ Core System
+ main_unified.py           # Unified execution engine with strategy selection
+ health_check.py           # System validation
+ update_universe.py        # Data synchronization
+ run_trading.bat           # Task Scheduler integration
+ src/                       # Core business logic
+ strategy_v7_2.py          # Hybrid Blueprint strategy (v7.2)
+ sweet_spot_strategy.py    # Sweet Spot Enhanced strategy
+ strategy_factory.py       # Strategy factory for v7.2  Sweet Spot switching
+ patterns/                 # Pattern Recognition Module
+ candlestick_patterns.py # Candlestick pattern detection
+ chart_patterns.py     # Chart pattern detection
+ pattern_utils.py      # Pattern utilities & scoring
+ market_microstructure/    # Market Microstructure Module
+ time_filters.py       # Time-based trading filters
+ spread_monitor.py     # IBKR spread monitoring
+ execution.py              # Trade execution
+ data_loader.py            # Data management
+ tracker.py                # Portfolio management
+ system_monitor.py        # System resource monitoring
+ log_sanitizer.py          # Log sanitization & API redaction
+ [support modules...]
+ scripts/                   # Automation & validation
+ portfolio_aggregator.py   # Total Market Crucible engine
+ tws_keep_alive.py         # TWS Keep-Alive service
+ [validation scripts...]
+ Validation Scripts         # Sweet Spot validation suite
+ test_sweet_spot_integration.py # Integration tests (5/5 PASS)
+ validate_sweet_spot_config.py # Configuration validation (6/6 PASS)
+ test_sweet_spot_performance.py # Performance tests (EXCELLENT)
+ data/                      # Market data & portfolio state
+ [2,000+ ticker files]     # Total Market universe
+ portfolio.json           # Live portfolio state
+ docs/                      # Documentation
+ README.md                  # This file
+ ARCHITECTURE.md           # System architecture
+ ROADMAP.md                # Development roadmap
+ logs/                      # Daily VH_YYYY-MM-DD.log files
+ .vh_knowledge_base/          # VH-BRAIN Vector Database
+ docs/                        # ARCHITECTURE.md, ROADMAP.md
 
 Data Flow Execution
-Plaintext
-Unified Engine (main_unified.py) → Factory Pattern (Mode-Based Injection)
+Unified Engine (main_unified.py) → Strategy Factory (v7.2 vs Sweet Spot Selection)
     ↓
 Environmental Shields (src/shields.py) → Pre-Earnings Safety Check
     ↓
-Hybrid 5-Gate Strategy → Ironclad Risk Check → Trade Execution
+Enhanced 6-Gate Strategy (v7.2 + Sweet Spot Patterns) → Market Microstructure Filters
+    ↓
+Ironclad Risk Check → IBKR Spread Validation → Pattern Confirmation
+    ↓
+Trade Execution → Portfolio State Update → Email Reporting
     ↓
 Portfolio State (portfolio.json or portfolio_sim.json) → Dynamic Valuation
     ↓
-SMTP Email (Master Report + .log Attachment for Simulation)
+SMTP Email (Master Report + Sweet Spot Analytics + .log Attachment)
 
 Resilience & API Handling
 Production-Grade Error Prevention & Data Source Compatibility

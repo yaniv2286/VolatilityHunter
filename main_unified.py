@@ -21,6 +21,7 @@ from src.notifications import setup_logging
 setup_logging()
 
 from src.config import STOCK_LIST, STOCK_UNIVERSE_MODE, TICKER_FILTERS, TICKER_LIST_FILE, DATA_SOURCE
+from src.strategy_factory import create_trading_strategy, get_current_strategy_info
 from src.strategy_v7_2 import analyze_stock_v7_2, check_exit_conditions_v7_2, add_indicators_v7_2
 from src.notifications import log_info, log_error, log_warning
 from src.ticker_manager import TickerManager
@@ -96,9 +97,10 @@ class PortfolioManagerFactory:
             return Portfolio()
 
 
-def scan_all_stocks_v7_2(stock_data_dict, reference_date: str):
+def scan_all_stocks_with_strategy(stock_data_dict, reference_date: str, trading_strategy):
     """
-    v7.2: Scan all stocks using Hybrid Blueprint Logic with universal shields
+    Enhanced stock scanning using strategy factory pattern
+    Supports both v7.2 and Sweet Spot strategies
     """
     results = {
         'BUY': [],
@@ -132,17 +134,29 @@ def scan_all_stocks_v7_2(stock_data_dict, reference_date: str):
                 
                 continue
             
-            # Shields passed - proceed with analysis
-            analysis = analyze_stock_v7_2(df, ticker)
-            signal = analysis['signal']
+            # Shields passed - proceed with strategy analysis
+            portfolio_data = {}  # Could be enhanced to pass current portfolio state
+            
+            if hasattr(trading_strategy, 'analyze_stock'):
+                # Sweet Spot strategy or compatible interface
+                analysis = trading_strategy.analyze_stock(ticker, df, portfolio_data)
+                signal = 'BUY' if analysis.get('should_enter', False) else 'HOLD'
+            else:
+                # Fallback to v7.2 analysis
+                analysis = analyze_stock_v7_2(df, ticker)
+                signal = analysis['signal']
             
             result = {
                 'ticker': ticker,
                 'signal': signal,
-                'reason': analysis['reason'],
-                'indicators': analysis['indicators'],
+                'reason': analysis.get('reason', 'No reason provided'),
+                'indicators': analysis.get('indicators', {}),
                 'shields': shields
             }
+            
+            # Add Sweet Spot specific data if available
+            if 'sweet_spot_analysis' in analysis:
+                result['sweet_spot_analysis'] = analysis['sweet_spot_analysis']
             
             results[signal].append(result)
             
@@ -197,6 +211,25 @@ def main():
         # Step 1: Dependency Injection - Create appropriate components
         print("[STEP 1] Initializing Components...")
         
+        # Initialize strategy factory and create strategy
+        strategy_info = get_current_strategy_info()
+        print(f"  - Strategy Selection: {strategy_info['selected_strategy']}")
+        
+        # Get brokerage interface for spread monitoring (if needed)
+        brokerage_interface = None
+        if strategy_info.get('sweet_spot_enabled', False):
+            try:
+                from src.brokerage_interface import BrokerageInterface
+                brokerage_interface = BrokerageInterface()
+                print(f"  - IBKR Interface: Connected for spread monitoring")
+            except Exception as e:
+                log_warning(f"Could not initialize IBKR interface: {e}")
+                print(f"  - IBKR Interface: Not available (spread monitoring disabled)")
+        
+        # Create trading strategy
+        trading_strategy = create_trading_strategy(brokerage_interface)
+        print(f"  - Trading Strategy: {strategy_info['selected_strategy']} initialized")
+        
         # Create data loader based on mode
         data_loader = DataLoaderFactory.create_loader(mode, target_date)
         print(f"  - Data Loader: {'SimulatedParquetLoader' if mode == 'sim' else 'TiingoDataLoader'}")
@@ -245,7 +278,7 @@ def main():
         
         # Step 4: Scan for Signals with Universal Shields
         print("[STEP 4] Scanning for Signals...")
-        scan_results = scan_all_stocks_v7_2(stock_data_dict, reference_date)
+        scan_results = scan_all_stocks_with_strategy(stock_data_dict, reference_date, trading_strategy)
         
         summary = {
             'total_scanned': len(stock_data_dict),
@@ -261,6 +294,24 @@ def main():
         print(f"  - SELL Signals: {summary['sell_signals']}")
         print(f"  - Shield Rejected: {summary['shield_rejected']}")
         print(f"  - Errors: {summary['errors']}")
+        
+        # Log Sweet Spot specific summary if available
+        if strategy_info.get('sweet_spot_enabled', False):
+            sweet_spot_summary = {
+                'patterns_detected': 0,
+                'spread_filtered': 0,
+                'time_filtered': 0
+            }
+            
+            # Count Sweet Spot specific metrics
+            for result in scan_results['BUY'] + scan_results['HOLD']:
+                if 'sweet_spot_analysis' in result:
+                    ss_analysis = result['sweet_spot_analysis']
+                    if ss_analysis.get('patterns', {}).get('active_patterns', 0) > 0:
+                        sweet_spot_summary['patterns_detected'] += 1
+            
+            print(f"  - Sweet Spot Patterns: {sweet_spot_summary['patterns_detected']}")
+            print(f"  - Strategy Used: {strategy_info['selected_strategy']}")
         
         # Step 5: Execute Trades
         print("[STEP 5] Executing Trades...")
@@ -389,6 +440,46 @@ def main():
         print("[STEP 7] Sending Report...")
         email_sent = False
         
+        # Collect Sweet Spot analytics if enabled
+        sweet_spot_summary = {}
+        if strategy_info.get('sweet_spot_enabled', False):
+            sweet_spot_summary = {
+                'strategy_used': strategy_info['selected_strategy'],
+                'patterns_detected': 0,
+                'enhanced_entries': 0,
+                'pattern_rejections': 0,
+                'spread_filtered': 0,
+                'time_filtered': 0
+            }
+            
+            # Count Sweet Spot metrics from scan results
+            for result in scan_results['BUY'] + scan_results['HOLD'] + scan_results['SELL']:
+                if 'sweet_spot_analysis' in result:
+                    ss_analysis = result['sweet_spot_analysis']
+                    
+                    # Count patterns
+                    if ss_analysis.get('patterns', {}).get('active_patterns', 0) > 0:
+                        sweet_spot_summary['patterns_detected'] += 1
+                    
+                    # Count enhanced entries (BUY signals with Sweet Spot enhancement)
+                    if result['signal'] == 'BUY' and ss_analysis.get('enhanced_score', 0) > 0.6:
+                        sweet_spot_summary['enhanced_entries'] += 1
+                    
+                    # Count pattern rejections
+                    patterns = ss_analysis.get('patterns', {})
+                    if 'doji' in patterns.get('neutral_patterns', []):
+                        sweet_spot_summary['pattern_rejections'] += 1
+                    
+                    # Count spread/time filtering
+                    if 'spread_monitoring' in ss_analysis:
+                        if not ss_analysis['spread_monitoring'].get('spread_acceptable', True):
+                            sweet_spot_summary['spread_filtered'] += 1
+                    
+                    if 'time_filters' in ss_analysis:
+                        time_score = ss_analysis['time_filters'].get('time_score', 1.0)
+                        if time_score < 1.0:
+                            sweet_spot_summary['time_filtered'] += 1
+        
         try:
             email_notifier = EmailNotifier()
             
@@ -400,7 +491,8 @@ def main():
                 summary=summary,
                 portfolio_summary=updated_portfolio_summary,
                 executed_trades=executed_trades,
-                attach_log_file=True
+                attach_log_file=True,
+                sweet_spot_summary=sweet_spot_summary
             )
             
             if email_sent:
