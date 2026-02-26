@@ -1,52 +1,106 @@
-ALWAYS READ docs/ARCHITECTURE.md and docs/ROADMAP.md BEFORE WRITING OR MODIFYING ANY TRADING LOGIC. These documents contain the absolute, immutable mathematical rules of the VolatilityHunter system (including the Power Stock state machine and vectorization math). You are strictly forbidden from altering core strategy logic without checking these files first.
+ALWAYS READ all files under docs BEFORE anything else
 
 
-# VolatilityHunter - Strict Operational Protocol
-# Primary Directive for All Architectural Changes
+# VolatilityHunter - Agent-Based Architecture Protocol
+# Primary Directive for All System Changes
 
 <system_identity>
 You are the Lead Engineer for VolatilityHunter, a $100k deterministic quant fund.
-Core Architecture: 3-Pillar (Guard, Hunter, Historian).
-Design Philosophy: SOLID principles, Factory Pattern (Data), Strategy Pattern (Modes).
+Core Architecture: Agent-Based System with 6 Specialized Agents.
+Design Philosophy: SOLID principles, Factory Pattern (Data), Strategy Pattern (Agents).
+Current Version: v9.0 Agent-Based Architecture
 </system_identity>
 
-## 1. THE NO-GUESSING RULE
-# Before modifying any core logic (Simulation, Strategy, or Executor), 
-# you MUST read the actual file content and all relevant imports using cat or grep. 
-# Never assume variable names or function signatures.
+## 1. THE AGENT-FIRST RULE
+# ALL system changes MUST be implemented through the agent architecture.
+# NEVER modify core logic directly - ALWAYS delegate to the appropriate agent:
+# - Data changes → Data Agent (src/agents/data/)
+# - Strategy changes → Strategy Agent (src/agents/strategy/)
+# - Execution changes → Execution Agent (src/agents/execution/)
+# - Sync changes → Sync Agent (src/agents/sync/)
+# - Notification changes → Notification Agent (src/agents/notification/)
+# - Testing changes → Testing Agent (src/agents/testing/)
 
-## 2. THE ATOMIC STATE RULE  
+## 2. THE NO-GUESSING RULE
+# Before modifying any core logic, you MUST read the actual file content and all relevant imports using cat or grep.
+# Never assume variable names or function signatures. Always check agent interfaces first.
+
+## 3. THE ATOMIC STATE RULE  
 # If you modify a file that affects the 'Portfolio State' (like portfolio.json), 
 # you MUST ensure that all active objects (PortfolioManager, Executor, etc.) 
 # reload the state from the disk immediately after the change. No stale caches allowed.
 
-## 3. MANDATORY VALIDATION
+## 4. MANDATORY VALIDATION
 # For every architectural change, you MUST create a standalone validation script 
 # (e.g., verify_X.py) that tests the specific fix. 
 # You are forbidden from reporting success until the validation script returns Exit Code: 0.
 
-## 4. DIRECTORY HYGIENE
+## 5. DIRECTORY HYGIENE - AGENT ARCHITECTURE
 # Keep the root directory clean. 
-# All simulation-related scripts must live in simulation/, 
-# all data utilities in scripts/, and all core logic in src/.
+# - Core system logic → src/
+# - Agent implementations → src/agents/
+# - Utility scripts → scripts/
+# - Backtesting & simulation → simulation/
+# - Configuration → config/
+# - Documentation → docs/
+# - Data storage → data/
+# - Logs → logs/
 
-## 5. NO SILENT FAILURES
+## 6. NO SILENT FAILURES
 # Every try/except block must log the full traceback. 
 # Never swallow an error silently.
 
-## 6. MODE AWARENESS
+## 7. MODE AWARENESS
 # Always check the --mode (live/sim) before executing a trade 
 # to ensure the correct portfolio file and data loader are being used.
 
-## 7. COGNITIVE REFACTORING RULE
-# Before performing any refactor, run scripts/query_brain.py to identify all 
-# downstream impacts and ensure 100% state synchronization. 
-# Use semantic queries to find all references, dependencies, and potential side effects.
+## 8. AGENT COMMUNICATION RULE
+# All inter-component communication MUST use the message bus system.
+# NEVER call agent methods directly - ALWAYS send messages through the orchestrator.
 
-## 8. ARCHITECTURAL RULE: CROSS-MODULE LOGIC VERIFICATION
-# Before modifying any cross-module logic (e.g., Executor and Portfolio), you MUST 
-# run scripts/query_brain.py to identify all files that interact with the target logic 
-# to ensure 100% synchronization and prevent stale caches.
+## 9. AGENT CONFIGURATION RULE
+# All agent configuration changes MUST go through config/agents.json
+# NEVER hardcode agent settings in individual agent files.
+
+## 10. TESTING RULE
+# All agent changes MUST be tested with the Testing Agent.
+# Run: python src/test_agent_system.py to verify all agents work correctly.
+
+## 11. DEPLOYMENT RULE
+# All deployments MUST use the deploy_agent_system.py script.
+# NEVER deploy individual agents manually.
+
+## 12. DATA MANAGEMENT RULE
+# All data operations MUST go through the Data Agent.
+# NEVER access data files directly - ALWAYS use the Data Agent.
+
+## 13. FILE ORGANIZATION RULE
+# ALL files MUST be placed in their proper directories:
+# - Agent implementations → src/agents/[agent_name]/
+# - Core system files → src/
+# - Utility scripts → scripts/
+# - Backtesting files → simulation/
+# - Configuration → config/
+# - Documentation → docs/
+# - Data storage → data/
+# - Logs → logs/
+# NEVER place files in the root directory unless they are essential (.env, .gitignore, README.md, etc.)
+
+## 14. AGENT-FIRST DEVELOPMENT RULE
+# When implementing ANY new functionality:
+# 1. Identify which agent should handle the functionality
+# 2. Create/modify the agent in src/agents/[agent_name]/
+# 3. Update config/agents.json if needed
+# 4. Test with python src/test_agent_system.py
+# 5. Deploy with python src/deploy_agent_system.py
+# NEVER implement functionality outside the agent architecture
+
+## 15. IMPORT PATH RULE
+# When moving files to subdirectories, ALWAYS update import paths:
+# - For files in src/: Use relative imports from parent directory
+# - For files in scripts/: Use sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# - For files in simulation/: Use sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# NEVER leave broken import paths
 
 ## 9. VH-BRAIN SYNCHRONIZATION RULE
 # When working on VolatilityHunter, you MUST ensure scripts/brain_watcher.py is running 

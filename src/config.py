@@ -10,6 +10,11 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
+# API Configuration
+TIINGO_KEY = os.getenv('TIINGO_KEY', '')
+TIINGO_BASE_URL = 'https://api.tiingo.com/tiingo'
+BATCH_SIZE = 50
+
 # Stock Universe Configuration
 STOCK_UNIVERSE_MODE = "FULL"  # FULL or FILTERED
 TICKER_LIST_FILE = "tickers.txt"

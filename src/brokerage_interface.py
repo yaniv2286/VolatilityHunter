@@ -272,7 +272,9 @@ class IBKRInterface(BrokerageInterface):
         super().__init__(config)
         self.host = config.get('IBKR_HOST', '127.0.0.1')
         self.port = config.get('IBKR_PORT', 7497)  # Paper trading port
-        self.client_id = config.get('IBKR_CLIENT_ID', 1)
+        # Use random client ID to avoid conflicts
+        import random
+        self.client_id = config.get('IBKR_CLIENT_ID', random.randint(100, 999))
         self.ib = None
         
     def connect(self) -> bool:
@@ -317,6 +319,20 @@ class IBKRInterface(BrokerageInterface):
             return False
         except Exception as e:
             log_error(f"Failed to connect to IBKR: {e}")
+            return False
+    
+    async def test_connection(self) -> bool:
+        """Test IBKR connection"""
+        try:
+            if not self.ib or not self.ib.isConnected():
+                return False
+            
+            # Test by requesting account summary
+            accounts = self.ib.accountSummary()
+            return len(accounts) > 0
+            
+        except Exception as e:
+            log_error(f"IBKR connection test failed: {e}")
             return False
     
     def _start_heartbeat(self):

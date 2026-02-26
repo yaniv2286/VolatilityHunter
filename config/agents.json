@@ -1,0 +1,117 @@
+{
+  "data_agent": {
+    "agent_id": "data_agent",
+    "agent_type": "data",
+    "enabled": true,
+    "log_level": "INFO",
+    "retry_attempts": 3,
+    "timeout": 30.0,
+    "max_concurrent_tasks": 5,
+    "health_check_interval": 60.0,
+    "data_source": "tiingo",
+    "cache_enabled": true,
+    "cache_ttl": 3600,
+    "max_cache_size": 1000,
+    "data_validation_enabled": true,
+    "parallel_loading": true,
+    "batch_size": 50
+  },
+  "strategy_agent": {
+    "agent_id": "strategy_agent",
+    "agent_type": "strategy",
+    "enabled": true,
+    "log_level": "INFO",
+    "retry_attempts": 3,
+    "timeout": 30.0,
+    "max_concurrent_tasks": 5,
+    "health_check_interval": 60.0,
+    "default_strategy": "sweet_spot_v7_2",
+    "shields_enabled": true,
+    "max_signals_per_run": 100,
+    "signal_timeout": 120.0,
+    "parallel_analysis": true,
+    "technical_indicators": [
+      "sma",
+      "rsi",
+      "macd",
+      "bollinger"
+    ]
+  },
+  "execution_agent": {
+    "agent_id": "execution_agent",
+    "agent_type": "execution",
+    "enabled": true,
+    "log_level": "INFO",
+    "retry_attempts": 3,
+    "timeout": 30.0,
+    "max_concurrent_tasks": 5,
+    "health_check_interval": 60.0,
+    "brokerage_type": "ibkr",
+    "paper_trading": false,
+    "max_position_size": 10000.0,
+    "risk_management_enabled": true,
+    "order_timeout": 60.0,
+    "max_orders_per_minute": 10,
+    "retry_failed_orders": true
+  },
+  "sync_agent": {
+    "agent_id": "sync_agent",
+    "agent_type": "sync",
+    "enabled": true,
+    "log_level": "INFO",
+    "retry_attempts": 3,
+    "timeout": 30.0,
+    "max_concurrent_tasks": 5,
+    "health_check_interval": 60.0,
+    "sync_targets": [
+      "tws",
+      "local"
+    ],
+    "sync_interval": 300.0,
+    "auto_reconcile": true,
+    "email_reports": true,
+    "report_format": "html"
+  },
+  "notification_agent": {
+    "agent_id": "notification_agent",
+    "agent_type": "notification",
+    "enabled": true,
+    "log_level": "INFO",
+    "retry_attempts": 3,
+    "timeout": 30.0,
+    "max_concurrent_tasks": 5,
+    "health_check_interval": 60.0,
+    "email_enabled": true,
+    "smtp_server": "smtp.gmail.com",
+    "smtp_port": 587,
+    "email_sender": "your-email@gmail.com",
+    "email_recipients": [
+      "your-email@gmail.com"
+    ],
+    "alert_thresholds": {
+      "error_rate": 0.1,
+      "response_time": 5.0,
+      "memory_usage": 0.8
+    }
+  },
+  "testing_agent": {
+    "agent_id": "testing_agent",
+    "agent_type": "testing",
+    "enabled": true,
+    "log_level": "INFO",
+    "retry_attempts": 3,
+    "timeout": 30.0,
+    "max_concurrent_tasks": 5,
+    "health_check_interval": 60.0,
+    "backtest_enabled": true,
+    "dry_run_enabled": true,
+    "integration_tests_enabled": true,
+    "performance_benchmarks_enabled": true,
+    "test_data_path": "data/test/",
+    "backtest_lookback_days": 252,
+    "dry_run_initial_capital": 100000,
+    "benchmark_strategies": [
+      "sweet_spot_v7_2"
+    ]
+  }
+}

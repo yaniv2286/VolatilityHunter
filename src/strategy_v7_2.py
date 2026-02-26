@@ -167,7 +167,7 @@ def add_indicators_v7_2(df):
 def check_entry_zone_v7_2(df):
     """
     v7.2 Entry Zone: Stochastic DNA
-    Allow BUY signals when stoch_k is between 32 and 100
+    Allow BUY signals when stoch_k is between 32 and 80 (sweet spot)
     """
     if len(df) < 10:
         return False, "Insufficient data"
@@ -175,10 +175,10 @@ def check_entry_zone_v7_2(df):
     latest = df.iloc[-1]
     stoch_k = latest['stoch_k']
     
-    # Entry Zone: 32 to 100 (expanded from 32-80)
-    in_entry_zone = 32.0 <= stoch_k <= 100.0
+    # Entry Zone: 32 to 80 (corrected sweet spot)
+    in_entry_zone = 32.0 <= stoch_k <= 80.0
     
-    return in_entry_zone, f"Stochastic K: {stoch_k:.2f} (Entry Zone: 32-100)"
+    return in_entry_zone, f"Stochastic K: {stoch_k:.2f} (Entry Zone: 32-80)"
 
 def check_crossover_v7_2(df):
     """
@@ -346,10 +346,10 @@ def analyze_stock_v7_2(df, ticker=None):
     volume = latest[volume_col]
     dollar_volume = price * volume
     
-    if dollar_volume < 1000000:  # $1M minimum daily dollar volume
+    if dollar_volume < 500000:  # $500K minimum for momentum stocks
         return {
             'signal': 'HOLD',
-            'reason': f'Liquidity Filter: ${dollar_volume:,.0f} < $1M minimum',
+            'reason': f'Liquidity Filter: ${dollar_volume:,.0f} < $500K minimum (momentum-friendly)',
             'indicators': {
                 'price': price,
                 'volume': volume,
@@ -357,15 +357,8 @@ def analyze_stock_v7_2(df, ticker=None):
             }
         }
     
-    # V7.3 DYNAMIC GUARDRAILS: Price Ceiling Shield
-    if price > 500:
-        return {
-            'signal': 'HOLD',
-            'reason': f'Price Ceiling Shield: ${price:.2f} > $500 maximum (split-adjustment ghost)',
-            'indicators': {
-                'price': price
-            }
-        }
+    # V7.3 DYNAMIC GUARDRAILS: Price Ceiling Shield REMOVED for momentum stocks
+    # Allow all price levels to capture high-quality momentum (NVDA, TSLA, etc.)
     
     # v7.2 ENTRY LOGIC
     
@@ -395,34 +388,43 @@ def analyze_stock_v7_2(df, ticker=None):
             }
         }
     
-    # 3. Trend Check (price above SMA_200)
+    # 3. Multi-SMA Magnet Alignment Check
+    sma_25 = latest['sma_25']
+    sma_50 = latest['sma_50']
+    sma_100 = latest['sma_100']
     sma_200 = latest['sma_200']
-    if pd.isna(sma_200) or price <= sma_200:
+    
+    # Check if all SMAs are aligned upward (magnet alignment)
+    if (pd.isna(sma_25) or pd.isna(sma_50) or pd.isna(sma_100) or pd.isna(sma_200) or
+        not (sma_25 > sma_50 > sma_100 > sma_200)):
         return {
             'signal': 'HOLD',
-            'reason': f'Trend Failed: Price (${price:.2f}) <= SMA_200 (${sma_200:.2f})',
+            'reason': f'Multi-SMA Alignment Failed: SMA_25 ({sma_25:.2f}) > SMA_50 ({sma_50:.2f}) > SMA_100 ({sma_100:.2f}) > SMA_200 ({sma_200:.2f})',
             'indicators': {
                 'stoch_k': latest['stoch_k'],
                 'stoch_d': latest['stoch_d'],
                 'price': price,
+                'sma_25': sma_25,
+                'sma_50': sma_50,
+                'sma_100': sma_100,
                 'sma_200': sma_200
             }
         }
     
-    # 4. Volume Check
+    # 4. Volume Check - 30-day SMA for momentum confirmation
     volume_col = 'Volume' if 'Volume' in latest else 'volume' if 'volume' in latest else 'adjVolume'
     current_volume = latest[volume_col]
-    volume_sma = latest['volume_sma']
-    if pd.isna(volume_sma) or volume_sma <= 0 or current_volume <= volume_sma:
+    volume_sma_30 = df[volume_col].rolling(window=30).mean().iloc[-1]
+    if pd.isna(volume_sma_30) or volume_sma_30 <= 0 or current_volume <= volume_sma_30:
         return {
             'signal': 'HOLD',
-            'reason': f'Volume Failed: Current ({current_volume:,.0f}) <= SMA ({volume_sma:,.0f})',
+            'reason': f'Volume Momentum Failed: Current ({current_volume:,.0f}) <= 30-day SMA ({volume_sma_30:,.0f})',
             'indicators': {
                 'stoch_k': latest['stoch_k'],
                 'stoch_d': latest['stoch_d'],
                 'price': price,
                 'current_volume': current_volume,
-                'volume_sma': volume_sma
+                'volume_sma_30': volume_sma_30
             }
         }
     
@@ -431,21 +433,21 @@ def analyze_stock_v7_2(df, ticker=None):
         'stoch_k': latest['stoch_k'],
         'stoch_d': latest['stoch_d'],
         'price': price,
+        'sma_25': sma_25,
+        'sma_50': sma_50,
+        'sma_100': sma_100,
         'sma_200': sma_200,
         'current_volume': current_volume,
-        'volume_sma': volume_sma,
-        'sma_25': latest['sma_25'],
-        'sma_50': latest['sma_50'],
-        'sma_100': latest['sma_100'],
+        'volume_sma_30': volume_sma_30,
         'atr': latest['atr']
     }
     
     reason_parts = [
-        'v7.2 HYBRID STRATEGY: BUY SIGNAL',
-        f'Entry Zone: Stoch_K ({latest["stoch_k"]:.2f}) in [32-100]',
+        'MOMENTUM STRATEGY: BUY SIGNAL',
+        f'Entry Zone: Stoch_K ({latest["stoch_k"]:.2f}) in [32-80]',
         f'Crossover: Stoch_K ({latest["stoch_k"]:.2f}) > Stoch_D ({latest["stoch_d"]:.2f})',
-        f'Trend: Price (${price:.2f}) > SMA_200 (${sma_200:.2f})',
-        f'Volume: Current ({current_volume:,.0f}) > SMA ({volume_sma:,.0f})'
+        f'Multi-SMA Alignment: SMA_25 ({sma_25:.2f}) > SMA_50 ({sma_50:.2f}) > SMA_100 ({sma_100:.2f}) > SMA_200 ({sma_200:.2f})',
+        f'Volume Momentum: Current ({current_volume:,.0f}) > 30-day SMA ({volume_sma_30:,.0f})'
     ]
     
     return {
