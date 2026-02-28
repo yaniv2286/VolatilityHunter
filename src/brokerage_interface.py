@@ -278,72 +278,61 @@ class IBKRInterface(BrokerageInterface):
         self.ib = None
         
     def connect(self) -> bool:
-        """Connect to IBKR TWS/Gateway"""
+        """Connect to IBKR TWS/Gateway - R3 fix: no threading, use ib_insync event loop directly"""
         try:
-            from ib_insync import IB, Stock, MarketOrder, LimitOrder
-            import threading
-            import time
-            
+            from ib_insync import IB, util
+            import socket as _socket
+            import traceback as _tb
+
             if not self.host or not self.port:
                 log_error("IBKR host and port not provided")
                 return False
-            
+
+            # Quick port check before attempting connection
+            probe = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+            probe.settimeout(5)
+            port_open = probe.connect_ex((self.host, self.port)) == 0
+            probe.close()
+            if not port_open:
+                log_error(f"IBKR port {self.port} not reachable - is IB Gateway running?")
+                return False
+
             self.ib = IB()
-            
-            # Connect to paper trading account with timeout
-            connection_result = {'connected': False, 'error': None}
-            
-            def connect_with_timeout():
-                try:
-                    # Use the synchronous connect method
-                    self.ib.connect(self.host, self.port, clientId=self.client_id)
-                    connection_result['connected'] = self.ib.isConnected()
-                except Exception as e:
-                    connection_result['error'] = e
-            
-            # Start connection in thread
-            connection_thread = threading.Thread(target=connect_with_timeout)
-            connection_thread.start()
-            
-            # Wait for connection with timeout (10 seconds)
-            connection_thread.join(timeout=10.0)
-            
-            if connection_thread.is_alive():
-                log_error("IBKR connection timeout after 10 seconds")
+
+            # ib_insync manages its own event loop - connect() is synchronous here
+            # timeout parameter prevents hanging forever
+            self.ib.connect(
+                self.host, self.port,
+                clientId=self.client_id,
+                timeout=15,
+                readonly=False
+            )
+
+            if not self.ib.isConnected():
+                log_error("IBKR connect() returned but isConnected() is False")
                 return False
-            
-            if connection_result['error']:
-                log_error(f"IBKR connection error: {connection_result['error']}")
-                return False
-            
-            if self.ib.isConnected():
-                log_info(f"Connected to IBKR Paper Trading at {self.host}:{self.port}")
-                
-                # Start heartbeat logger
-                self._start_heartbeat()
-                
-                # Get account info
+
+            log_info(f"Connected to IBKR at {self.host}:{self.port} (clientId={self.client_id})")
+
+            # Get account cash
+            try:
                 accounts = self.ib.accountValues()
-                cash = None
                 for value in accounts:
                     if value.tag == 'AvailableFunds' and value.currency == 'USD':
-                        cash = float(value.value)
+                        log_info(f"Account cash: ${float(value.value):,.2f}")
                         break
-                
-                if cash:
-                    log_info(f"Account cash balance: ${cash:,.2f}")
-                
-                self.is_connected = True
-                return True
-            else:
-                log_error("Failed to connect to IBKR")
-                return False
-                
+            except Exception:
+                pass
+
+            self.is_connected = True
+            return True
+
         except ImportError:
-            log_error("IBKR API not installed. Install with: pip install ib_insync")
+            log_error("ib_insync not installed: pip install ib_insync")
             return False
         except Exception as e:
-            log_error(f"Failed to connect to IBKR: {e}")
+            log_error(f"IBKR connect failed: {e}")
+            log_error(_tb.format_exc())
             return False
     
     async def test_connection(self) -> bool:

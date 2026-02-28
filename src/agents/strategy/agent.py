@@ -208,15 +208,14 @@ class StrategyAgent(AgentInterface):
     async def _generate_basic_signals(self, tickers: List[str], strategy: str = None, parameters: Dict[str, Any] = None) -> Dict[str, Any]:
         """Generate basic signals using v7.2 strategy (fallback)"""
         try:
-            from src.storage import DataStorage
             from src.strategy_v7_2 import analyze_stock_v7_2
             
-            storage = DataStorage()
             signals = {}
             
             for ticker in tickers:
                 try:
-                    data = storage.load_data(ticker)
+                    # R1: Load parquet history + today's Yahoo candle
+                    data = self._load_fresh_data(ticker)
                     if data is not None and len(data) > 200:
                         analysis = analyze_stock_v7_2(data, ticker)
                         
@@ -489,6 +488,67 @@ class StrategyAgent(AgentInterface):
             "timestamp": datetime.now().isoformat()
         }
 
+    def _load_fresh_data(self, ticker: str) -> Optional[pd.DataFrame]:
+        """
+        R1: Load parquet history then append today's candle from Yahoo Finance.
+        This ensures the strategy always runs on current data without waiting
+        for the nightly Tiingo parquet refresh.
+        Returns None if insufficient data.
+        """
+        try:
+            from src.storage import DataStorage
+            import os
+            from pathlib import Path
+
+            # 1. Load parquet history (Tiingo - 26yr)
+            storage = DataStorage()
+            df = storage.load_data(ticker)
+            if df is None or len(df) < 200:
+                return None
+
+            # Normalize index
+            if 'date' in df.columns:
+                df['date'] = pd.to_datetime(df['date'])
+                df = df.set_index('date')
+            if hasattr(df.index, 'tz') and df.index.tz is not None:
+                df.index = df.index.tz_localize(None)
+            df = df[~df.index.duplicated(keep='last')]
+            df.sort_index(inplace=True)
+
+            # 2. Append today's candle from Yahoo Finance if not already present
+            try:
+                import yfinance as yf
+                yf_data = yf.download(
+                    ticker, period='5d', auto_adjust=True,
+                    progress=False, threads=False
+                )
+                if not yf_data.empty:
+                    if hasattr(yf_data.index, 'tz') and yf_data.index.tz:
+                        yf_data.index = yf_data.index.tz_localize(None)
+                    new_rows = yf_data[yf_data.index > df.index[-1]]
+                    if not new_rows.empty:
+                        col_map = {}
+                        for c in new_rows.columns:
+                            cl = str(c).lower()
+                            if 'close' in cl:  col_map[c] = 'adjClose'
+                            elif 'open' in cl: col_map[c] = 'adjOpen'
+                            elif 'high' in cl: col_map[c] = 'adjHigh'
+                            elif 'low' in cl:  col_map[c] = 'adjLow'
+                            elif 'volume' in cl: col_map[c] = 'volume'
+                        new_rows = new_rows.rename(columns=col_map)
+                        valid_cols = [v for v in col_map.values() if v in new_rows.columns]
+                        if valid_cols:
+                            df = pd.concat([df, new_rows[valid_cols]])
+                            df = df[~df.index.duplicated(keep='last')]
+            except Exception as yf_err:
+                self.logger.debug(f"{ticker} Yahoo append failed (using parquet only): {yf_err}")
+
+            return df if len(df) >= 200 else None
+
+        except Exception as e:
+            self.logger.error(f"_load_fresh_data {ticker}: {e}")
+            return None
+
 class Strategy:
     """Base strategy class"""
     
@@ -557,10 +617,8 @@ class Strategy:
             
             for ticker in tickers:
                 try:
-                    # Get data from storage
-                    from src.storage import DataStorage
-                    storage = DataStorage()
-                    data = storage.load_data(ticker)
+                    # R1: Load parquet history + today's Yahoo candle
+                    data = self._load_fresh_data(ticker)
                     
                     if data is not None and len(data) > 200:
                         # 🎯 SWEET SPOT ANALYSIS (Full Blueprint Compliance)

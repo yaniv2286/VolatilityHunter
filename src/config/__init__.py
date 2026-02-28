@@ -12,8 +12,8 @@ except ImportError:
     
     load_dotenv()
     
-    # API Configuration
-    TIINGO_KEY = os.getenv('TIINGO_KEY', '')
+    # API Configuration - support both TIINGO_KEY and TIINGO_API_KEY env var names
+    TIINGO_KEY = os.getenv('TIINGO_API_KEY', '') or os.getenv('TIINGO_KEY', '')
     TIINGO_BASE_URL = 'https://api.tiingo.com/tiingo'
     BATCH_SIZE = 50
     

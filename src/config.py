@@ -10,8 +10,8 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-# API Configuration
-TIINGO_KEY = os.getenv('TIINGO_KEY', '')
+# API Configuration - read both TIINGO_API_KEY (set in .env) and TIINGO_KEY (legacy)
+TIINGO_KEY = os.getenv('TIINGO_API_KEY', '') or os.getenv('TIINGO_KEY', '')
 TIINGO_BASE_URL = 'https://api.tiingo.com/tiingo'
 BATCH_SIZE = 50
 

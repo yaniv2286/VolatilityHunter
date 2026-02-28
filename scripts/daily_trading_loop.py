@@ -534,28 +534,115 @@ def execute_entries(candidates: List[dict], portfolio: dict,
     return executed
 
 
-# ── Step 6: Order fill verification ──────────────────────────────────────────
+# ── Step 6: OrderMonitor (R5) ────────────────────────────────────────────────
 
-def verify_fills(ibkr, executed_entries: List[dict], executed_exits: List[dict]):
-    """Wait ORDER_CONFIRM_SEC then confirm fills via IBKR order status."""
-    if not ibkr:
-        return
-    if not executed_entries and not executed_exits:
-        return
+class OrderMonitor:
+    """
+    R5: Monitors every placed order, polls every POLL_INTERVAL seconds.
+    Alerts via email if an order is not filled within FILL_TIMEOUT seconds.
+    Cancels and removes from portfolio if still unfilled after CANCEL_TIMEOUT.
+    """
+    POLL_INTERVAL  = 10    # seconds between polls
+    FILL_TIMEOUT   = 90    # alert after this many seconds unfilled
+    CANCEL_TIMEOUT = 180   # cancel order after this many seconds unfilled
 
-    logger.info(f"Waiting {ORDER_CONFIRM_SEC}s for order fills...")
-    time.sleep(ORDER_CONFIRM_SEC)
+    def __init__(self, ibkr, paper_mode: bool):
+        self.ibkr       = ibkr
+        self.paper_mode = paper_mode
 
-    try:
-        open_trades = ibkr.ib.openTrades() if hasattr(ibkr, 'ib') and ibkr.ib else []
-        unfilled = [t.contract.symbol for t in open_trades
-                    if t.orderStatus.status not in ('Filled', 'Cancelled', 'Inactive')]
-        if unfilled:
-            logger.warning(f"Unfilled orders after {ORDER_CONFIRM_SEC}s: {unfilled}")
-        else:
-            logger.info("All orders confirmed filled.")
-    except Exception as e:
-        logger.warning(f"Fill verification error: {e}")
+    def monitor(self, executed_entries: List[dict], executed_exits: List[dict],
+                portfolio: dict) -> List[str]:
+        """
+        Poll IBKR open trades until all fill or timeout.
+        Returns list of tickers where orders failed (for portfolio cleanup).
+        """
+        if self.paper_mode or not self.ibkr:
+            logger.info("OrderMonitor: PAPER mode - skipping fill verification")
+            return []
+        if not executed_entries and not executed_exits:
+            return []
+
+        all_symbols = (
+            {e['ticker'] for e in executed_entries} |
+            {e['ticker'] for e in executed_exits}
+        )
+        if not all_symbols:
+            return []
+
+        logger.info(f"OrderMonitor: watching {len(all_symbols)} orders...")
+        t0          = time.time()
+        alerted     = set()
+        failed      = []
+
+        while True:
+            elapsed = time.time() - t0
+            try:
+                open_trades = self.ibkr.ib.openTrades() if hasattr(self.ibkr, 'ib') and self.ibkr.ib else []
+                pending = {
+                    t.contract.symbol
+                    for t in open_trades
+                    if t.contract.symbol in all_symbols
+                    and t.orderStatus.status not in ('Filled', 'Cancelled', 'Inactive')
+                }
+            except Exception as e:
+                logger.warning(f"OrderMonitor poll error: {e}")
+                break
+
+            if not pending:
+                logger.info(f"OrderMonitor: all orders filled in {elapsed:.0f}s")
+                break
+
+            # Alert threshold
+            if elapsed >= self.FILL_TIMEOUT:
+                for sym in pending - alerted:
+                    logger.warning(f"ORDER ALERT: {sym} still unfilled after {elapsed:.0f}s")
+                    self._send_alert(sym, elapsed)
+                    alerted.add(sym)
+
+            # Cancel threshold
+            if elapsed >= self.CANCEL_TIMEOUT:
+                for sym in pending:
+                    logger.error(f"ORDER CANCEL: {sym} unfilled after {elapsed:.0f}s - cancelling")
+                    try:
+                        for t in open_trades:
+                            if t.contract.symbol == sym:
+                                self.ibkr.ib.cancelOrder(t.order)
+                    except Exception as ce:
+                        logger.error(f"Cancel error for {sym}: {ce}")
+                    failed.append(sym)
+                    # Remove from portfolio if it was an entry
+                    if sym in portfolio.get('positions', {}):
+                        pos = portfolio['positions'].pop(sym)
+                        # Refund cash
+                        refund = pos.get('shares', 0) * pos.get('entry_price', 0)
+                        portfolio['cash'] = portfolio.get('cash', 0) + refund
+                        logger.error(f"Removed {sym} from portfolio, refunded ${refund:,.2f}")
+                break
+
+            time.sleep(self.POLL_INTERVAL)
+
+        return failed
+
+    def _send_alert(self, symbol: str, elapsed: float):
+        """Send email alert for unfilled order."""
+        try:
+            notifier = EmailNotifier()
+            notifier.send_email(
+                subject=f"VH ORDER ALERT: {symbol} unfilled after {elapsed:.0f}s",
+                body=(f"ORDER NOT FILLED\n"
+                      f"Ticker : {symbol}\n"
+                      f"Elapsed: {elapsed:.0f}s\n"
+                      f"Action : Check TWS immediately.\n")
+            )
+        except Exception as e:
+            logger.error(f"Alert email failed for {symbol}: {e}")
+
+
+def verify_fills(ibkr, executed_entries: List[dict], executed_exits: List[dict],
+                 portfolio: dict, paper_mode: bool) -> List[str]:
+    """Wrapper — uses OrderMonitor to poll fills and handle failures."""
+    monitor = OrderMonitor(ibkr, paper_mode)
+    return monitor.monitor(executed_entries, executed_exits, portfolio)
 
 
 # ── Step 7: Email summary ─────────────────────────────────────────────────────
@@ -681,9 +768,11 @@ def main():
     logger.info("--- Step 5: Executing entries ---")
     executed_entries = execute_entries(candidates[:MAX_POSITIONS], portfolio, ibkr, paper_mode)
 
-    # ── Step 6: Verify fills ──────────────────────────────────────────────
-    logger.info("--- Step 6: Verifying fills ---")
-    verify_fills(ibkr, executed_entries, executed_exits)
+    # ── Step 6: Verify fills (OrderMonitor R5) ───────────────────────────
+    logger.info("--- Step 6: OrderMonitor: verifying fills ---")
+    failed_orders = verify_fills(ibkr, executed_entries, executed_exits, portfolio, paper_mode)
+    if failed_orders:
+        logger.error(f"Orders failed/cancelled: {failed_orders}")
 
     # ── Save portfolio ────────────────────────────────────────────────────
     total_value = portfolio.get('cash', 0) + sum(
