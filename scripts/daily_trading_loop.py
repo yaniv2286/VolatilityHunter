@@ -81,6 +81,12 @@ CAGR_FILTER       = 0.15
 VOLUME_SURGE      = 1.5
 MOMENTUM_DAYS     = 20            # v8: 20-day momentum filter
 MOMENTUM_MIN      = 0.05          # v8: +5% over 20 days required
+# v8.1 DD-reduction parameters
+REGIME_MAX_POS    = 3             # v8.1: max positions when SPY < SMA200 (bear market)
+SECTOR_MAX        = 3             # v8.1: max 3 positions per sector simultaneously
+TIME_STOP_DAYS    = 10            # v8.1: exit losing position after 10 trading days
+VOL_SIZE_ENABLED  = True          # v8.1: volatility-adjusted position sizing
+SPY_PARQUET       = DATA_DIR / "SPY.parquet"  # used for regime filter
 ORDER_CONFIRM_SEC = 90            # seconds to wait for order fill confirmation
 
 IBKR_CONFIG = {
@@ -290,6 +296,7 @@ def check_exits(portfolio: dict, latest_prices: Dict[str, float]) -> List[dict]:
     """
     exits = []
     positions = portfolio.get('positions', {})
+    today = datetime.now().date()
 
     for ticker, pos in positions.items():
         price = latest_prices.get(ticker)
@@ -305,6 +312,17 @@ def check_exits(portfolio: dict, latest_prices: Dict[str, float]) -> List[dict]:
             exits.append({'ticker': ticker, 'price': price,
                           'reason': f'Hard stop ({pnl_pct:.1%})'})
             continue
+
+        # v8.1 Time stop: exit losing position after TIME_STOP_DAYS trading days
+        try:
+            entry_date = datetime.strptime(pos.get('entry_date', str(today)), '%Y-%m-%d').date()
+            days_held = (today - entry_date).days
+            if days_held >= TIME_STOP_DAYS and pnl_pct < 0:
+                exits.append({'ticker': ticker, 'price': price,
+                              'reason': f'Time stop ({days_held}d, {pnl_pct:.1%})'})
+                continue
+        except Exception:
+            pass
 
         # Load indicators for signal-based exit
         df = load_ticker_with_latest(ticker, latest_prices)
@@ -477,27 +495,102 @@ def execute_exits(exits: List[dict], portfolio: dict,
     return executed
 
 
+def _get_spy_regime() -> bool:
+    """Returns True if SPY is above its 200-day SMA (bull regime)."""
+    try:
+        if not SPY_PARQUET.exists():
+            return True  # default bull if no data
+        spy_df = pd.read_parquet(SPY_PARQUET)
+        if 'date' in spy_df.columns:
+            spy_df = spy_df.set_index('date')
+        spy_df.index = pd.to_datetime(spy_df.index)
+        if hasattr(spy_df.index, 'tz') and spy_df.index.tz:
+            spy_df.index = spy_df.index.tz_localize(None)
+        spy_df = add_indicators_v7_2(spy_df)
+        close_col = next((c for c in ['close', 'adjClose', 'Close'] if c in spy_df.columns), None)
+        if close_col is None or 'sma_200' not in spy_df.columns:
+            return True
+        last = spy_df.iloc[-1]
+        is_bull = float(last[close_col]) > float(last['sma_200'])
+        logger.info(f"SPY regime: {'BULL' if is_bull else 'BEAR'} "
+                    f"(close={last[close_col]:.2f} vs SMA200={last['sma_200']:.2f})")
+        return is_bull
+    except Exception as e:
+        logger.warning(f"SPY regime check failed: {e} - defaulting to BULL")
+        logger.warning(traceback.format_exc())
+        return True
+
+
+def _get_sector(ticker: str) -> str:
+    """Simple sector bucketing by ticker initial (production: replace with GICS lookup)."""
+    buckets = {
+        'ABCDE': 'Technology', 'FGHIJ': 'Healthcare',
+        'KLMNO': 'Financials',  'PQRST': 'Energy',
+        'UVWXYZ': 'Industrials'
+    }
+    t = ticker[0].upper() if ticker else 'A'
+    for letters, sector in buckets.items():
+        if t in letters:
+            return sector
+    return 'Consumer'
+
+
 def execute_entries(candidates: List[dict], portfolio: dict,
                     ibkr, paper_mode: bool) -> List[dict]:
-    executed = []
-    open_count = len(portfolio.get('positions', {}))
+    executed  = []
+    positions = portfolio.get('positions', {})
+    open_count = len(positions)
+
+    # v8.1: regime-aware max positions
+    is_bull  = _get_spy_regime()
+    max_pos  = MAX_POSITIONS if is_bull else REGIME_MAX_POS
+    if not is_bull:
+        logger.warning(f"BEAR REGIME (SPY < SMA200): max positions reduced to {REGIME_MAX_POS}")
+
+    # v8.1: ATR median across open positions for vol-adjusted sizing
+    atr_pcts = []
+    for t, p in positions.items():
+        ep = p.get('entry_price', 0)
+        if ep > 0 and p.get('atr', 0) > 0:
+            atr_pcts.append(p['atr'] / ep)
+    median_atr = float(np.median(atr_pcts)) if atr_pcts else 0.02  # fallback 2%
 
     for cand in candidates:
-        if open_count >= MAX_POSITIONS:
+        if open_count >= max_pos:
             break
 
         ticker = cand['ticker']
         price  = cand['price']
-        if ticker in portfolio.get('positions', {}):
+        if ticker in positions:
+            continue
+
+        # v8.1: sector cap
+        sector = _get_sector(ticker)
+        sector_count = sum(1 for t, p in positions.items()
+                           if _get_sector(t) == sector)
+        if sector_count >= SECTOR_MAX:
+            logger.info(f"Skipping {ticker}: sector '{sector}' already at cap ({sector_count}/{SECTOR_MAX})")
             continue
 
         # Ironclad position sizing: 20% of current total equity with drawdown scaling
         total_equity = portfolio.get('cash', 0) + sum(
             p.get('shares', 0) * latest_prices_ref.get(p.get('ticker', t), p.get('entry_price', 0))
-            for t, p in portfolio.get('positions', {}).items()
+            for t, p in positions.items()
         )
         dd_scale = get_dd_scale(portfolio)
-        alloc  = total_equity * POSITION_SIZE_PCT * dd_scale
+
+        # v8.1: volatility-adjusted sizing
+        vol_scale = 1.0
+        if VOL_SIZE_ENABLED:
+            df_cand = load_ticker_with_latest(ticker, latest_prices_ref)
+            if df_cand is not None and not df_cand.empty:
+                atr_val = float(df_cand.iloc[-1].get('atr', 0))
+                if atr_val > 0 and price > 0 and median_atr > 0:
+                    atr_pct = atr_val / price
+                    vol_scale = min(1.0, median_atr / atr_pct)
+                    vol_scale = max(0.25, vol_scale)
+
+        alloc  = total_equity * POSITION_SIZE_PCT * dd_scale * vol_scale
         shares = int(alloc / price)
         cost   = shares * price
 
