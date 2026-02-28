@@ -129,6 +129,38 @@ LogComponents=never
         return False
 
 
+def find_java() -> str:
+    """
+    Discover javaw.exe on this machine.
+    Checks bundled JREs (Gateway, thinkorswim, Zulu, JetBrains) then
+    falls back to a broad glob of C:\\Program Files.
+    Returns full path or empty string if not found.
+    """
+    import glob as _glob
+    gateway_path = "D:\\TWS\\ibgateway"
+    if not Path(gateway_path).exists():
+        gateway_path = "C:\\Jts"
+
+    candidates = [
+        str(Path(gateway_path) / "jre" / "bin" / "javaw.exe"),
+        str(Path(gateway_path) / "jre" / "bin" / "java.exe"),
+        r"C:\Program Files\Zulu\zulu-17\bin\javaw.exe",
+        r"C:\Program Files\Zulu\zulu-11\bin\javaw.exe",
+        r"C:\Program Files\thinkorswim\jre\bin\javaw.exe",
+        r"C:\Program Files\thinkorswim\jre_1968.2.0\bin\javaw.exe",
+        r"C:\Program Files\Java\jre\bin\javaw.exe",
+        r"C:\Program Files\Eclipse Adoptium\jre-17\bin\javaw.exe",
+    ]
+    for c in candidates:
+        if Path(c).is_file():
+            return c
+    # broad fallback
+    hits = _glob.glob(r"C:\Program Files\**\javaw.exe", recursive=True)
+    if not hits:
+        hits = _glob.glob(r"C:\Program Files (x86)\**\javaw.exe", recursive=True)
+    return hits[0] if hits else ""
+
+
 def write_start_script():
     """
     Write StartGateway.bat - the script that launches IB Gateway via IBC.
@@ -136,12 +168,12 @@ def write_start_script():
     """
     print_step("Writing StartGateway.bat...")
 
-    # Find Java - IBC needs Java from the IB Gateway installation
-    java_path = "D:\\TWS\\ibgateway\\jre\\bin\\java.exe"
-    if not Path(java_path).exists():
-        java_path = "C:\\Jts\\jre\\bin\\java.exe"
-    if not Path(java_path).exists():
-        java_path = "java"  # fallback to system Java
+    java_path = find_java()
+    if java_path:
+        print_ok(f"Java found: {java_path}")
+    else:
+        print_fail("Java not found - StartGateway.bat will use bare 'javaw' (may fail if not on PATH)")
+        java_path = "javaw"
 
     gateway_path = "D:\\TWS\\ibgateway"
     if not Path(gateway_path).exists():
@@ -159,7 +191,7 @@ set LOG_PATH={str(ROOT)}\\logs\\ibc_gateway.log
 
 echo Starting IB Gateway via IBC at %DATE% %TIME% >> "%LOG_PATH%"
 
-"{java_path}" -cp "%IBC_PATH%\\IBC.jar;%TWS_PATH%\\jars\\*" ibcalpha.ibc.IbcGateway ^
+"%JAVA_PATH%" -cp "%IBC_PATH%\\IBC.jar;%TWS_PATH%\\jars\\*" ibcalpha.ibc.IbcGateway ^
     "%CONFIG%" ^
     "%TWS_PATH%" ^
     >> "%LOG_PATH%" 2>&1

@@ -161,17 +161,43 @@ LogComponents=never
         if not self.ensure_ibc_config():
             return False
 
-        # Find Java from Gateway installation
+        # Find Java - check Gateway bundled JRE first, then well-known system locations
         java_candidates = [
             Path(self.gateway_dir) / "jre" / "bin" / "javaw.exe",
             Path(self.gateway_dir) / "jre" / "bin" / "java.exe",
+            # Azul Zulu JRE installed by newer IB Gateway
+            Path("C:\\Program Files\\Zulu\\zulu-17\\bin\\javaw.exe"),
+            Path("C:\\Program Files\\Zulu\\zulu-11\\bin\\javaw.exe"),
+            # thinkorswim bundles a JRE on many trader machines
+            Path("C:\\Program Files\\thinkorswim\\jre\\bin\\javaw.exe"),
+            Path("C:\\Program Files\\thinkorswim\\jre_1968.2.0\\bin\\javaw.exe"),
+            # JetBrains JRE (PyCharm etc)
+            Path("C:\\Program Files\\JetBrains"),
+            # Standard Java installs
+            Path("C:\\Program Files\\Java\\jre\\bin\\javaw.exe"),
             Path("C:\\Program Files\\Java\\jre1.8.0_361\\bin\\javaw.exe"),
+            Path("C:\\Program Files\\Eclipse Adoptium\\jre-17\\bin\\javaw.exe"),
         ]
-        java_exe = "javaw"
+        java_exe = None
         for j in java_candidates:
-            if j.exists():
+            if j.is_file():
                 java_exe = str(j)
+                logger.info(f"Found Java at: {java_exe}")
                 break
+
+        # Broad fallback: search C:\Program Files recursively for any javaw.exe
+        if not java_exe:
+            import glob
+            hits = glob.glob(r"C:\Program Files\**\javaw.exe", recursive=True)
+            if not hits:
+                hits = glob.glob(r"C:\Program Files (x86)\**\javaw.exe", recursive=True)
+            if hits:
+                java_exe = hits[0]
+                logger.info(f"Found Java via glob: {java_exe}")
+
+        if not java_exe:
+            logger.error("Java not found - cannot launch IBC via classpath. Trying bat fallback.")
+            return self._fallback_bat_launch()
 
         # Build classpath: IBC.jar + all Gateway jars
         gateway_jars = list((Path(self.gateway_dir) / "jars").glob("*.jar"))
