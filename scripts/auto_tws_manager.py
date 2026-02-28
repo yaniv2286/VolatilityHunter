@@ -210,6 +210,7 @@ LogComponents=never
             "ibcalpha.ibc.IbcGateway",
             str(IBC_CONFIG),
             str(self.gateway_dir),
+            "live",   # TradingMode: required 3rd positional arg in IBC 3.18+
         ]
 
         log_file = LOG_DIR / "ibc_gateway.log"

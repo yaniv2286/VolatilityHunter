@@ -1,3 +1,43 @@
+# Sweet Spot Trading Blueprint
+
+**Source**: Original blueprint rules as defined by the Architect  
+**Implementation**: `src/strategy_v7_2.py`, `src/sweet_spot_strategy.py`, `scripts/daily_trading_loop.py`  
+**Last verified**: 2026-02-28
+
+---
+
+## Implemented Parameters (live system)
+
+| Parameter | Blueprint Rule | Implemented Value |
+|-----------|---------------|-------------------|
+| Position size | 20% max per trade | 20% of total equity |
+| Hard stop loss | 1-5% trailing | 5% hard stop (`HARD_STOP_PCT = 0.05`) |
+| Stochastic settings | K=10, D=3, Smooth=3 | K=14, D=3 (strategy_v7_2) |
+| Stochastic sweet spot | 32-80 zone | `STOCH_LOW=32, STOCH_HIGH=80` |
+| Volume filter | 30% of 30-day avg in first hour | Volume >= 1.5x 30-day SMA |
+| Trend filter | Price above SMA200 | `price > sma_200` |
+| CAGR momentum filter | Positive annual momentum | 252-day return >= 15% |
+| Liquidity filter | Consistent daily volume | price x volume >= $500,000 |
+| Max positions | 5-7 watchlist stocks | 10 simultaneous positions |
+| Entry time | After 10:06 AM ET | EOD swing trading (no intraday) |
+| Earnings | Never hold through earnings | Not yet automated (manual awareness) |
+| Power stocks | Trend-following special rules | SMA25 exit + 3x ATR trailing stop |
+| Drawdown circuit | Position reduction in drawdown | -10% DD -> 50% size, -20% -> 25% size |
+
+---
+
+## Signal Ranking Score (R9)
+
+```python
+stoch_score = 1.0 - abs(k - 56) / 24   # peaks at K=56, center of 32-80 zone
+score       = 0.6 * annual_return + 0.4 * stoch_score
+```
+
+Candidates are sorted descending by `score`. Top N fill available position slots.
+
+---
+
+## Original Blueprint Rules
 
 Here is the complete, updated Sweet Spot Trading Blueprint incorporating all the new rules, specific timeframe variations, technical settings, and expanded patterns.
 The Updated Sweet Spot Trading Blueprint
