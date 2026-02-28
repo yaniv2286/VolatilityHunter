@@ -1,6 +1,6 @@
 # VolatilityHunter
 
-**Version**: v10.1 Agent-Based Architecture | **Updated**: 2026-02-28 | **Health Check**: Exit Code 0
+**Version**: v10.2 Agent-Based Architecture | **Updated**: 2026-02-28 | **Health Check**: Exit Code 0
 **Capital**: $100,000 | **Mode**: Paper (IBKR live-ready) | **Universe**: 2,147 tickers | **Data**: 26+ years parquet
 
 ---
@@ -24,24 +24,23 @@
 
 ## Backtest Results (Full Universe, 2,147 Tickers)
 
-Run: 2026-02-28 | Engine: scripts/backtest_v7_vs_v8.py | Data: Tiingo parquet (2000-2026)
+Run: 2026-02-28 | Engine: scripts/backtest_v8_vs_v8_1.py | Data: Tiingo parquet (2000-2026)
 
-### v7.2 vs v8 Side-by-Side (26 Years, Compounding)
+### Full Strategy Evolution (26 Years, Compounding)
 
-| Metric | v7.2 | **v8 (production)** | Delta |
-|--------|------|---------------------|-------|
-| **CAGR** | 10.1% | **16.2%** | +6.1% |
-| **5yr CAGR** | 23.2% | **28.5%** | +5.3% |
-| Max Drawdown | -48.6% | -51.8% | -3.3% |
-| Sharpe Ratio | 0.59 | **0.76** | +0.17 |
-| Win Rate | 49.4% | 44.3% | -5.1% |
-| Avg Win | +6.5% | **+15.6%** | +9.1% |
-| Avg Loss | -5.1% | -8.2% | wider stop |
-| Profit Factor | 1.25 | **1.51** | +0.26 |
-| Total Trades | 99,492 | 37,213 | -62% (momentum filter) |
-| Final $100k | $1.1M | **$4.4M** | +$3.3M |
+| Metric | v7.2 | v8 | **v8.1 (production)** |
+|--------|------|----|-----------------------|
+| **CAGR** | 10.1% | 16.2% | **23.3%** |
+| **5yr CAGR** | 23.2% | 28.5% | **45.4%** |
+| Max Drawdown | -48.6% | -51.8% | **-28.1%** |
+| Sharpe Ratio | 0.59 | 0.76 | **0.73** |
+| Avg Win | +6.5% | +15.6% | **+16.7%** |
+| Avg Loss | -5.1% | -8.2% | **-4.3%** |
+| Profit Factor | 1.25 | 1.51 | **1.48** |
+| Total Trades | 99,492 | 37,213 | 41,786 |
+| Final $100k | $1.1M | $4.4M | **$19.3M** |
 
-**v8 is in production.** v7.2 preserved in src/strategy_v7_2.py for reference.
+**v8.1 is in production.** v8 and v7.2 preserved in src/ for reference.
 
 ### Top 5 Trades (All Time)
 
@@ -54,9 +53,10 @@ Run: 2026-02-28 | Engine: scripts/backtest_v7_vs_v8.py | Data: Tiingo parquet (2
 | RGTI | 2024-11-22 | 2024-12-13 | +311% |
 
 ### Notes on Drawdown
-- The 26-yr compounding drawdown (-51.8%) is a measurement artifact of compounding capital
-- The live system uses fixed 20% of equity per position with drawdown scaling
+- v8.1 DD of -28.1% is the real portfolio drawdown (regime filter prevents bear market overexposure)
+- The live system uses volatility-adjusted position sizing (high-ATR stocks get smaller allocation)
 - Drawdown circuit breaker active: -10% DD -> 50% position size, -20% DD -> 25% size
+- SPY regime today: **BULL** (SPY=685.99 > SMA200=651.74) — full 10 positions allowed
 
 ---
 
@@ -101,10 +101,11 @@ main_agent_system.py
        Step 1:  Reconcile portfolio.json <-> IBKR live positions
        Step 2:  Batch fetch today prices via Yahoo Finance (all 2,147 tickers)
        Step 2b: Update highest_price + high-water mark for all open positions
-       Step 3:  Check exits (hard stop -8%, SMA200 break, overbought K>78)
+       Step 3:  Check exits (hard stop -8%, time stop 10d, SMA200 break, K>78)
        Step 3b: Power stock promotion check (K>80 + all SMAs + vol surge x2 days)
        Step 4:  Scan universe -> 20-day momentum filter -> rank by score
-       Step 5:  Execute entries (20% sizing, drawdown-scaled, max 10 positions)
+       Step 4b: Check SPY regime (BULL=10 slots / BEAR=3 slots)
+       Step 5:  Execute entries (vol-adjusted sizing, sector cap 3, max 10/3 positions)
        Step 6:  OrderMonitor - poll fills, alert at 90s, cancel at 180s
        Step 7:  Email summary -> lugassy.ai@gmail.com
        Step 8:  Save portfolio.json
@@ -112,26 +113,30 @@ main_agent_system.py
 
 ---
 
-## Trading Strategy: Sweet Spot v8 (Production)
+## Trading Strategy: Sweet Spot v8.1 (Production)
 
 ### Entry Conditions (ALL must be true)
 - Stochastic K between 32 and 80 (sweet spot zone)
 - Price above 200-day SMA (uptrend filter)
 - Volume >= 1.5x 30-day average (surge confirmation)
 - 252-day annual return >= 15% (quality filter)
-- 20-day return >= 5% (momentum acceleration filter — v8 new)
+- 20-day return >= 5% (momentum acceleration filter)
 - Price x Volume >= $500,000 (liquidity filter)
 - Price >= $5 (no penny stocks)
+- SPY regime: BULL -> max 10 positions | BEAR -> max 3 positions
+- Sector cap: max 3 positions per sector simultaneously
 
 ### Exit Conditions (ANY triggers exit)
-- Hard stop: P&L <= -8% (v8: was -5%)
-- Overbought rollover: K < D and K > 78 (v8: was K > 70)
+- Hard stop: P&L <= -8%
+- Time stop: P&L < 0 after 10 trading days (avg exit at -2.2% vs -8%)
+- Overbought rollover: K < D and K > 78
 - SMA200 break: price < 200-day SMA
 - Power stocks: SMA25 break or 3x ATR trailing stop from highest_price
 
 ### Position Sizing (Ironclad Guardrails)
-- 20% of total equity per position
-- Max 10 simultaneous positions
+- Base: 20% of total equity per position
+- Volatility-adjusted: size = base * (median_atr / ticker_atr) — high-vol stocks sized down
+- Max 10 simultaneous positions (3 in bear regime)
 - Drawdown circuit breaker: -10% equity -> 50% size, -20% -> 25% size
 
 ### Power Stock Promotion
@@ -157,17 +162,19 @@ Root
 src/
   agents/                       7 agent implementations
   brokerage_interface.py        IBKR ib_insync interface (R3 fixed)
-  strategy_v7_2.py              Core indicators + Sweet Spot logic
-  strategy_v8.py                v8 optimized ticker backtest engine
+  strategy_v7_2.py              Core indicators + Sweet Spot logic (reference)
+  strategy_v8.py                v8 backtest engine (reference)
+  strategy_v8_1.py              v8.1 backtest engine (production)
   strategy_engine.py            Single source of truth (all 4 modes)
   smart_data_loader_factory.py  Tiingo/Yahoo smart loader
   config.py                     Config (R8: TIINGO_API_KEY)
   email_notifier.py             Gmail SMTP
 
 scripts/
-  daily_trading_loop.py         Daily autonomous pipeline v8 (R5 OrderMonitor)
+  daily_trading_loop.py         Daily autonomous pipeline v8.1 (R5 OrderMonitor)
   full_universe_backtest.py     v7.2 full universe backtester
   backtest_v7_vs_v8.py          v7 vs v8 side-by-side comparison
+  backtest_v8_vs_v8_1.py        v8 vs v8.1 comparison (DD-reduction proof)
   simulate_monday.py            Full pipeline dry-run on historical date
   functional_health_check.py    System health gate
   auto_tws_manager.py           IBC gateway manager (R6: process watchdog)
@@ -240,6 +247,7 @@ jts.ini (tradingMode=p) and config.ini (TradingMode=paper). Port 7497 monitored 
 | R9 | Score ranking in daily scan | scripts/daily_trading_loop.py |
 | R10 | Strategy v8: hard stop -8%, exit K>78, 20d momentum | src/strategy_v8.py, src/strategy_engine.py |
 | R11 | Pipeline parity: power promotion (Step 3b), highest_price tracking, drawdown scaling | scripts/daily_trading_loop.py, scripts/simulate_monday.py |
+| R12 | Strategy v8.1: regime filter, sector cap, time stop, vol sizing (+7% CAGR, -24% DD) | src/strategy_v8_1.py, scripts/daily_trading_loop.py |
 
 ---
 

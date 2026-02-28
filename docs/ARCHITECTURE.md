@@ -1,6 +1,6 @@
 # VolatilityHunter Architecture
 
-**Version**: v10.1 | **Updated**: 2026-02-28 | **Design**: SOLID + Factory + Strategy patterns
+**Version**: v10.2 | **Updated**: 2026-02-28 | **Design**: SOLID + Factory + Strategy patterns
 
 ---
 
@@ -44,10 +44,12 @@
 - Rate limiter: 50 messages/sec
 
 ### StrategyAgent  src/agents/strategy/agent.py
-- Runs Sweet Spot v8 on fresh data (parquet + today candle) [R1]
-- Priority chain: SweetSpotStrategy -> PatternEnhanced -> Basic v8
+- Runs Sweet Spot v8.1 on fresh data (parquet + today candle) [R1]
+- Priority chain: SweetSpotStrategy -> PatternEnhanced -> Basic v8.1
 - Signal ranking: 0.6 * annual_return + 0.4 * stoch_score [R9]
 - Filters: K in [32,80], price > SMA200, volume surge 1.5x, CAGR >= 15%, 20-day momentum >= 5%
+- Regime filter: SPY < SMA200 -> max 3 positions (bear guard)
+- Sector cap: max 3 positions per sector simultaneously
 
 ### ExecutionAgent  src/agents/execution/agent.py
 - IBKR ib_insync interface, fixed threading bug [R3]
@@ -190,13 +192,15 @@ IBC Config: C:\IBC\config.ini
 
 `
 Position Level:
-  - Hard stop loss: -8% P&L -> immediate market sell (v8: was -5%)
+  - Hard stop loss: -8% P&L -> immediate market sell
+  - Time stop: P&L < 0 after 10 trading days -> exit (avg -2.2% vs -8%)
   - Power stock exit: SMA25 break or 3x ATR trailing stop from highest_price
-  - Standard exit: Stoch K>78 rollover OR SMA200 break (v8: was K>70)
+  - Standard exit: Stoch K>78 rollover OR SMA200 break
 
 Portfolio Level:
-  - Max 10 simultaneous positions
-  - Max 20% equity per position
+  - Max 10 positions (bull regime) / 3 positions (bear regime: SPY < SMA200)
+  - Sector cap: max 3 positions per sector simultaneously
+  - Volatility-adjusted sizing: base_size * (median_atr / ticker_atr), floor 25%
   - Drawdown circuit: equity DD > -10% -> scale to 50% size
   - Drawdown circuit: equity DD > -20% -> scale to 25% size
 
@@ -225,8 +229,9 @@ VolatilityHunter/
       scheduler/agent.py          SchedulerAgent
       testing/agent.py            TestingAgent
     brokerage_interface.py        IBKRInterface (R3: threading fix)
-    strategy_v7_2.py              Core Sweet Spot logic + indicators
-    strategy_v8.py                v8 optimized ticker backtest engine
+    strategy_v7_2.py              Core Sweet Spot logic + indicators (reference)
+    strategy_v8.py                v8 backtest engine (reference)
+    strategy_v8_1.py              v8.1 production backtest engine
     strategy_engine.py            Single source of truth (all 4 modes use this)
     sweet_spot_strategy.py        Enhanced strategy wrapper
     smart_data_loader_factory.py  Tiingo/Yahoo smart loader
@@ -236,9 +241,10 @@ VolatilityHunter/
     storage.py                    Parquet read/write
 
   scripts/
-    daily_trading_loop.py         Autonomous daily pipeline v8 [R5,R9]
+    daily_trading_loop.py         Autonomous daily pipeline v8.1 [R5,R9,R12]
     full_universe_backtest.py     v7.2 full universe backtest (2,147 tickers)
     backtest_v7_vs_v8.py          Side-by-side v7 vs v8 comparison backtest
+    backtest_v8_vs_v8_1.py        v8 vs v8.1 DD-reduction proof backtest
     simulate_monday.py            Full pipeline dry-run on historical date
     functional_health_check.py    Health gate (Exit Code 0 required)
     auto_tws_manager.py           IBC watchdog [R6]
@@ -260,6 +266,7 @@ VolatilityHunter/
     ibc_gateway.log               IBC startup log
     full_backtest_*.json          Backtest result archives
     backtest_v7_vs_v8_*.json      v7 vs v8 comparison results
+    backtest_v8_vs_v8_1_*.json    v8 vs v8.1 DD-reduction results
 
   docs/
     README.md                     This system overview
@@ -301,6 +308,9 @@ python scripts/full_universe_backtest.py
 
 # Compare v7.2 vs v8 side-by-side (takes ~2 min)
 python scripts/backtest_v7_vs_v8.py
+
+# Compare v8 vs v8.1 DD-reduction (takes ~3 min)
+python scripts/backtest_v8_vs_v8_1.py
 
 # Simulate a historical trading day end-to-end
 python scripts/simulate_monday.py
