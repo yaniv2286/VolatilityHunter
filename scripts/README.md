@@ -37,7 +37,9 @@ Last Updated: 2026-02-28
 
 | File | Purpose |
 |------|----------|
-| `full_universe_backtest.py` | Run Sweet Spot strategy over full 2,147-ticker universe. |
+| `full_universe_backtest.py` | Run Sweet Spot v7.2 over full 2,147-ticker universe (~2 min). |
+| `backtest_v7_vs_v8.py` | Side-by-side comparison: v7.2 vs v8 on all 2,147 tickers. Result: v8 +6.1% CAGR (10.1% -> 16.2%). |
+| `simulate_monday.py` | Full pipeline dry-run on a historical date — portfolio load, exit check, power promotion, scan, entries. |
 
 ---
 

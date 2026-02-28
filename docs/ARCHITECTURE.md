@@ -1,6 +1,6 @@
 # VolatilityHunter Architecture
 
-**Version**: v10.0 | **Updated**: 2026-02-28 | **Design**: SOLID + Factory + Strategy patterns
+**Version**: v10.1 | **Updated**: 2026-02-28 | **Design**: SOLID + Factory + Strategy patterns
 
 ---
 
@@ -44,10 +44,10 @@
 - Rate limiter: 50 messages/sec
 
 ### StrategyAgent  src/agents/strategy/agent.py
-- Runs Sweet Spot v7.2 on fresh data (parquet + today candle) [R1]
-- Priority chain: SweetSpotStrategy -> PatternEnhanced -> Basic v7.2
+- Runs Sweet Spot v8 on fresh data (parquet + today candle) [R1]
+- Priority chain: SweetSpotStrategy -> PatternEnhanced -> Basic v8
 - Signal ranking: 0.6 * annual_return + 0.4 * stoch_score [R9]
-- Filters: K in [32,80], price > SMA200, volume surge 1.5x, CAGR >= 15%
+- Filters: K in [32,80], price > SMA200, volume surge 1.5x, CAGR >= 15%, 20-day momentum >= 5%
 
 ### ExecutionAgent  src/agents/execution/agent.py
 - IBKR ib_insync interface, fixed threading bug [R3]
@@ -190,9 +190,9 @@ IBC Config: C:\IBC\config.ini
 
 `
 Position Level:
-  - Hard stop loss: -5% P&L -> immediate market sell
-  - Power stock exit: SMA25 break or 3x ATR trailing stop
-  - Standard exit: Stoch overbought rollover OR SMA200 break
+  - Hard stop loss: -8% P&L -> immediate market sell (v8: was -5%)
+  - Power stock exit: SMA25 break or 3x ATR trailing stop from highest_price
+  - Standard exit: Stoch K>78 rollover OR SMA200 break (v8: was K>70)
 
 Portfolio Level:
   - Max 10 simultaneous positions
@@ -225,7 +225,9 @@ VolatilityHunter/
       scheduler/agent.py          SchedulerAgent
       testing/agent.py            TestingAgent
     brokerage_interface.py        IBKRInterface (R3: threading fix)
-    strategy_v7_2.py              Core Sweet Spot logic
+    strategy_v7_2.py              Core Sweet Spot logic + indicators
+    strategy_v8.py                v8 optimized ticker backtest engine
+    strategy_engine.py            Single source of truth (all 4 modes use this)
     sweet_spot_strategy.py        Enhanced strategy wrapper
     smart_data_loader_factory.py  Tiingo/Yahoo smart loader
     config.py                     Constants (R8: TIINGO_API_KEY)
@@ -234,10 +236,13 @@ VolatilityHunter/
     storage.py                    Parquet read/write
 
   scripts/
-    daily_trading_loop.py         Autonomous daily pipeline [R5,R9]
-    full_universe_backtest.py     2,147 ticker vectorized backtest
+    daily_trading_loop.py         Autonomous daily pipeline v8 [R5,R9]
+    full_universe_backtest.py     v7.2 full universe backtest (2,147 tickers)
+    backtest_v7_vs_v8.py          Side-by-side v7 vs v8 comparison backtest
+    simulate_monday.py            Full pipeline dry-run on historical date
     functional_health_check.py    Health gate (Exit Code 0 required)
     auto_tws_manager.py           IBC watchdog [R6]
+    ibc_login_helper.py           pyautogui credential injector
     setup_ibc.py                  IBC + Zulu JRE 17 installer
     DAILY_ROUTINE/
       run_trading.bat             Task Scheduler entry point
@@ -254,6 +259,7 @@ VolatilityHunter/
     trading_YYYY-MM-DD.log        Daily loop output
     ibc_gateway.log               IBC startup log
     full_backtest_*.json          Backtest result archives
+    backtest_v7_vs_v8_*.json      v7 vs v8 comparison results
 
   docs/
     README.md                     This system overview
@@ -290,8 +296,14 @@ Checks run:
 # Full system health gate
 python scripts/functional_health_check.py
 
-# Backtest full universe (takes ~10-30 min)
+# Backtest full universe v7.2 (takes ~2 min)
 python scripts/full_universe_backtest.py
+
+# Compare v7.2 vs v8 side-by-side (takes ~2 min)
+python scripts/backtest_v7_vs_v8.py
+
+# Simulate a historical trading day end-to-end
+python scripts/simulate_monday.py
 
 # Validate specific fix
 python scripts/verify_X.py  # per Rule 4.1
