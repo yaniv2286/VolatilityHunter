@@ -252,34 +252,35 @@ def check_power_promotion_v7_2(df, current_position=None):
 def check_standard_exit_v7_2(df, position):
     """
     V7.3 Blueprint Exit for Standard trades (is_power_stock = False)
-    MANDATORY: Exit if stoch_k < stoch_d (Red crosses below Yellow) - Stochastic Roll-over
-    Optional: Exit if price < sma_200 (additional safety)
+    PRIMARY: Exit only on OVERBOUGHT rollover (K>70 AND K crosses below D) - lets winners ride
+    SAFETY:  Exit if price < SMA_200 (trend breakdown)
+    NOTE:    K<D crossover inside the Sweet Spot zone (32-70) is NOT an exit - it is normal
+             oscillation and exiting there was the #1 cause of prematurely cutting winners.
     """
     if len(df) < 2:
         return False, "Insufficient data"
-    
+
     latest = df.iloc[-1]
-    price = latest['adjClose'] if 'adjClose' in latest else latest['Close'] if 'Close' in latest else latest['close']
+    close_col = 'adjClose' if 'adjClose' in df.columns else 'Close' if 'Close' in df.columns else 'close'
+    price = latest[close_col]
     stoch_k = latest['stoch_k']
     stoch_d = latest['stoch_d']
-    
     sma_200 = latest['sma_200']
-    
-    # V7.3 BLUEPRINT EXIT: Stochastic Roll-over (MANDATORY)
-    k_below_d = stoch_k < stoch_d
-    
-    # Additional safety: SMA 200 break
-    price_below_sma = price < sma_200
-    
-    # V7.3: Stochastic Roll-over is the primary exit for Standard trades
-    should_exit = k_below_d or price_below_sma
-    
+
+    # PRIMARY EXIT: Overbought rollover only (K was above 70 and now crosses below D)
+    overbought_rollover = (stoch_k < stoch_d) and (stoch_k > 70)
+
+    # SAFETY EXIT: Long-term trend breakdown
+    price_below_sma200 = (not pd.isna(sma_200)) and (price < sma_200)
+
+    should_exit = overbought_rollover or price_below_sma200
+
     exit_reason = []
-    if k_below_d:
-        exit_reason.append("Blueprint Exit: Stoch_K < Stoch_D (Roll-over)")
-    if price_below_sma:
-        exit_reason.append("Safety: Price < SMA_200")
-    
+    if overbought_rollover:
+        exit_reason.append(f"Overbought rollover: K({stoch_k:.1f}) < D({stoch_d:.1f}) while K>70")
+    if price_below_sma200:
+        exit_reason.append(f"Trend breakdown: Price({price:.2f}) < SMA200({sma_200:.2f})")
+
     return should_exit, " | ".join(exit_reason) if exit_reason else "No exit condition"
 
 def check_power_exit_v7_2(df, position):
@@ -319,142 +320,113 @@ def analyze_stock_v7_2(df, ticker=None):
     VolatilityHunter v7.2 Hybrid Strategy Analysis
     Implements the Sweet Spot Blueprint
     """
+    _hold = lambda reason, indicators={}: {
+        'signal': 'HOLD', 'reason': reason, 'indicators': indicators,
+        'score': 0.0, 'should_enter': False, 'confidence': 0.0, 'is_power_stock': False
+    }
+
     if df is None or len(df) < 252:
-        return {
-            'signal': 'HOLD',
-            'reason': 'Insufficient data (need 252+ days)',
-            'indicators': {}
-        }
-    
+        return _hold('Insufficient data (need 252+ days)')
+
     # Add all indicators
     df = add_indicators_v7_2(df)
-    
+
     latest = df.iloc[-1]
-    price = latest['adjClose'] if 'adjClose' in latest else latest['Close'] if 'Close' in latest else latest['close']
-    
+    close_col = 'adjClose' if 'adjClose' in df.columns else 'Close' if 'Close' in df.columns else 'close'
+    volume_col = 'Volume' if 'Volume' in df.columns else 'volume' if 'volume' in df.columns else 'adjVolume'
+    price = latest[close_col]
+    volume = latest[volume_col]
+
     # Safety: Check for missing indicators
     if pd.isna(latest['stoch_k']) or pd.isna(latest['stoch_d']):
-        return {
-            'signal': 'HOLD',
-            'reason': 'Stochastic indicators not available',
-            'indicators': {}
-        }
-    
-    # V7.3 DYNAMIC GUARDRAILS: Liquidity Filter
-    price = latest['adjClose'] if 'adjClose' in latest else latest['Close'] if 'Close' in latest else latest['close']
-    volume_col = 'Volume' if 'Volume' in latest else 'volume' if 'volume' in latest else 'adjVolume'
-    volume = latest[volume_col]
-    dollar_volume = price * volume
-    
-    if dollar_volume < 500000:  # $500K minimum for momentum stocks
-        return {
-            'signal': 'HOLD',
-            'reason': f'Liquidity Filter: ${dollar_volume:,.0f} < $500K minimum (momentum-friendly)',
-            'indicators': {
-                'price': price,
-                'volume': volume,
-                'dollar_volume': dollar_volume
-            }
-        }
-    
-    # V7.3 DYNAMIC GUARDRAILS: Price Ceiling Shield REMOVED for momentum stocks
-    # Allow all price levels to capture high-quality momentum (NVDA, TSLA, etc.)
-    
-    # v7.2 ENTRY LOGIC
-    
-    # 1. Entry Zone Check
-    in_entry_zone, entry_zone_reason = check_entry_zone_v7_2(df)
-    if not in_entry_zone:
-        return {
-            'signal': 'HOLD',
-            'reason': f'Entry Zone Failed: {entry_zone_reason}',
-            'indicators': {
-                'stoch_k': latest['stoch_k'],
-                'stoch_d': latest['stoch_d'],
-                'price': price
-            }
-        }
-    
-    # 2. Crossover Check
-    k_above_d, crossover_reason = check_crossover_v7_2(df)
-    if not k_above_d:
-        return {
-            'signal': 'HOLD',
-            'reason': f'Crossover Failed: {crossover_reason}',
-            'indicators': {
-                'stoch_k': latest['stoch_k'],
-                'stoch_d': latest['stoch_d'],
-                'price': price
-            }
-        }
-    
-    # 3. Multi-SMA Magnet Alignment Check
-    sma_25 = latest['sma_25']
-    sma_50 = latest['sma_50']
+        return _hold('Stochastic indicators not available')
+
+    stoch_k = latest['stoch_k']
+    stoch_d = latest['stoch_d']
+    sma_25  = latest['sma_25']
+    sma_50  = latest['sma_50']
     sma_100 = latest['sma_100']
     sma_200 = latest['sma_200']
-    
-    # Check if all SMAs are aligned upward (magnet alignment)
-    if (pd.isna(sma_25) or pd.isna(sma_50) or pd.isna(sma_100) or pd.isna(sma_200) or
-        not (sma_25 > sma_50 > sma_100 > sma_200)):
-        return {
-            'signal': 'HOLD',
-            'reason': f'Multi-SMA Alignment Failed: SMA_25 ({sma_25:.2f}) > SMA_50 ({sma_50:.2f}) > SMA_100 ({sma_100:.2f}) > SMA_200 ({sma_200:.2f})',
-            'indicators': {
-                'stoch_k': latest['stoch_k'],
-                'stoch_d': latest['stoch_d'],
-                'price': price,
-                'sma_25': sma_25,
-                'sma_50': sma_50,
-                'sma_100': sma_100,
-                'sma_200': sma_200
-            }
-        }
-    
-    # 4. Volume Check - 30-day SMA for momentum confirmation
-    volume_col = 'Volume' if 'Volume' in latest else 'volume' if 'volume' in latest else 'adjVolume'
-    current_volume = latest[volume_col]
-    volume_sma_30 = df[volume_col].rolling(window=30).mean().iloc[-1]
-    if pd.isna(volume_sma_30) or volume_sma_30 <= 0 or current_volume <= volume_sma_30:
-        return {
-            'signal': 'HOLD',
-            'reason': f'Volume Momentum Failed: Current ({current_volume:,.0f}) <= 30-day SMA ({volume_sma_30:,.0f})',
-            'indicators': {
-                'stoch_k': latest['stoch_k'],
-                'stoch_d': latest['stoch_d'],
-                'price': price,
-                'current_volume': current_volume,
-                'volume_sma_30': volume_sma_30
-            }
-        }
-    
-    # ALL ENTRY CONDITIONS PASSED - GENERATE BUY SIGNAL
+    volume_sma = latest['volume_sma']
+    atr = latest['atr']
+
+    # --- GUARD 1: Liquidity ($500K minimum) ---
+    dollar_volume = price * volume
+    if dollar_volume < 500000:
+        return _hold(
+            f'Liquidity: ${dollar_volume:,.0f} < $500K minimum',
+            {'price': price, 'dollar_volume': dollar_volume}
+        )
+
+    # --- GUARD 2: Stochastic Sweet Spot zone (32-80) ---
+    if not (32.0 <= stoch_k <= 80.0):
+        return _hold(
+            f'Stoch_K ({stoch_k:.2f}) outside Sweet Spot zone [32-80]',
+            {'stoch_k': stoch_k, 'stoch_d': stoch_d, 'price': price}
+        )
+
+    # --- GUARD 3: Price above SMA_200 (long-term trend) ---
+    if pd.isna(sma_200) or price <= sma_200:
+        return _hold(
+            f'Price ({price:.2f}) not above SMA_200 ({sma_200:.2f})',
+            {'price': price, 'sma_200': sma_200, 'stoch_k': stoch_k}
+        )
+
+    # --- GUARD 4: Volume surge >= 1.5x 30-day SMA (fuel check) ---
+    if pd.isna(volume_sma) or volume_sma <= 0 or volume < volume_sma * 1.5:
+        return _hold(
+            f'Volume ({volume:,.0f}) < 1.5x SMA ({volume_sma:,.0f}) - trading on fumes',
+            {'price': price, 'stoch_k': stoch_k, 'volume': volume, 'volume_sma': volume_sma}
+        )
+
+    # --- GUARD 5: CAGR quality filter (only trade stocks with 15%+ annual growth) ---
+    # Use 252-day price return as a proxy for 1-year CAGR
+    if len(df) >= 252:
+        price_252d_ago = df[close_col].iloc[-252]
+        annual_return = (price / price_252d_ago) - 1 if price_252d_ago > 0 else 0
+    else:
+        annual_return = 0
+
+    if annual_return < 0.15:
+        return _hold(
+            f'CAGR filter: 1yr return ({annual_return:.1%}) < 15% minimum quality threshold',
+            {'price': price, 'stoch_k': stoch_k, 'annual_return': annual_return}
+        )
+
+    # --- ALL CONDITIONS PASSED: BUY SIGNAL ---
     indicators = {
-        'stoch_k': latest['stoch_k'],
-        'stoch_d': latest['stoch_d'],
+        'stoch_k': stoch_k,
+        'stoch_d': stoch_d,
         'price': price,
         'sma_25': sma_25,
         'sma_50': sma_50,
         'sma_100': sma_100,
         'sma_200': sma_200,
-        'current_volume': current_volume,
-        'volume_sma_30': volume_sma_30,
-        'atr': latest['atr']
+        'volume': volume,
+        'volume_sma': volume_sma,
+        'annual_return': annual_return,
+        'atr': atr
     }
-    
-    reason_parts = [
-        'MOMENTUM STRATEGY: BUY SIGNAL',
-        f'Entry Zone: Stoch_K ({latest["stoch_k"]:.2f}) in [32-80]',
-        f'Crossover: Stoch_K ({latest["stoch_k"]:.2f}) > Stoch_D ({latest["stoch_d"]:.2f})',
-        f'Multi-SMA Alignment: SMA_25 ({sma_25:.2f}) > SMA_50 ({sma_50:.2f}) > SMA_100 ({sma_100:.2f}) > SMA_200 ({sma_200:.2f})',
-        f'Volume Momentum: Current ({current_volume:,.0f}) > 30-day SMA ({volume_sma_30:,.0f})'
-    ]
-    
+
+    reason = (
+        f'BUY | Stoch_K={stoch_k:.1f} in [32-80] | Price ({price:.2f}) > SMA200 ({sma_200:.2f}) '
+        f'| Vol {volume:,.0f} > 1.5x SMA {volume_sma:,.0f} | 1yr return {annual_return:.1%}'
+    )
+
+    # Score: normalized composite of signal quality (0.0-1.0)
+    stoch_score = 1.0 - abs(stoch_k - 56) / 24  # best at midpoint of 32-80
+    vol_ratio = min(volume / (volume_sma * 1.5), 2.0) / 2.0
+    cagr_score = min(annual_return / 0.40, 1.0)  # normalized up to 40% CAGR
+    score = round((stoch_score * 0.3 + vol_ratio * 0.35 + cagr_score * 0.35), 4)
+
     return {
         'signal': 'BUY',
-        'reason': ' | '.join(reason_parts),
+        'reason': reason,
         'indicators': indicators,
-        'is_power_stock': False  # All trades start as Standard
+        'is_power_stock': False,
+        'score': score,
+        'should_enter': True,
+        'confidence': score
     }
 
 def check_exit_conditions_v7_2(df, position):

@@ -14,6 +14,9 @@ echo.
 echo NO MANUAL INTERVENTION REQUIRED!
 echo.
 
+REM Change to VolatilityHunter directory
+cd /d "D:\GitHub\VolatilityHunter"
+
 REM Check if Python is available
 python --version >nul 2>&1
 if errorlevel 1 (

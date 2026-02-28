@@ -1,0 +1,325 @@
+{
+  "run_timestamp": "2026-02-28T08:54:31.273243",
+  "compounding_25yr": {
+    "initial_capital": 100000.0,
+    "final_equity": 1124530.499422869,
+    "total_return": 1024.530499422869,
+    "cagr": 10.11641818544431,
+    "max_drawdown": -48.56755911642174,
+    "sharpe_ratio": 0.5937444956242747,
+    "win_rate": 49.37080368270816,
+    "profit_factor": 1.2497769673471173,
+    "total_trades": 99492,
+    "winning_trades": 49120,
+    "losing_trades": 50372,
+    "avg_win_pct": 6.526512728674583,
+    "avg_loss_pct": -5.0923452028577705,
+    "years_tested": 25.111567419575632
+  },
+  "fixed_25yr": {
+    "initial_capital": 100000.0,
+    "final_equity": 657493.8455004137,
+    "total_return": 557.4938455004137,
+    "cagr": 7.787975811791159,
+    "max_drawdown": -36.617217149083494,
+    "sharpe_ratio": 0.7505097969603984,
+    "win_rate": 49.37080368270816,
+    "profit_factor": 1.2497769673471173,
+    "total_trades": 99492,
+    "winning_trades": 49120,
+    "losing_trades": 50372,
+    "avg_win_pct": 6.526512728674583,
+    "avg_loss_pct": -5.0923452028577705,
+    "years_tested": 25.111567419575632
+  },
+  "fixed_5yr": {
+    "initial_capital": 100000.0,
+    "final_equity": 276702.95376235613,
+    "total_return": 176.70295376235612,
+    "cagr": 22.81339507813731,
+    "max_drawdown": -22.150251337247035,
+    "sharpe_ratio": 1.088412911100107,
+    "win_rate": 46.71874437524749,
+    "profit_factor": 1.2453684612661404,
+    "total_trades": 27779,
+    "winning_trades": 12978,
+    "losing_trades": 14801,
+    "avg_win_pct": 7.968511015256096,
+    "avg_loss_pct": -5.610428414585089,
+    "years_tested": 4.952772073921971
+  },
+  "top_trades": [
+    {
+      "ticker": "BNAI",
+      "entry_date": "2026-01-21",
+      "exit_date": "2026-01-28",
+      "entry_price": 8.7,
+      "exit_price": 63.0,
+      "pnl_pct": 624.1379310344828,
+      "reason": "Signal exit"
+    },
+    {
+      "ticker": "SLNO",
+      "entry_date": "2023-09-20",
+      "exit_date": "2023-10-05",
+      "entry_price": 4.105,
+      "exit_price": 23.81,
+      "pnl_pct": 480.02436053593175,
+      "reason": "Signal exit"
+    },
+    {
+      "ticker": "TERN",
+      "entry_date": "2025-10-29",
+      "exit_date": "2025-12-17",
+      "entry_price": 8.02,
+      "exit_price": 41.98,
+      "pnl_pct": 423.44139650872813,
+      "reason": "Signal exit"
+    },
+    {
+      "ticker": "QUBT",
+      "entry_date": "2024-11-08",
+      "exit_date": "2024-11-27",
+      "entry_price": 1.43,
+      "exit_price": 6.75,
+      "pnl_pct": 372.02797202797206,
+      "reason": "Signal exit"
+    },
+    {
+      "ticker": "RGTI",
+      "entry_date": "2024-11-22",
+      "exit_date": "2024-12-13",
+      "entry_price": 1.74,
+      "exit_price": 7.16,
+      "pnl_pct": 311.49425287356325,
+      "reason": "Signal exit"
+    },
+    {
+      "ticker": "CLDX",
+      "entry_date": "2020-06-08",
+      "exit_date": "2020-06-29",
+      "entry_price": 3.1,
+      "exit_price": 12.48,
+      "pnl_pct": 302.5806451612903,
+      "reason": "Signal exit"
+    },
+    {
+      "ticker": "ASTH",
+      "entry_date": "2021-02-19",
+      "exit_date": "2021-07-14",
+      "entry_price": 23.59,
+      "exit_price": 86.5,
+      "pnl_pct": 266.6807969478592,
+      "reason": "Signal exit"
+    },
+    {
+      "ticker": "JCI",
+      "entry_date": "2007-06-20",
+      "exit_date": "2007-08-28",
+      "entry_price": 3.9140172731,
+      "exit_price": 13.617555682,
+      "pnl_pct": 247.91761844256132,
+      "reason": "Signal exit"
+    },
+    {
+      "ticker": "ERAS",
+      "entry_date": "2025-12-19",
+      "exit_date": "2026-02-11",
+      "entry_price": 3.45,
+      "exit_price": 11.56,
+      "pnl_pct": 235.0724637681159,
+      "reason": "Signal exit"
+    },
+    {
+      "ticker": "FCEL",
+      "entry_date": "2020-11-11",
+      "exit_date": "2020-11-25",
+      "entry_price": 80.7,
+      "exit_price": 265.2,
+      "pnl_pct": 228.62453531598513,
+      "reason": "Signal exit"
+    },
+    {
+      "ticker": "APLD",
+      "entry_date": "2023-05-12",
+      "exit_date": "2023-05-30",
+      "entry_price": 2.88,
+      "exit_price": 9.23,
+      "pnl_pct": 220.48611111111111,
+      "reason": "Signal exit"
+    },
+    {
+      "ticker": "LTBR",
+      "entry_date": "2005-12-27",
+      "exit_date": "2006-01-25",
+      "entry_price": 324.0,
+      "exit_price": 1008.0,
+      "pnl_pct": 211.11111111111111,
+      "reason": "Signal exit"
+    },
+    {
+      "ticker": "MUX",
+      "entry_date": "2005-08-01",
+      "exit_date": "2005-09-26",
+      "entry_price": 7.2436977349,
+      "exit_price": 22.3570917743,
+      "pnl_pct": 208.64197530750008,
+      "reason": "Signal exit"
+    },
+    {
+      "ticker": "JMIA",
+      "entry_date": "2020-11-10",
+      "exit_date": "2020-12-16",
+      "entry_price": 12.91,
+      "exit_price": 39.29,
+      "pnl_pct": 204.3377226955848,
+      "reason": "Signal exit"
+    },
+    {
+      "ticker": "LNG",
+      "entry_date": "2004-09-24",
+      "exit_date": "2004-12-03",
+      "entry_price": 9.4652669774,
+      "exit_price": 28.5773658716,
+      "pnl_pct": 201.91822311862433,
+      "reason": "Signal exit"
+    },
+    {
+      "ticker": "SATS",
+      "entry_date": "2025-06-16",
+      "exit_date": "2025-09-12",
+      "entry_price": 25.11,
+      "exit_price": 74.89,
+      "pnl_pct": 198.24771007566707,
+      "reason": "Signal exit"
+    },
+    {
+      "ticker": "AXON",
+      "entry_date": "2003-09-26",
+      "exit_date": "2003-12-04",
+      "entry_price": 2.2258333333,
+      "exit_price": 6.5816666667,
+      "pnl_pct": 195.69449644920542,
+      "reason": "Signal exit"
+    },
+    {
+      "ticker": "TSSI",
+      "entry_date": "2024-08-15",
+      "exit_date": "2024-12-04",
+      "entry_price": 3.25,
+      "exit_price": 9.25,
+      "pnl_pct": 184.6153846153846,
+      "reason": "Signal exit"
+    },
+    {
+      "ticker": "HALO",
+      "entry_date": "2006-12-05",
+      "exit_date": "2006-12-26",
+      "entry_price": 2.8501,
+      "exit_price": 7.85,
+      "pnl_pct": 175.4289323181643,
+      "reason": "Signal exit"
+    },
+    {
+      "ticker": "SMCI",
+      "entry_date": "2024-01-19",
+      "exit_date": "2024-03-12",
+      "entry_price": 42.336,
+      "exit_price": 116.3,
+      "pnl_pct": 174.7071050642479,
+      "reason": "Signal exit"
+    }
+  ],
+  "worst_trades": [
+    {
+      "ticker": "RIOT",
+      "entry_date": "2009-01-16",
+      "exit_date": "2009-01-20",
+      "entry_price": 1632.1565217391,
+      "exit_price": 278.0591478261,
+      "pnl_pct": -82.96369593708931,
+      "reason": "Hard stop"
+    },
+    {
+      "ticker": "SVRA",
+      "entry_date": "2016-09-15",
+      "exit_date": "2016-09-21",
+      "entry_price": 39.893,
+      "exit_price": 8.61,
+      "pnl_pct": -78.41726618705036,
+      "reason": "Hard stop"
+    },
+    {
+      "ticker": "REPL",
+      "entry_date": "2025-07-21",
+      "exit_date": "2025-07-22",
+      "entry_price": 12.325,
+      "exit_price": 2.805,
+      "pnl_pct": -77.24137931034483,
+      "reason": "Hard stop"
+    },
+    {
+      "ticker": "LUNR",
+      "entry_date": "2023-02-22",
+      "exit_date": "2023-02-23",
+      "entry_price": 81.99,
+      "exit_price": 20.3,
+      "pnl_pct": -75.2408830345164,
+      "reason": "Hard stop"
+    },
+    {
+      "ticker": "ENR",
+      "entry_date": "2015-05-05",
+      "exit_date": "2015-06-12",
+      "entry_price": 101.6842275349,
+      "exit_price": 25.3197777726,
+      "pnl_pct": -75.0996015936594,
+      "reason": "Hard stop"
+    },
+    {
+      "ticker": "AXIA",
+      "entry_date": "2016-08-29",
+      "exit_date": "2016-09-02",
+      "entry_price": 3.7363934046,
+      "exit_price": 1.1600397708,
+      "pnl_pct": -68.95295422125956,
+      "reason": "Hard stop"
+    },
+    {
+      "ticker": "VSTM",
+      "entry_date": "2024-05-23",
+      "exit_date": "2024-05-24",
+      "entry_price": 12.18,
+      "exit_price": 4.12,
+      "pnl_pct": -66.17405582922822,
+      "reason": "Hard stop"
+    },
+    {
+      "ticker": "CYTK",
+      "entry_date": "2014-04-21",
+      "exit_date": "2014-04-25",
+      "entry_price": 10.8,
+      "exit_price": 4.59,
+      "pnl_pct": -57.50000000000001,
+      "reason": "Hard stop"
+    },
+    {
+      "ticker": "PTGX",
+      "entry_date": "2018-03-16",
+      "exit_date": "2018-03-26",
+      "entry_price": 20.3,
+      "exit_price": 8.75,
+      "pnl_pct": -56.896551724137936,
+      "reason": "Hard stop"
+    },
+    {
+      "ticker": "MDXG",
+      "entry_date": "2021-08-23",
+      "exit_date": "2021-09-13",
+      "entry_price": 13.71,
+      "exit_price": 6.28,
+      "pnl_pct": -54.19401896425966,
+      "reason": "Hard stop"
+    }
+  ]
+}

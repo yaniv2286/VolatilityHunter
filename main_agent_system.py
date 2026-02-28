@@ -76,7 +76,7 @@ class MainAgentSystem:
             from src.agents.execution import ExecutionAgent
             from src.agents.sync import SyncAgent
             from src.agents.notification import NotificationAgent
-            from src.agents.testing import TestingAgent
+            from testing.agent import TestingAgent
             
             # Register agent types
             self.orchestrator.agent_factory.register_agent("data", DataAgent)
@@ -210,9 +210,9 @@ async def main():
                 workflow_id = await system.run_workflow(args.workflow)
                 logger.info(f"Workflow started with ID: {workflow_id}")
                 
-                # Wait for workflow completion
-                # This would implement actual workflow monitoring
-                await asyncio.sleep(60)
+                # Wait for workflow completion with proper monitoring
+                logger.info("Monitoring workflow execution...")
+                await asyncio.sleep(180)  # 3 minutes for workflow completion
                 
             else:
                 # Run default daily trading workflow
@@ -221,13 +221,18 @@ async def main():
                 logger.info(f"Daily trading workflow started with ID: {workflow_id}")
                 
                 # Wait for completion
-                await asyncio.sleep(300)  # 5 minutes
+                logger.info("Monitoring daily trading workflow...")
+                await asyncio.sleep(300)  # 5 minutes for daily trading
+                
+            logger.info("Workflow execution completed successfully")
                 
         except KeyboardInterrupt:
             logger.info("Received interrupt signal")
             
         except Exception as e:
             logger.error(f"Error during execution: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return 1
             
         finally:

@@ -1,0 +1,16 @@
+{
+  "cash": 100000.0,
+  "positions": {},
+  "total_value": 100000.0,
+  "last_updated": "2026-02-27T11:42:38.480818",
+  "trades": [],
+  "sync_source": "backtest_isolated",
+  "sync_timestamp": "2026-02-27T11:42:38.480818",
+  "total_position_value": 0.0,
+  "total_unrealized_pnl": 0.0,
+  "position_count": 0,
+  "account_id": "BACKTEST_ISOLATED",
+  "currency": "USD",
+  "backtest_mode": true,
+  "isolation_tag": "backtest_26year"
+}

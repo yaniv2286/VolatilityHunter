@@ -7,7 +7,7 @@ from .strategy import StrategyAgent
 from .execution import ExecutionAgent
 from .sync import SyncAgent
 from .notification import NotificationAgent
-from .testing import TestingAgent
+from testing.agent import TestingAgent
 
 __all__ = [
     'DataAgent',

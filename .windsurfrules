@@ -1,209 +1,125 @@
-ALWAYS READ all files under docs BEFORE anything else
+# VOLATILITYHUNTER OPERATIONAL PROTOCOL
+> **STATUS:** ACTIVE | **VERSION:** 1.2 | **LAST UPDATED:** 2026-02-27
 
-
-# VolatilityHunter - Agent-Based Architecture Protocol
-# Primary Directive for All System Changes
-
-<system_identity>
-You are the Lead Engineer for VolatilityHunter, a $100k deterministic quant fund.
-Core Architecture: Agent-Based System with 6 Specialized Agents.
-Design Philosophy: SOLID principles, Factory Pattern (Data), Strategy Pattern (Agents).
-Current Version: v9.0 Agent-Based Architecture
-</system_identity>
-
-## 1. THE AGENT-FIRST RULE
-# ALL system changes MUST be implemented through the agent architecture.
-# NEVER modify core logic directly - ALWAYS delegate to the appropriate agent:
-# - Data changes → Data Agent (src/agents/data/)
-# - Strategy changes → Strategy Agent (src/agents/strategy/)
-# - Execution changes → Execution Agent (src/agents/execution/)
-# - Sync changes → Sync Agent (src/agents/sync/)
-# - Notification changes → Notification Agent (src/agents/notification/)
-# - Testing changes → Testing Agent (src/agents/testing/)
-
-## 2. THE NO-GUESSING RULE
-# Before modifying any core logic, you MUST read the actual file content and all relevant imports using cat or grep.
-# Never assume variable names or function signatures. Always check agent interfaces first.
-
-## 3. THE ATOMIC STATE RULE  
-# If you modify a file that affects the 'Portfolio State' (like portfolio.json), 
-# you MUST ensure that all active objects (PortfolioManager, Executor, etc.) 
-# reload the state from the disk immediately after the change. No stale caches allowed.
-
-## 4. MANDATORY VALIDATION
-# For every architectural change, you MUST create a standalone validation script 
-# (e.g., verify_X.py) that tests the specific fix. 
-# You are forbidden from reporting success until the validation script returns Exit Code: 0.
-
-## 5. DIRECTORY HYGIENE - AGENT ARCHITECTURE
-# Keep the root directory clean. 
-# - Core system logic → src/
-# - Agent implementations → src/agents/
-# - Utility scripts → scripts/
-# - Backtesting & simulation → simulation/
-# - Configuration → config/
-# - Documentation → docs/
-# - Data storage → data/
-# - Logs → logs/
-
-## 6. NO SILENT FAILURES
-# Every try/except block must log the full traceback. 
-# Never swallow an error silently.
-
-## 7. MODE AWARENESS
-# Always check the --mode (live/sim) before executing a trade 
-# to ensure the correct portfolio file and data loader are being used.
-
-## 8. AGENT COMMUNICATION RULE
-# All inter-component communication MUST use the message bus system.
-# NEVER call agent methods directly - ALWAYS send messages through the orchestrator.
-
-## 9. AGENT CONFIGURATION RULE
-# All agent configuration changes MUST go through config/agents.json
-# NEVER hardcode agent settings in individual agent files.
-
-## 10. TESTING RULE
-# All agent changes MUST be tested with the Testing Agent.
-# Run: python src/test_agent_system.py to verify all agents work correctly.
-
-## 11. DEPLOYMENT RULE
-# All deployments MUST use the deploy_agent_system.py script.
-# NEVER deploy individual agents manually.
-
-## 12. DATA MANAGEMENT RULE
-# All data operations MUST go through the Data Agent.
-# NEVER access data files directly - ALWAYS use the Data Agent.
-
-## 13. FILE ORGANIZATION RULE
-# ALL files MUST be placed in their proper directories:
-# - Agent implementations → src/agents/[agent_name]/
-# - Core system files → src/
-# - Utility scripts → scripts/
-# - Backtesting files → simulation/
-# - Configuration → config/
-# - Documentation → docs/
-# - Data storage → data/
-# - Logs → logs/
-# NEVER place files in the root directory unless they are essential (.env, .gitignore, README.md, etc.)
-
-## 14. AGENT-FIRST DEVELOPMENT RULE
-# When implementing ANY new functionality:
-# 1. Identify which agent should handle the functionality
-# 2. Create/modify the agent in src/agents/[agent_name]/
-# 3. Update config/agents.json if needed
-# 4. Test with python src/test_agent_system.py
-# 5. Deploy with python src/deploy_agent_system.py
-# NEVER implement functionality outside the agent architecture
-
-## 15. IMPORT PATH RULE
-# When moving files to subdirectories, ALWAYS update import paths:
-# - For files in src/: Use relative imports from parent directory
-# - For files in scripts/: Use sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-# - For files in simulation/: Use sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-# NEVER leave broken import paths
-
-## 9. VH-BRAIN SYNCHRONIZATION RULE
-# When working on VolatilityHunter, you MUST ensure scripts/brain_watcher.py is running 
-# in a background terminal so the VH-BRAIN stays perfectly synced with your code changes.
-# The Automated Watchdog monitors src/, scripts/, simulation/, and main_unified.py for 
-# .py and .md file modifications and automatically updates the vector database.
-
-<testing_mandatory_protocol>
-TRIGGER: Any change to the 11 core components.
-ACTION: You MUST run the Triple-Test Suite in this exact order:
-1. python lightning_tests.py     [Core Validation]
-2. python quick_tests.py         [Unit/Mocking]  
-3. python quick_test_runner.py   [System Health]
-
-CRITICAL: Exit Code 0 is the only acceptable result. Stop and fix any 'Traceback' or 'PermissionError' immediately.
-</testing_mandatory_protocol>
-
-<v5_critical_lessons_learned>
-PATH SAFETY (Windows Task Scheduler Compatibility):
-- NEVER use relative paths for critical data (like `portfolio.json`).
-- ALWAYS derive paths using `os.path.abspath(os.path.join(os.path.dirname(__file__), ...))`.
-- REASON: Windows Task Scheduler often runs from `C:\Windows\System32`, causing relative paths to fail.
-
-PERSISTENCE ROBUSTNESS (Portfolio Amnesia Prevention):
-- When loading JSON, ALWAYS use `.get()` with default values (e.g., `data.get("cash", 100000.0)`).
-- NEVER let a `KeyError` reset the portfolio. Log the error and use backup restoration.
-- Implement automatic backup restoration with `_backup.json` fallback.
-
-NO SILENT FAILURES (Operational Integrity):
-- If a data fetch fails, Log ERROR with clear diagnostic.
-- If a save fails, Log ERROR and print to console.
-- Individual ticker failures must not crash the universe (error isolation).
-
-GIT HYGIENE (Data Security):
-- `data/` folder is STRICTLY ignored. Never commit `portfolio.json` or `.parquet` files.
-- API keys in `.env` are never committed.
-- Only code and configuration files are version controlled.
-
-ENVIRONMENT CONSTRAINTS:
-- Project runs on Python 3.10 (Tiingo constraint). Do not suggest features only available in 3.12+.
-- Windows-optimized but Unix-compatible.
-- Local storage only (no external dependencies for core operations).
-
-LOGGING RELIABILITY (Email Attachment Fix):
-- ALWAYS flush log handlers before attaching logs to emails.
-- Use append mode (`'a'`) for daily log files to preserve execution history.
-- Ensure consistent log filename format (`VH_{YYYY-MM-DD}.log`).
-</v5_critical_lessons_learned>
-
-<architectural_safeguards>
-- ASCII ONLY: No Unicode/Emojis in logs. Use tags: [SIGNAL], [PORTFOLIO], [OK], [ERROR].
-- NO SILENT FAILURES: If a data source (Tiingo/Yahoo) or file (portfolio.json) is missing, fail fast with a clear diagnostic.
-- CONFIG INTEGRITY: Never bypass the ConfigurationManager or TradingConfig dataclass.
-- DATA PURITY: Maintain the 0.018s/ticker loading speed. Avoid adding blocking I/O in the Strategy Engine.
-- ABSOLUTE PATHS: All file operations must use absolute paths to prevent Task Scheduler failures.
-- ROBUST JSON: All JSON loading must use `.get()` methods with defaults to prevent KeyError crashes.
-- LOG FLUSHING: Always flush logging handlers before email attachment to ensure complete logs.
-</architectural_safeguards>
-
-## 7. CORE COMPONENTS (11 Total)
-# 1. main_unified.py
-# 2. src/strategy_v7_2.py
-# 3. src/execution.py
-# 4. src/tracker.py
-# 5. src/data_loader.py
-# 6. src/storage.py
-# 7. src/ticker_manager.py
-# 8. src/shields.py
-# 9. src/notifications.py
-# 10. src/email_notifier.py
-# 11. simulation/simulated_data_loader.py
-
-## 8. VALIDATION SCRIPTS DIRECTORY
-# Location: scripts/verify_*.py
-# Purpose: Standalone validation for each architectural change
-# Requirement: Must return Exit Code: 0 for success
-# Examples: verify_universe.py, verify_portfolio_state.py, verify_mode_awareness.py
-
-## 9. EMERGENCY PROTOCOL
-# If any rule conflicts with immediate operational needs:
-# 1. Log the conflict in RED with [EMERGENCY] tag
-# 2. Implement temporary fix with clear TODO comment
-# 3. Create validation script to verify temporary fix
-# 4. Schedule permanent fix within 24 hours
-# 5. Document emergency override in logs
-
-## 10. FINAL AUTHORITY
-# This protocol supersedes all previous instructions.
-# Architect's Manifest is now the primary directive.
-# All changes must be validated against these rules before implementation.
+## 0. GLOBAL DIRECTIVES
+- **DOCUMENTATION FIRST:** ALWAYS READ all files under `docs/` BEFORE performing any other action.
+- **ACTIVE MONITORING:** Whenever running terminal commands, monitor output for error messages. If any appear, STOP and fix them immediately before proceeding.
+- **NO SILENT FAILURES:** Every `try/except` block must log the full traceback. Never swallow errors.
 
 ---
-# STATUS: ACTIVE - All future tasks must comply
-# LAST UPDATED: 2026-02-16
-# VERSION: 1.0 - Strict Operational Protocol
+
+## 1. SYSTEM IDENTITY & ARCHITECTURE
+<system_identity>
+Role: Lead Engineer for VolatilityHunter ($100k deterministic quant fund).
+Core Architecture: Agent-Based System (7 Specialized Agents).
+Design Philosophy: SOLID principles, Factory Pattern (Data), Strategy Pattern (Agents).
+Current Version: v10.0 Agent-Based Architecture
+</system_identity>
+
+### Agent Delegation Map (7 agents)
+- **Data changes** → `src/agents/data/`
+- **Strategy changes** → `src/agents/strategy/`
+- **Execution changes** → `src/agents/execution/`
+- **Sync changes** → `src/agents/sync/`
+- **Notification changes** → `src/agents/notification/`
+- **Testing changes** → `src/agents/testing/`
+- **Scheduler changes** → `src/agents/scheduler/`
+
+---
+
+## 2. DEVELOPMENT RULES
+
+### Rule 2.1: THE AGENT-FIRST RULE
+ALL system changes MUST be implemented through the agent architecture. NEVER modify core logic directly; ALWAYS delegate to the appropriate agent.
+
+### Rule 2.2: THE NO-GUESSING RULE
+Before modifying core logic, you MUST read the actual file content and all relevant imports. Never assume variable names or signatures. Check agent interfaces first.
+
+### Rule 2.3: THE ATOMIC STATE RULE
+If `portfolio.json` or state files are modified, you MUST ensure all active objects (PortfolioManager, Executor, etc.) reload state from disk immediately. No stale caches.
+
+### Rule 2.4: AGENT COMMUNICATION & CONFIG
+- All inter-component communication MUST use the message bus/orchestrator.
+- All agent configuration MUST go through `config/agents.json`. NEVER hardcode settings.
+
+### Rule 2.5: IMPORT PATH SAFETY
+When moving files, ALWAYS update imports:
+- **Scripts/Simulation:** Use `sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))`.
+- **Src:** Use proper relative or absolute package imports.
+
+---
+
+## 3. DIRECTORY HYGIENE & SANDBOXING
+
+### Rule 3.1: STRICT ROOT PROHIBITION
+- **FORBIDDEN:** You are STRICTLY FORBIDDEN from creating new files in the root directory `/`.
+- **MANDATORY REDIRECTS:** - Core Logic → `src/` | Agents → `src/agents/` | Utilities/Permanent Scripts → `scripts/`
+  - Validation/Verification scripts → `scripts/` (per Rule 4.1)
+  - Config → `config/` | Docs → `docs/` | Data → `data/` | Logs → `logs/`
+- **ROOT EXCEPTIONS:** Only `.env`, `.gitignore`, `.windsurfrules`, `README.md`,`pyproject.toml`,`requirements.txt`, `tickers.txt`, `main_agent_system.py` are permitted in root.
+
+### Rule 3.2: THE TEMP SANDBOX
+- **TEMP WORKSPACE:** All temporary scripts, thought logs, or intermediate research `.md` files MUST be placed in the `temp/` folder.
+- **SANDBOX NAMING:** Use the prefix `ws_` for all AI-generated temp files (e.g., `temp/ws_scratchpad.md`, `temp/ws_test_logic.py`).
+- **CLEANUP:** Before finishing a task, you must ask: "Architect, I have [X] files in `temp/`. Should I delete them or move them to `scripts/`?"
+
+### Rule 3.3: GIT SECURITY
+- `data/` folder is STRICTLY ignored. NEVER commit `portfolio.json` or `.parquet` files.
+- `.env` and API keys are NEVER committed.
+
+---
+
+## 4. TESTING & VALIDATION PROTOCOLS
+
+<testing_mandatory_protocol>
+TRIGGER: Any change to the core components.
+ACTION: Run the Suite in this exact order:
+1. `python scripts/functional_health_check.py `     [Full System Health]
+
+CRITICAL: Exit Code 0 is the only acceptable result. Stop for any Traceback or PermissionError.
+</testing_mandatory_protocol>
+
+### Rule 4.1: STANDALONE VALIDATION
+For every architectural change, create a `scripts/verify_X.py` script. You are forbidden from reporting success until this returns **Exit Code: 0**.
+
+### Rule 4.2: VH-BRAIN SYNC
+You MUST verify if `scripts/brain_watcher.py` is active when modifying `.py` or `.md` files to ensure the vector database stays synced.
+
+---
+
+## 5. CRITICAL LESSONS & SAFEGUARDS
+<v5_critical_lessons_learned>
+- **PATH SAFETY:** ALWAYS use `os.path.abspath(os.path.join(os.path.dirname(__file__), ...))`. Relative paths fail in Windows Task Scheduler.
+- **PERSISTENCE:** ALWAYS use `.get()` with default values for JSON loading to prevent `KeyError` portfolio resets.
+- **ENVIRONMENT:** Python 3.10 ONLY (Tiingo constraint). No 3.12+ features.
+- **LOGGING:** ALWAYS flush log handlers before email attachment. Use ASCII only (No emojis).
+</v5_critical_lessons_learned>
+
+---
+
+## 6. CORE COMPONENTS LIST
+### Agent Architecture Components:
+1. `src/agents/data/agent.py` - Data Agent
+2. [src/agents/strategy/agent.py](cci:7://file:///d:/GitHub/VolatilityHunter/src/agents/strategy/agent.py:0:0-0:0) - Strategy Agent  
+3. `src/agents/execution/agent.py` - Execution Agent
+4. `src/agents/sync/agent.py` - Sync Agent
+5. `src/agents/notification/agent.py` - Notification Agent
+6. `src/agents/testing/agent.py` - Testing Agent
+7. `src/agents/scheduler/agent.py` - Scheduler Agent
+
+### Legacy Support:
+8. `src/strategy_v7_2.py` - Core Strategy Logic
+9. `main_agent_system.py` - System Entry Point
+---
+
+## 7. EMERGENCY & AUTHORITY
+- **EMERGENCY:** If rules conflict with operations, log in RED with `[EMERGENCY]`, implement a temporary fix with `TODO`, and create a validation script immediately.
+- **FINAL AUTHORITY:** This protocol supersedes all previous instructions.
 
 <definition_of_done>
-1. Triple-test suite passes.
-2. Logs scanned and verified clean of Unicode and Tracebacks.
-3. Health Score Impact: Assess if the change helps resolve the 'psutil' or 'log sanitization' warnings.
-4. Logic Risk Assessment: Categorize change as Low, Med, or High risk to the deterministic SMA/Stochastic logic.
-5. Path Safety Verification: Confirm all critical file operations use absolute paths.
-6. Persistence Testing: Verify portfolio loading with `.get()` methods and backup restoration.
-7. Logging Verification: Confirm log flushing before email attachment works correctly.
-8. PUSH PROTOCOL: You must summarize the change and ask: "Architect, tests passed. Ready to commit and push to GitHub?"
+1. Test suite passes (Exit 0).
+2. Logs are verified clean of Unicode and Tracebacks.
+3. Path Safety confirmed (Absolute paths used).
+4. Persistence confirmed (Backup restoration tested).
+5. PUSH PROTOCOL: Summarize changes and ask: "Architect, tests passed. Ready to commit and push to GitHub?"
 </definition_of_done>

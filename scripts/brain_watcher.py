@@ -15,11 +15,11 @@ from datetime import datetime
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
-# Add src to path for imports
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+# Add project root to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from dev.index_codebase import CodeIndexer
 from src.notifications import log_info, log_error, log_warning
-from scripts.index_codebase import CodeIndexer
 
 class VHBrainWatcher(FileSystemEventHandler):
     """File system event handler for VH-BRAIN automated synchronization"""

@@ -14,7 +14,7 @@ from typing import Dict, Any, Optional
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.main_agent_system import MainAgentSystem
+from main_agent_system import MainAgentSystem
 
 def setup_production_logging():
     """Setup production logging"""
@@ -51,55 +51,54 @@ async def run_production_system(mode: str = "live", workflow: str = "daily_tradi
             success = await system.initialize()
             
         if not success:
-            logger.error("❌ System initialization failed")
+            logger.error("System initialization failed")
             return 1
             
         # Start system
         success = await system.start()
         if not success:
-            logger.error("❌ System start failed")
-            return 1
+            logger.error("System start failed")
             
-        logger.info("✅ System started successfully")
+        logger.info("System started successfully")
         
         # Run workflow
         if workflow:
-            logger.info(f"🔄 Running workflow: {workflow}")
+            logger.info(f"Running workflow: {workflow}")
             result = await system.run_workflow(workflow)
             if result:
-                logger.info(f"✅ Workflow {workflow} completed successfully")
+                logger.info(f"Workflow {workflow} completed successfully")
             else:
-                logger.error(f"❌ Workflow {workflow} failed")
+                logger.error(f"Workflow {workflow} failed")
         
         # Keep system running for live mode
         if mode == "live":
-            logger.info("🔄 System running in live mode. Press Ctrl+C to stop...")
+            logger.info("System running in live mode. Press Ctrl+C to stop...")
             try:
                 while True:
                     await asyncio.sleep(60)  # Check every minute
                     status = await system.get_system_status()
-                    logger.info(f"📊 System Status: {status['orchestrator']['uptime']:.2f}s uptime")
+                    logger.info(f"System Status: {status['orchestrator']['uptime']:.2f}s uptime")
                     
             except KeyboardInterrupt:
-                logger.info("🛑 Shutdown requested by user")
+                logger.info("Shutdown requested by user")
         
         # Stop system
         success = await system.stop()
         if success:
-            logger.info("✅ System stopped successfully")
+            logger.info("System stopped successfully")
         else:
-            logger.error("❌ System stop failed")
+            logger.error("System stop failed")
             
         return 0 if success else 1
         
     except Exception as e:
-        logger.error(f"❌ Production system error: {e}")
+        logger.error(f"Production system error: {e}")
         return 1
 
 async def run_health_check():
     """Run system health check"""
     try:
-        print("🏥 Running System Health Check")
+        print("Running System Health Check")
         print("=" * 40)
         
         system = MainAgentSystem()
@@ -107,24 +106,24 @@ async def run_health_check():
         # Initialize system
         success = await system.initialize()
         if not success:
-            print("❌ System initialization failed")
+            print("System initialization failed")
             return 1
             
         # Start system
         success = await system.start()
         if not success:
-            print("❌ System start failed")
+            print("System start failed")
             return 1
             
         # Get health status
         status = await system.get_system_status()
         
-        print("📊 System Health Status:")
-        print(f"  Orchestrator: {'✅ Running' if status['orchestrator']['running'] else '❌ Stopped'}")
+        print("System Health Status:")
+        print(f"  Orchestrator: {'Running' if status['orchestrator']['running'] else 'Stopped'}")
         print(f"  Uptime: {status['orchestrator']['uptime']:.2f}s")
         print(f"  Error Count: {status['orchestrator']['error_count']}")
         print(f"  Active Agents: {len(status['agents'])}")
-        print(f"  Message Bus: {'✅ Running' if status['message_bus']['running'] else '❌ Stopped'}")
+        print(f"  Message Bus: {'Running' if status['message_bus']['running'] else 'Stopped'}")
         print(f"  Workflows: {len(status['workflow_manager']['registered_workflows'])} registered")
         
         # Stop system
@@ -133,36 +132,36 @@ async def run_health_check():
         return 0
         
     except Exception as e:
-        print(f"❌ Health check failed: {e}")
+        print(f"Health check failed: {e}")
         return 1
 
 async def run_migration_test():
     """Run migration test from old to new system"""
     try:
-        print("🔄 Running Migration Test")
+        print("Running Migration Test")
         print("=" * 40)
         
         # Test old system compatibility
-        print("📋 Testing old system compatibility...")
+        print("Testing old system compatibility...")
         
         # Test new system
-        print("📋 Testing new agent system...")
+        print("Testing new agent system...")
         system = MainAgentSystem()
         
         success = await system.initialize()
         if success:
-            print("✅ New system initialized successfully")
+            print("New system initialized successfully")
         else:
-            print("❌ New system initialization failed")
+            print("New system initialization failed")
             return 1
             
         await system.stop()
         
-        print("✅ Migration test completed successfully")
+        print("Migration test completed successfully")
         return 0
         
     except Exception as e:
-        print(f"❌ Migration test failed: {e}")
+        print(f"Migration test failed: {e}")
         return 1
 
 def main():

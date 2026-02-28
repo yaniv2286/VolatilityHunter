@@ -1,0 +1,47 @@
+{
+  "timestamp": "2026-02-27T11:39:18.393206",
+  "agent_id": "test_scheduler_agent",
+  "uptime": 3.276691,
+  "monitored_tasks": 2,
+  "task_status": {
+    "Auto_TWS_Manager": {
+      "is_running": false,
+      "status": "stopped",
+      "last_check": "2026-02-27T11:39:15.117029",
+      "cpu_usage": 0.0,
+      "memory_usage": 0.0
+    },
+    "Auto_Trading_System": {
+      "is_running": false,
+      "status": "stopped",
+      "last_check": "2026-02-27T11:39:16.231441",
+      "cpu_usage": 0.0,
+      "memory_usage": 0.0
+    }
+  },
+  "script_integrity": {
+    "Auto_TWS_Manager": {
+      "exists": true,
+      "status": "valid",
+      "last_modified": "2026-02-20T13:40:31.627240",
+      "errors": []
+    },
+    "Auto_Trading_System": {
+      "exists": true,
+      "status": "valid",
+      "last_modified": "2026-02-26T21:33:46.923965",
+      "errors": []
+    }
+  },
+  "system_metrics": {
+    "cpu_percent": 18.2,
+    "memory_percent": 85.3,
+    "disk_usage": 84.2,
+    "timestamp": "2026-02-27T11:39:18.392236"
+  },
+  "total_alerts": 1,
+  "active_alerts": 1,
+  "alerts_by_type": {
+    "test": 1
+  }
+}

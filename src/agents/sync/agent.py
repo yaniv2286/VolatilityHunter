@@ -2818,6 +2818,24 @@ class SyncAgent(AgentInterface):
             self.logger.error(f"Failed to calculate alert system health: {e}")
             return "Unknown"
             
+    async def _check_components(self) -> bool:
+        """Check if all components are available"""
+        try:
+            # Check portfolio file access
+            portfolio_file = self.config.get('portfolio_file', 'data/portfolio_sim.json')
+            if not os.path.exists(portfolio_file):
+                return False
+            
+            # Check data directory
+            if not os.path.exists("data"):
+                return False
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error checking components: {e}")
+            return False
+
     async def _periodic_sync_loop(self):
         """Periodic sync loop"""
         while self.status == AgentStatus.RUNNING:

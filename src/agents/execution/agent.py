@@ -577,7 +577,8 @@ class ExecutionAgent(AgentInterface):
                 
             self.logger.info("Connecting to brokerage...")
             
-            connected = await self.brokerage_interface.connect()
+            # The connect method is synchronous, so we don't need await
+            connected = self.brokerage_interface.connect()
             
             if connected:
                 self.brokerage_connected = True

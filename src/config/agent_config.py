@@ -96,6 +96,8 @@ class TestingAgentConfig(AgentConfig):
     backtest_lookback_days: int = 252
     dry_run_initial_capital: float = 100000
     benchmark_strategies: list = None
+    unit_tests_enabled: bool = True
+    legacy_tests_enabled: bool = True
     
     def __post_init__(self):
         if self.benchmark_strategies is None:

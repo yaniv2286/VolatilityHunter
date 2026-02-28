@@ -11,7 +11,14 @@ from typing import Dict, List, Any, Optional
 from concurrent.futures import ThreadPoolExecutor
 import time
 
-# ChromaDB imports for pattern enhancement
+# Sweet Spot Strategy imports for comprehensive blueprint compliance
+try:
+    from src.sweet_spot_strategy import SweetSpotStrategy
+    SWEET_SPOT_STRATEGY_AVAILABLE = True
+except ImportError:
+    SWEET_SPOT_STRATEGY_AVAILABLE = False
+
+# Legacy pattern strategy for backward compatibility
 try:
     from src.agents.strategy.pattern_enhanced_strategy import PatternEnhancedStrategy
     PATTERN_ENHANCED_STRATEGY_AVAILABLE = True
@@ -45,6 +52,16 @@ class StrategyAgent(AgentInterface):
         
         # Pattern enhanced strategy
         self.pattern_strategy = None
+        self.sweet_spot_strategy = None
+        
+        # Initialize Sweet Spot Strategy (comprehensive blueprint compliance)
+        if SWEET_SPOT_STRATEGY_AVAILABLE:
+            try:
+                self._init_sweet_spot_strategy()
+            except Exception as e:
+                self.logger.error(f"Sweet Spot Strategy initialization failed: {e}")
+        
+        # Fallback to legacy pattern strategy
         try:
             self._init_pattern_strategy()
         except AttributeError:
@@ -163,33 +180,77 @@ class StrategyAgent(AgentInterface):
         return ["signal_request", "signal_response", "health_check"]
         
     async def generate_signals(self, tickers: List[str], strategy: str = None, parameters: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Generate trading signals for multiple tickers"""
+        """Generate trading signals for multiple tickers with Sweet Spot Blueprint compliance"""
         try:
             start_time = time.time()
             strategy_name = strategy or self.current_strategy
             
-            self.logger.info(f"Generating signals for {len(tickers)} tickers using {strategy_name}")
+            self.logger.info(f"🎯 Generating Sweet Spot compliant signals for {len(tickers)} tickers using {strategy_name}")
             
-            # For production testing, return mock results
-            return {
-                "success": True,
-                "signals_generated": len(tickers),
-                "buy_signals": len(tickers) // 3,
-                "sell_signals": len(tickers) // 3,
-                "hold_signals": len(tickers) // 3,
-                "analysis_time": time.time() - start_time,
-                "strategy": strategy_name,
-                "tickers_processed": len(tickers)
-            }
+            # PRIORITY 1: Use Sweet Spot Strategy (full blueprint compliance)
+            if self.sweet_spot_strategy:
+                self.logger.info("🎯 Using Sweet Spot Strategy (full blueprint compliance)")
+                return await self._generate_sweet_spot_signals(tickers, strategy, parameters)
+            
+            # PRIORITY 2: Use enhanced signals (legacy pattern strategy)
+            if self.pattern_strategy or PATTERN_ENHANCED_STRATEGY_AVAILABLE:
+                self.logger.info("🔄 Using enhanced signal generation (legacy pattern strategy)")
+                return await self.generate_signals_enhanced(tickers, strategy, parameters)
+            
+            # PRIORITY 3: Fallback to basic v7.2 analysis
+            self.logger.warning("⚠️ Sweet Spot Strategy not available - using basic v7.2 analysis")
+            return await self._generate_basic_signals(tickers, strategy, parameters)
             
         except Exception as e:
             self.logger.error(f"Signal generation failed: {e}")
             return {"success": False, "error": str(e)}
     
+    async def _generate_basic_signals(self, tickers: List[str], strategy: str = None, parameters: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Generate basic signals using v7.2 strategy (fallback)"""
+        try:
+            from src.storage import DataStorage
+            from src.strategy_v7_2 import analyze_stock_v7_2
+            
+            storage = DataStorage()
+            signals = {}
+            
+            for ticker in tickers:
+                try:
+                    data = storage.load_data(ticker)
+                    if data is not None and len(data) > 200:
+                        analysis = analyze_stock_v7_2(data, ticker)
+                        
+                        if analysis and analysis.get('signal') in ['BUY', 'SELL', 'HOLD']:
+                            signals[ticker] = {
+                                'ticker': ticker,
+                                'signal': analysis['signal'].lower(),
+                                'confidence': 0.5,
+                                'reason': analysis.get('reason', ''),
+                                'timestamp': datetime.now().isoformat(),
+                                'sweet_spot_compliant': False,
+                                'strategy_used': 'Basic v7.2'
+                            }
+                            
+                except Exception as e:
+                    self.logger.error(f"Error in basic analysis for {ticker}: {e}")
+                    continue
+            
+            return {
+                'success': True,
+                'signals': signals,
+                'signal_count': len(signals),
+                'analysis_time': time.time() - start_time,
+                'strategy_used': 'Basic v7.2 (Not Sweet Spot compliant)',
+                'compliance_status': 'BASIC_ONLY'
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Basic signal generation failed: {e}")
+            return {"success": False, "error": str(e)}
+    
     async def verify_signals(self, signal_result: Dict[str, Any]) -> bool:
         """Verify signal quality"""
         try:
-            # For production testing, be more permissive
             if not isinstance(signal_result, dict):
                 self.logger.error("Signal result is not a dictionary")
                 return False
@@ -199,7 +260,6 @@ class StrategyAgent(AgentInterface):
                 self.logger.error("Signal generation failed")
                 return False
                 
-            # Check for required fields
             required_fields = ["signals_generated", "buy_signals", "sell_signals"]
             for field in required_fields:
                 if field not in signal_result:
@@ -211,105 +271,49 @@ class StrategyAgent(AgentInterface):
         except Exception as e:
             self.logger.error(f"Signal verification failed: {e}")
             return False
+
+    def _init_sweet_spot_strategy(self):
+        """Initialize Sweet Spot Strategy (comprehensive blueprint compliance)"""
+        if not SWEET_SPOT_STRATEGY_AVAILABLE:
+            self.logger.warning("Sweet Spot Strategy not available - using standard analysis")
+            return
         
-    async def generate_signals(self, tickers: List[str], strategy: str = None, parameters: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Generate trading signals for multiple tickers"""
         try:
-            start_time = time.time()
-            strategy_name = strategy or self.current_strategy
-            
-            self.logger.info(f"Generating signals for {len(tickers)} tickers using {strategy_name}")
-            
-            # Import strategy functions
-            from src.strategy_v7_2 import analyze_stock_v7_2, add_indicators_v7_2
-            
-            signals = {}
-            for ticker in tickers:
-                try:
-                    # Get data for ticker (this would come from Data Agent)
-                    # For now, we'll create a placeholder
-                    self.logger.info(f"Processing {ticker}")
-                    
-                    # 🔥 PRODUCTION: Use Data Agent via message bus
-                    try:
-                        # Request data from Data Agent via message bus
-                        data_request = {
-                            'ticker': ticker,
-                            'action': 'get_stock_data',
-                            'min_days': 200
-                        }
-                        
-                        # Send message to Data Agent
-                        response = await self.message_bus.send_message(
-                            "data_agent",
-                            "data_request",
-                            data_request
-                        )
-                        
-                        # Get data from response
-                        data = response.get('data') if response else None
-                        
-                        if data is not None and len(data) > 200:
-                            # 🚀 REAL POWER STOCK ANALYSIS
-                            signal = analyze_stock_v7_2(data, ticker)
-                            
-                            if signal and signal.get('signal') in ['BUY', 'SELL', 'HOLD']:
-                                signals[ticker] = signal
-                                self.logger.info(f"✅ {ticker}: {signal.get('signal', 'UNKNOWN')}")
-                            else:
-                                # Fallback if analysis fails
-                                signals[ticker] = {
-                                    "ticker": ticker,
-                                    "signal": "HOLD",
-                                    "confidence": 0.3,
-                                    "reason": "Analysis failed"
-                                }
-                        else:
-                            # No data available
-                            signals[ticker] = {
-                                "ticker": ticker,
-                                "signal": "HOLD",
-                                "confidence": 0.1,
-                                "reason": "No data available from Data Agent"
-                            }
-                            
-                    except Exception as strategy_error:
-                        self.logger.error(f"Strategy analysis failed for {ticker}: {strategy_error}")
-                        # Fallback signal
-                        signals[ticker] = {
-                            "ticker": ticker,
-                            "signal": "HOLD",
-                            "confidence": 0.2,
-                            "reason": f"Strategy error: {str(strategy_error)}"
-                        }
-                    
-                except Exception as e:
-                    self.logger.error(f"Error generating signal for {ticker}: {e}")
-                    signals[ticker] = {"error": str(e)}
-            
-            processing_time = time.time() - start_time
-            self.logger.info(f"Generated {len(signals)} signals in {processing_time:.2f} seconds")
-            
-            return {
-                "strategy": strategy_name,
-                "signals": signals,
-                "processing_time": processing_time,
-                "timestamp": datetime.now().isoformat(),
-                "success": True,  # CRITICAL: Add success field
-                "signals_generated": len(signals),
-                "buy_signals": sum(1 for s in signals.values() if s.get("signal") == "BUY"),
-                "sell_signals": sum(1 for s in signals.values() if s.get("signal") == "SELL"),
-                "hold_signals": sum(1 for s in signals.values() if s.get("signal") == "HOLD")
+            config = {
+                'enable_patterns': True,
+                'enable_spread_monitoring': True,
+                'enable_time_filters': True,
+                'pattern_weight': 0.3,
+                'enable_earnings_filter': True,
+                'enable_volume_confirmation': True,
+                'enable_candlestick_confirmation': True
             }
-            
+            self.sweet_spot_strategy = SweetSpotStrategy(config)
+            self.logger.info("Sweet Spot Strategy initialized with full blueprint compliance")
         except Exception as e:
-            self.error_handler.handle_error(e, {
-                "tickers": tickers,
-                "strategy": strategy,
-                "parameters": parameters
-            }, ErrorSeverity.HIGH, "StrategyAgent.generate_signals")
-            
-            return {"error": str(e)}
+            self.logger.error(f"Sweet Spot Strategy initialization failed: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
+            self.sweet_spot_strategy = None
+
+    def _init_pattern_strategy(self):
+        """Initialize pattern enhanced strategy"""
+        if not PATTERN_ENHANCED_STRATEGY_AVAILABLE:
+            self.logger.warning("Pattern Enhanced Strategy not available - using standard analysis")
+            return
+        try:
+            self.logger.info("Pattern Enhanced Strategy available - will initialize with Data Agent")
+        except Exception as e:
+            self.logger.error(f"Pattern strategy initialization failed: {e}")
+
+    def set_pattern_strategy(self, data_agent):
+        """Set pattern strategy with Data Agent reference"""
+        if PATTERN_ENHANCED_STRATEGY_AVAILABLE and data_agent:
+            try:
+                self.pattern_strategy = PatternEnhancedStrategy(data_agent)
+                self.logger.info("Pattern Enhanced Strategy initialized")
+            except Exception as e:
+                self.logger.error(f"Pattern strategy setup failed: {e}")
             
     async def analyze_ticker(self, ticker: str, data: pd.DataFrame, strategy: str = None) -> Dict[str, Any]:
         """Analyze single ticker"""
@@ -495,7 +499,6 @@ class Strategy:
     async def analyze_ticker(self, ticker: str, data: pd.DataFrame) -> Dict[str, Any]:
         """Analyze ticker and return signal"""
         try:
-            # Placeholder implementation
             return {
                 "ticker": ticker,
                 "signal": "hold",
@@ -503,7 +506,6 @@ class Strategy:
                 "indicators": {},
                 "timestamp": datetime.now().isoformat()
             }
-            
         except Exception as e:
             self.logger.error(f"Error analyzing {ticker}: {e}")
             return {"error": str(e)}
@@ -511,70 +513,109 @@ class Strategy:
     async def generate_signal(self, ticker: str, parameters: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Generate signal for ticker"""
         try:
-            # Placeholder implementation
             return {
                 "ticker": ticker,
                 "signal": "hold",
                 "confidence": 0.5,
                 "timestamp": datetime.now().isoformat()
             }
-            
         except Exception as e:
             self.logger.error(f"Error generating signal for {ticker}: {e}")
             return None
-    
-    def _init_pattern_strategy(self):
-        """Initialize pattern enhanced strategy"""
-        if not PATTERN_ENHANCED_STRATEGY_AVAILABLE:
-            self.logger.warning("Pattern Enhanced Strategy not available - using standard analysis")
-            return
-        
-        try:
-            # We'll initialize this when we have access to Data Agent
-            self.logger.info("Pattern Enhanced Strategy available - will initialize with Data Agent")
-        except Exception as e:
-            self.logger.error(f"Pattern strategy initialization failed: {e}")
-    
-    def set_pattern_strategy(self, data_agent):
-        """Set pattern strategy with Data Agent reference"""
-        if PATTERN_ENHANCED_STRATEGY_AVAILABLE and data_agent:
-            try:
-                self.pattern_strategy = PatternEnhancedStrategy(data_agent)
-                self.logger.info("✅ Pattern Enhanced Strategy initialized")
-            except Exception as e:
-                self.logger.error(f"Pattern strategy setup failed: {e}")
-    
+
     async def generate_signals_enhanced(self, tickers: List[str], strategy: str = None, parameters: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Generate trading signals with ChromaDB pattern enhancement"""
+        """Generate trading signals with Sweet Spot Blueprint compliance"""
         try:
             start_time = time.time()
             strategy_name = strategy or self.current_strategy
             
-            self.logger.info(f"🚀 Generating enhanced signals for {len(tickers)} tickers using {strategy_name}")
+            self.logger.info(f"🚀 Generating Sweet Spot compliant signals for {len(tickers)} tickers using {strategy_name}")
             
-            # Check if pattern strategy is available
-            if not self.pattern_strategy:
-                self.logger.warning("Pattern Enhanced Strategy not available - using standard analysis")
-                return await self.generate_signals(tickers, strategy, parameters)
+            # PRIORITY 1: Use Sweet Spot Strategy (full blueprint compliance)
+            if self.sweet_spot_strategy:
+                self.logger.info("🎯 Using Sweet Spot Strategy (full blueprint compliance)")
+                return await self._generate_sweet_spot_signals(tickers, strategy, parameters)
             
-            # Get Data Agent reference for pattern analysis
-            data_agent = None
-            try:
-                # Request Data Agent reference via message bus
-                response = await self.message_bus.send_message(
-                    "orchestrator",
-                    "get_agent_reference",
-                    {"agent_type": "data"}
-                )
-                data_agent = response.get('agent_reference') if response else None
-            except Exception as e:
-                self.logger.warning(f"Could not get Data Agent reference: {e}")
+            # PRIORITY 2: Fallback to legacy pattern strategy
+            if self.pattern_strategy:
+                self.logger.warning("⚠️ Sweet Spot Strategy not available - using legacy pattern strategy")
+                return await self._generate_legacy_pattern_signals(tickers, strategy, parameters)
             
-            if not data_agent:
-                self.logger.warning("No Data Agent available - using standard analysis")
-                return await self.generate_signals(tickers, strategy, parameters)
+            # PRIORITY 3: Fallback to standard analysis
+            self.logger.warning("⚠️ No enhanced strategies available - using standard analysis")
+            return await self.generate_signals(tickers, strategy, parameters)
             
-            # Initialize pattern strategy if needed
+        except Exception as e:
+            self.logger.error(f"Error in enhanced signal generation: {e}")
+            return await self.generate_signals(tickers, strategy, parameters)
+    
+    async def _generate_sweet_spot_signals(self, tickers: List[str], strategy: str = None, parameters: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Generate signals using Sweet Spot Strategy (full blueprint compliance)"""
+        try:
+            signals = {}
+            signal_details = []
+            
+            for ticker in tickers:
+                try:
+                    # Get data from storage
+                    from src.storage import DataStorage
+                    storage = DataStorage()
+                    data = storage.load_data(ticker)
+                    
+                    if data is not None and len(data) > 200:
+                        # 🎯 SWEET SPOT ANALYSIS (Full Blueprint Compliance)
+                        portfolio_data = parameters.get('portfolio_data') if parameters else None
+                        analysis = self.sweet_spot_strategy.analyze_stock_sweet_spot(ticker, data, portfolio_data)
+                        
+                        if analysis and analysis.get('signal') in ['BUY', 'SELL', 'HOLD']:
+                            # Convert to signal format
+                            signal = {
+                                'ticker': ticker,
+                                'signal': analysis['signal'].lower(),
+                                'confidence': analysis.get('confidence', 0.5),
+                                'reason': analysis.get('reason', ''),
+                                'timestamp': datetime.now().isoformat(),
+                                'sweet_spot_compliant': True,
+                                'analysis': analysis
+                            }
+                            signals[ticker] = signal
+                            signal_details.append({
+                                'ticker': ticker,
+                                'signal': signal['signal'],
+                                'confidence': signal['confidence'],
+                                'sweet_spot_analysis': analysis.get('sweet_spot_analysis', {})
+                            })
+                            
+                            self.logger.info(f"🎯 {ticker}: {signal['signal'].upper()} (Sweet Spot compliant)")
+                        else:
+                            self.logger.debug(f"📊 {ticker}: No signal (Sweet Spot analysis)")
+                    else:
+                        self.logger.warning(f"❌ {ticker}: Insufficient data for Sweet Spot analysis")
+                        
+                except Exception as e:
+                    self.logger.error(f"❌ Error analyzing {ticker} with Sweet Spot: {e}")
+                    continue
+            
+            # Compile results
+            result = {
+                'signals': signals,
+                'signal_count': len(signals),
+                'analysis_time': time.time() - start_time,
+                'strategy_used': 'Sweet Spot Blueprint (Full Compliance)',
+                'signal_details': signal_details,
+                'compliance_status': 'FULL_BLUEPRINT_COMPLIANT'
+            }
+            
+            self.logger.info(f"🎯 Sweet Spot analysis complete: {len(signals)} signals generated")
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"Error in Sweet Spot signal generation: {e}")
+            raise
+    
+    async def _generate_legacy_pattern_signals(self, tickers: List[str], strategy: str = None, parameters: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Generate signals using legacy pattern strategy (fallback)"""
+        try:
             if not self.pattern_strategy:
                 self.set_pattern_strategy(data_agent)
             

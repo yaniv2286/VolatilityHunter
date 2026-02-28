@@ -281,6 +281,8 @@ class IBKRInterface(BrokerageInterface):
         """Connect to IBKR TWS/Gateway"""
         try:
             from ib_insync import IB, Stock, MarketOrder, LimitOrder
+            import threading
+            import time
             
             if not self.host or not self.port:
                 log_error("IBKR host and port not provided")
@@ -288,8 +290,31 @@ class IBKRInterface(BrokerageInterface):
             
             self.ib = IB()
             
-            # Connect to paper trading account
-            self.ib.connect(self.host, self.port, clientId=self.client_id)
+            # Connect to paper trading account with timeout
+            connection_result = {'connected': False, 'error': None}
+            
+            def connect_with_timeout():
+                try:
+                    # Use the synchronous connect method
+                    self.ib.connect(self.host, self.port, clientId=self.client_id)
+                    connection_result['connected'] = self.ib.isConnected()
+                except Exception as e:
+                    connection_result['error'] = e
+            
+            # Start connection in thread
+            connection_thread = threading.Thread(target=connect_with_timeout)
+            connection_thread.start()
+            
+            # Wait for connection with timeout (10 seconds)
+            connection_thread.join(timeout=10.0)
+            
+            if connection_thread.is_alive():
+                log_error("IBKR connection timeout after 10 seconds")
+                return False
+            
+            if connection_result['error']:
+                log_error(f"IBKR connection error: {connection_result['error']}")
+                return False
             
             if self.ib.isConnected():
                 log_info(f"Connected to IBKR Paper Trading at {self.host}:{self.port}")
