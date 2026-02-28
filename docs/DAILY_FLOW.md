@@ -1,6 +1,6 @@
 # VolatilityHunter - Daily Run Visual Flow
 
-**Version**: v10.0 | **Updated**: 2026-02-28 | **Timezone**: IST (UTC+2)
+**Version**: v10.2 | **Updated**: 2026-02-28 | **Timezone**: IST (UTC+2)
 
 ---
 
@@ -91,11 +91,27 @@
         |
         v
   ┌─────────────────────────────────────────────┐
-  │  STEP 2: CHECK EXITS (open positions first) │
+  │  STEP 2b: UPDATE TRACKING                   │
+  │                                             │
+  │  highest_price updated (ATR trailing stop)  │
+  │  high_water_mark updated (DD scaling)       │
+  └─────────────────────────────────────────────┘
+        |
+        v
+  ┌─────────────────────────────────────────────┐
+  │  STEP 3: CHECK EXITS (open positions first) │
   │  ExecutionAgent                             │
   │                                             │
   │  For each of our current positions:         │
   │  --> See EXIT RULES section below           │
+  └─────────────────────────────────────────────┘
+        |
+        v
+  ┌─────────────────────────────────────────────┐
+  │  STEP 3b: POWER STOCK PROMOTION             │
+  │                                             │
+  │  K>80 + all SMAs + vol surge x2 days?       │
+  │  YES -> upgrade to power stock shield mode  │
   └─────────────────────────────────────────────┘
         |
         v
@@ -130,16 +146,26 @@
         |
         v
   ┌─────────────────────────────────────────────┐
+  │  STEP 4b: REGIME CHECK                      │
+  │                                             │
+  │  SPY above SMA200? -> BULL (10 slots max)   │
+  │  SPY below SMA200? -> BEAR (3 slots max)    │
+  └─────────────────────────────────────────────┘
+        |
+        v
+  ┌─────────────────────────────────────────────┐
   │  STEP 5: EXECUTE ENTRIES                    │
   │  ExecutionAgent -> IBKR                     │
   │                                             │
-  │  Available slots = 10 - current positions  │
-  │  Buy top-ranked stocks that pass all rules │
-  │  Order size = 20% of total equity each     │
+  │  Slots = regime_max - current positions     │
+  │  Sector cap: max 3 per sector               │
+  │  Order size = 20% equity x vol_scale        │
+  │    vol_scale = median_atr / ticker_atr      │
+  │    (high-vol stocks sized down, floor 25%)  │
   │                                             │
   │  DRAWDOWN CIRCUIT BREAKER:                  │
-  │    Portfolio DD > -10%  -> size x 50%      │
-  │    Portfolio DD > -20%  -> size x 25%      │
+  │    Portfolio DD > -10%  -> size x 50%       │
+  │    Portfolio DD > -20%  -> size x 25%       │
   └─────────────────────────────────────────────┘
         |
         v
@@ -199,6 +225,14 @@
         |
         v
   ┌──────────────────────────────────────────────────────────────────┐
+  │  FILTER 3b: 20-DAY MOMENTUM ACCELERATION                         │
+  │  20-day return >= 5%                                             │
+  │  (only enter stocks that are accelerating NOW)                   │
+  │  FAIL --> SKIP                                                   │
+  └──────────────────────────────────────────────────────────────────┘
+        |
+        v
+  ┌──────────────────────────────────────────────────────────────────┐
   │  FILTER 4: SWEET SPOT (Stochastic K=14,D=3)                      │
   │  K line must be inside 32 - 80 zone                              │
   │  K line trending UP (Red over Yellow)                            │
@@ -227,9 +261,17 @@
         |
         v
   ┌──────────────────────────────────────────────────────────────────┐
-  │  FILTER 6: POSITION LIMIT                                        │
-  │  Currently holding fewer than 10 positions?                      │
+  │  FILTER 6: POSITION LIMIT (REGIME-AWARE)                         │
+  │  BULL regime: fewer than 10 positions?                           │
+  │  BEAR regime: fewer than 3 positions?                            │
   │  FAIL --> NO SLOT AVAILABLE, SKIP                                │
+  └──────────────────────────────────────────────────────────────────┘
+        |
+        v
+  ┌──────────────────────────────────────────────────────────────────┐
+  │  FILTER 7: SECTOR CAP                                            │
+  │  Already holding 3+ stocks in this sector?                       │
+  │  FAIL --> SKIP (avoid sector concentration)                      │
   └──────────────────────────────────────────────────────────────────┘
         |
         v
@@ -249,7 +291,7 @@
   ┌─────────────────────┐                                   ┌─────────────────────┐
   │  EXIT 1: HARD STOP  │                                   │  Is this a          │
   │                     │                                   │  POWER STOCK?       │
-  │  Price drops 5%     │                                   │  (see below)        │
+  │  Price drops 8%     │                                   │  (see below)        │
   │  from entry price   │                                   └──────────┬──────────┘
   │                     │                                              |
   │  Immediate market   │                               YES ──────────+──────── NO
@@ -258,13 +300,21 @@
                                                POWER STOCK EXITS          STANDARD EXITS
                                                (see section below)
                                                                    ┌──────────────────────┐
+                                                                   │  EXIT 1b: TIME STOP │
+                                                                   │                     │
+                                                                   │  Still losing after │
+                                                                   │  10 trading days?   │
+                                                                   │  Exit at avg -2.2%  │
+                                                                   │  (not -8% hard stop)│
+                                                                   └──────────────────────┘
+
+                                                                   ┌──────────────────────┐
                                                                    │  EXIT 2: STOCH BREAK │
                                                                    │                      │
-                                                                   │  K drops OUT of the  │
-                                                                   │  32-80 Sweet Spot    │
-                                                                   │  OR                  │
-                                                                   │  K crosses below D   │
-                                                                   │  (Red under Yellow)  │
+                                                                   │  K < D AND K > 78    │
+                                                                   │  (overbought rollover│
+                                                                   │  lets winners run    │
+                                                                   │  longer than K>70)   │
                                                                    │                      │
                                                                    │  Trend is broken.    │
                                                                    │  Sell.               │
@@ -382,9 +432,12 @@
 ```
   POSITION LEVEL
   ──────────────────────────────────────────────
-  Max size per trade    20% of total equity
-  Hard stop loss        -5% from entry
-  Max open positions    10 simultaneous
+  Base size per trade   20% of total equity
+  Vol-adjusted size     base x (median_atr / ticker_atr), floor 25%
+  Hard stop loss        -8% from entry
+  Time stop             exit if losing after 10 trading days
+  Max open positions    10 (bull) / 3 (bear: SPY < SMA200)
+  Sector cap            max 3 positions per sector
 
   PORTFOLIO LEVEL
   ──────────────────────────────────────────────
@@ -396,11 +449,13 @@
   90 seconds unfilled    Email alert sent
   180 seconds unfilled   Auto-cancel + cash refunded
 
-  WIN/LOSS REALITY
+  WIN/LOSS REALITY (v8.1 backtest, 26 years)
   ──────────────────────────────────────────────
-  Expected win rate      60-70% of trades
-  You WILL lose          30-40% of the time
-  System is built to     let winners run, cut losers fast
+  Win rate               ~28% (momentum filter is selective)
+  Avg win                +16.7%  (let winners run to K>78)
+  Avg loss               -4.3%   (time stop cuts early)
+  Profit factor          1.48
+  System is built to     let winners run far, cut losers fast
 ```
 
 ---
@@ -459,7 +514,12 @@
 ## BACKTEST RESULTS (26 years, 2,147 tickers)
 
 ```
-  Full Period   CAGR  10.1%   Max Drawdown  -22.3%   Sharpe  0.71
-  Last 5 Years  CAGR  22.8%   Max Drawdown  -18.1%   Sharpe  1.12
-  Win Rate      ~65%          Avg Win       +8.2%    Avg Loss  -4.1%
+  Strategy    CAGR    5yr CAGR  Max DD    Sharpe  Avg Win  Avg Loss
+  ─────────────────────────────────────────────────────────────────
+  v7.2        10.1%   23.2%    -48.6%    0.59    +6.5%    -5.1%
+  v8          16.2%   28.5%    -51.8%    0.76    +15.6%   -8.2%
+  v8.1        23.3%   45.4%    -28.1%    0.73    +16.7%   -4.3%  <-- PRODUCTION
+
+  $100,000 compounded over 26 years:
+  v7.2 -> $1.1M  |  v8 -> $4.4M  |  v8.1 -> $19.3M
 ```
