@@ -49,7 +49,7 @@ logger = logging.getLogger("auto_tws_manager")
 IBKR_USER     = os.getenv("IBKR_USER_NAME", "")
 IBKR_PASS     = os.getenv("IBKR_PASSWORD",  "")
 TWS_PORT      = 7497
-API_WAIT_SECS = 120    # max seconds to wait for API after Gateway starts
+API_WAIT_SECS = 300    # max seconds to wait for API after Gateway starts
 CHECK_INTERVAL = 300   # health check every 5 minutes
 
 IBC_DIR         = Path("C:\\IBC")
@@ -435,9 +435,12 @@ class AutoTWSManager:
                         continue
 
                 # ── 2. API port check ──────────────────────────────────
+                is_weekend = datetime.now().weekday() >= 5  # Sat=5, Sun=6
                 if self.is_api_ready():
                     self._api_last_seen_up = time.time()
                     self._api_closed_since = None
+                elif is_weekend:
+                    logger.info("Weekend - API port not required (markets closed). Gateway process alive - OK")
                 else:
                     now_ts = time.time()
                     if self._api_closed_since is None:
