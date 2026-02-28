@@ -19,6 +19,7 @@ import os
 import sys
 import json
 import copy
+import shutil
 import logging
 import traceback
 from datetime import date
@@ -53,7 +54,8 @@ from src.strategy_engine import (
 # ── Config ─────────────────────────────────────────────────────────────────────
 SIM_DATE        = date(2026, 2, 24)   # last Monday
 DATA_DIR        = ROOT / 'data'
-PORTFOLIO_FILE  = DATA_DIR / 'portfolio.json'
+PORTFOLIO_FILE  = DATA_DIR / 'portfolio_sim.json'   # simulation snapshot — never the live file
+PORTFOLIO_LIVE  = DATA_DIR / 'portfolio.json'        # source of truth for live state
 TICKERS_FILE    = ROOT / 'tickers.txt'
 LOG_DIR         = ROOT / 'logs'
 LOG_DIR.mkdir(exist_ok=True)
@@ -315,8 +317,15 @@ def send_summary(portfolio: dict, exits: List[dict], entries: List[dict],
 
 def main():
     logger.info("=" * 65)
-    logger.info(f"SIMULATION: Monday {SIM_DATE} (PAPER mode - portfolio.json NOT modified)")
+    logger.info(f"SIMULATION: Monday {SIM_DATE} (PAPER mode - portfolio_sim.json NOT written back)")
     logger.info("=" * 65)
+
+    # Snapshot live portfolio -> portfolio_sim.json (read-only copy for this run)
+    if PORTFOLIO_LIVE.exists():
+        shutil.copy2(PORTFOLIO_LIVE, PORTFOLIO_FILE)
+        logger.info(f"Snapshot: portfolio.json -> portfolio_sim.json")
+    else:
+        logger.warning("portfolio.json not found — portfolio_sim.json will be used as-is")
 
     # Load tickers
     tickers = [t.strip() for t in TICKERS_FILE.read_text().splitlines() if t.strip()]
