@@ -18,8 +18,11 @@ class EmailNotifier:
         self.sender_email = os.environ.get('EMAIL_SENDER')
         self.sender_password = os.environ.get('EMAIL_PASSWORD')
         
-        # Safe Recipient Loading
+        # Safe Recipient Loading — config.json first, .env fallback
         recipients = self.config.get('EMAIL_RECIPIENTS', [])
+        if not recipients:
+            env_recipients = os.environ.get('EMAIL_RECIPIENTS', '')
+            recipients = [r.strip() for r in env_recipients.split(',') if r.strip()]
         if isinstance(recipients, str):
             self.recipient_email = [recipients]
         else:
