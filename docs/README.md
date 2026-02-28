@@ -1,6 +1,6 @@
 # VolatilityHunter
 
-**Version**: v10.2 Agent-Based Architecture | **Updated**: 2026-02-28 | **Health Check**: Exit Code 0
+**Version**: v10.2 | **Updated**: 2026-02-28 | **Strategy**: v8.1 | **Health Check**: 10/10 PASS Exit Code 0
 **Capital**: $100,000 | **Mode**: Paper (IBKR live-ready) | **Universe**: 2,147 tickers | **Data**: 26+ years parquet
 
 ---
@@ -9,7 +9,7 @@
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| Agent System (7 agents) | OPERATIONAL | Health check Exit Code 0 |
+| Strategy Engine (v8.1) | OPERATIONAL | strategy_engine.py — single source of truth |
 | Daily Trading Loop | OPERATIONAL | scripts/daily_trading_loop.py |
 | IBKR Interface | READY | R3: threading bug fixed, port probe added |
 | IBC Auto-Login | OPERATIONAL | IBC 3.23 + Zulu JRE 17 + pyautogui credential injection |
@@ -60,31 +60,38 @@ Run: 2026-02-28 | Engine: scripts/backtest_v8_vs_v8_1.py | Data: Tiingo parquet 
 
 ---
 
-## Architecture: 7-Agent System
+## Architecture: Lean Pipeline
 
-`
-main_agent_system.py
-    Orchestrator
-        |-- DataAgent        src/agents/data/agent.py
-        |-- StrategyAgent    src/agents/strategy/agent.py
-        |-- ExecutionAgent   src/agents/execution/agent.py
-        |-- SyncAgent        src/agents/sync/agent.py
-        |-- NotificationAgent src/agents/notification/agent.py
-        |-- SchedulerAgent   src/agents/scheduler/agent.py
-        |-- TestingAgent     src/agents/testing/agent.py
-`
+```
+Windows Task Scheduler
+    └── run_trading.bat
+            |
+            v
+    functional_health_check.py   (10 checks, Exit Code 0 gate)
+            |
+            v
+    daily_trading_loop.py        (autonomous pipeline)
+            |
+            v
+    strategy_engine.py           (SINGLE SOURCE OF TRUTH)
+            |
+    +-------+--------+--------+
+    |       |        |        |
+ strategy brokerage email  storage
+ _v7_2   _interface notifier  .py
+```
 
-### Agent Responsibilities
+### Core Component Responsibilities
 
-| Agent | Role | Key Files |
-|-------|------|-----------|
-| Data | Load parquet history, append Yahoo Finance today candle | src/smart_data_loader_factory.py |
-| Strategy | Run Sweet Spot v8 on fresh data, score signals | src/strategy_v8.py, src/strategy_engine.py |
-| Execution | Place market orders via IBKR ib_insync | src/brokerage_interface.py |
-| Sync | Reconcile portfolio.json vs IBKR live positions | src/portfolio_synchronizer.py |
-| Notification | Gmail SMTP email reports and alerts | src/email_notifier.py |
-| Scheduler | Windows Task Scheduler + IBC gateway management | scripts/auto_tws_manager.py |
-| Testing | Functional health check, system validation | scripts/functional_health_check.py |
+| Component | Role | File |
+|-----------|------|------|
+| Strategy Engine | All params + logic for all 4 modes | `src/strategy_engine.py` |
+| Daily Loop | 8-step autonomous pipeline | `scripts/daily_trading_loop.py` |
+| Health Check | 10-check gate before trading | `scripts/functional_health_check.py` |
+| IBC Watchdog | Gateway 24/7 monitor + auto-restart | `scripts/auto_tws_manager.py` |
+| Brokerage | IBKR ib_insync, paper fallback | `src/brokerage_interface.py` |
+| Notifier | Gmail SMTP trade summaries + alerts | `src/email_notifier.py` |
+| Data Loader | Tiingo parquet + Yahoo Finance today | `src/smart_data_loader_factory.py` |
 
 ---
 
@@ -154,46 +161,52 @@ score = 0.6 * annual_return + 0.4 * stoch_score
 
 ## Key Files Reference
 
-`
+```
 Root
-  main_agent_system.py          System entry point
-  tickers.txt                   2,147 ticker universe
+  tickers.txt                   2,149 ticker universe
 
-src/
-  agents/                       7 agent implementations
-  brokerage_interface.py        IBKR ib_insync interface (R3 fixed)
-  strategy_v7_2.py              Core indicators + Sweet Spot logic (reference)
+src/                            ACTIVE PIPELINE FILES ONLY
+  strategy_engine.py            *** Single source of truth — change params here ***
+  strategy_v7_2.py              Indicators (shared by all versions)
   strategy_v8.py                v8 backtest engine (reference)
-  strategy_v8_1.py              v8.1 backtest engine (production)
-  strategy_engine.py            Single source of truth (all 4 modes)
-  smart_data_loader_factory.py  Tiingo/Yahoo smart loader
-  config.py                     Config (R8: TIINGO_API_KEY)
+  strategy_v8_1.py              v8.1 backtest engine (reference)
+  brokerage_interface.py        IBKR ib_insync wrapper
   email_notifier.py             Gmail SMTP
+  smart_data_loader_factory.py  Tiingo/Yahoo smart loader
+  storage.py                    Parquet read/write
+  config.py                     API key constants
 
 scripts/
-  daily_trading_loop.py         Daily autonomous pipeline v8.1 (R5 OrderMonitor)
-  full_universe_backtest.py     v7.2 full universe backtester
-  backtest_v7_vs_v8.py          v7 vs v8 side-by-side comparison
-  backtest_v8_vs_v8_1.py        v8 vs v8.1 comparison (DD-reduction proof)
+  daily_trading_loop.py         Daily autonomous pipeline v8.1
   simulate_monday.py            Full pipeline dry-run on historical date
-  functional_health_check.py    System health gate
-  auto_tws_manager.py           IBC gateway manager (R6: process watchdog)
+  functional_health_check.py    System health gate (10 checks)
+  auto_tws_manager.py           IBC gateway watchdog (24/7)
   ibc_login_helper.py           pyautogui credential injector
-  setup_ibc.py                  IBC + Zulu JRE 17 auto-install
-  DAILY_ROUTINE/run_trading.bat Windows Task Scheduler entry point
+  setup_ibc.py                  IBC + Zulu JRE 17 one-time installer
+  backtest_v7_vs_v8.py          v7 vs v8 comparison
+  backtest_v8_vs_v8_1.py        v8 vs v8.1 DD-reduction proof
+  full_universe_backtest.py     v7.2 standalone backtest
+  DAILY_ROUTINE/run_trading.bat Task Scheduler entry point (17:06 IST)
 
 config/
-  agents.json                   All agent configuration
+  agents.json                   Configuration (timeouts, retries, v8.1 params)
 
 data/
-  portfolio.json                Live portfolio state
+  portfolio.json                Live portfolio state (gitignored)
+  SPY.parquet                   SPY regime history (gitignored)
   *.parquet                     Tiingo price history (gitignored)
 
 logs/
   trading_YYYY-MM-DD.log        Daily trading log
-  ibc_gateway.log               IBC/Gateway startup log
-  full_backtest_*.json          Backtest result archives
-`
+  functional_health_check.log   Health gate log
+  ibc_gateway.log               IBC startup log
+  backtest_*.json               Backtest result archives
+
+archive/src_orphans/            Archived 2026-02-28 (not used by active pipeline)
+  main_agent_system.py          Former orchestrator
+  agents_src/                   7-agent layer
+  [+ 35 other archived files]
+```
 
 ---
 
@@ -238,7 +251,7 @@ jts.ini (tradingMode=p) and config.ini (TradingMode=paper). Port 7497 monitored 
 
 | ID | Fix | File(s) |
 |----|-----|---------|
-| R1 | Data->Strategy: parquet + today Yahoo candle | src/agents/strategy/agent.py |
+| R1 | Data->Strategy: parquet + today Yahoo candle | src/smart_data_loader_factory.py |
 | R3 | IBKR threading bug: socket probe + direct connect | src/brokerage_interface.py |
 | R5 | OrderMonitor: poll/alert/cancel unfilled orders | scripts/daily_trading_loop.py |
 | R6 | IBC: Zulu JRE 17 + pyautogui credential injection | scripts/auto_tws_manager.py, scripts/ibc_login_helper.py |

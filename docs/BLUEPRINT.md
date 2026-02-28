@@ -1,7 +1,7 @@
 # Sweet Spot Trading Blueprint
 
 **Source**: Original blueprint rules as defined by the Architect  
-**Implementation**: `src/strategy_v7_2.py`, `src/sweet_spot_strategy.py`, `scripts/daily_trading_loop.py`  
+**Implementation**: `src/strategy_engine.py`, `src/strategy_v7_2.py`, `scripts/daily_trading_loop.py`  
 **Last verified**: 2026-02-28
 
 ---
@@ -11,7 +11,7 @@
 | Parameter | Blueprint Rule | Implemented Value |
 |-----------|---------------|-------------------|
 | Position size | 20% max per trade | 20% of total equity |
-| Hard stop loss | 1-5% trailing | 5% hard stop (`HARD_STOP_PCT = 0.05`) |
+| Hard stop loss | 1-5% trailing | 8% hard stop (`HARD_STOP_PCT = 0.08`) — v8.1 |
 | Stochastic settings | K=10, D=3, Smooth=3 | K=14, D=3 (strategy_v7_2) |
 | Stochastic sweet spot | 32-80 zone | `STOCH_LOW=32, STOCH_HIGH=80` |
 | Volume filter | 30% of 30-day avg in first hour | Volume >= 1.5x 30-day SMA |
