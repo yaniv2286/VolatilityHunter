@@ -1,33 +1,21 @@
 @echo off
-echo ============================================================
-echo AUTOMATED TWS MANAGER - 24/7 AUTO-PILOT
-echo ============================================================
-echo Starting: %date% %time%
-echo.
-echo This will AUTOMATICALLY:
-echo 1. Start TWS if not running
-echo 2. Wait for TWS to load
-echo 3. Auto-detect when API is enabled
-echo 4. Start keep-alive service
-echo 5. Monitor 24/7 and restart if needed
-echo.
-echo NO MANUAL INTERVENTION REQUIRED!
-echo.
+:: =============================================================================
+:: AUTO IB GATEWAY MANAGER - 24/7 Headless (Task Scheduler)
+:: Trigger: At logon - runs forever, restarts Gateway if it dies
+:: =============================================================================
 
-REM Change to VolatilityHunter directory
+set LOG=D:\GitHub\VolatilityHunter\logs\auto_tws_manager_boot.log
+echo [%DATE% %TIME%] Auto_IBGateway_Manager started >> "%LOG%"
+
 cd /d "D:\GitHub\VolatilityHunter"
 
-REM Check if Python is available
 python --version >nul 2>&1
 if errorlevel 1 (
-    echo ERROR: Python not found in PATH
-    pause
+    echo [%DATE% %TIME%] ERROR: Python not found in PATH >> "%LOG%"
     exit /b 1
 )
 
-REM Start the automated TWS manager
-python scripts/auto_tws_manager.py
+python scripts\auto_tws_manager.py >> "%LOG%" 2>&1
 
-echo.
-echo Auto TWS Manager stopped
-pause
+echo [%DATE% %TIME%] auto_tws_manager.py exited with code %ERRORLEVEL% >> "%LOG%"
+exit /b %ERRORLEVEL%

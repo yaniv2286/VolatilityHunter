@@ -117,25 +117,29 @@ class AutoTWSManager:
             return False
 
         IBC_DIR.mkdir(parents=True, exist_ok=True)
-        config = f"""# IBC config - auto-managed by auto_tws_manager.py
-[IBC]
-IbLoginId={IBKR_USER}
-IbPassword={IBKR_PASS}
-TradingMode=live
-IbDir={self.gateway_dir}
-StoreSettingsOnServer=no
-MinimizeMainWindow=yes
-ExistingSessionDetectedAction=primary
-AcceptIncomingConnectionAction=accept
-ShowAllTrades=no
-FIX=no
-IbAutoClosedown=no
-AllowBlindTrading=yes
-DismissPasswordExpiryWarning=yes
-DismissNSEComplianceNotice=yes
-AcceptBidAskLastSizeDisplayUpdateNotification=accept
-LogComponents=never
-"""
+        # NOTE: TradingMode is NOT a config.ini key in IBC 3.18+
+        # It is passed as the 3rd CLI argument to IbcGateway
+        config = (
+            "# IBC config - auto-managed by auto_tws_manager.py\n"
+            "[IBC]\n"
+            f"IbLoginId={IBKR_USER}\n"
+            f"IbPassword={IBKR_PASS}\n"
+            f"IbDir={self.gateway_dir.replace(chr(92), chr(92)+chr(92))}\n"
+            "StoreSettingsOnServer=no\n"
+            "MinimizeMainWindow=yes\n"
+            "ExistingSessionDetectedAction=primary\n"
+            "AcceptIncomingConnectionAction=accept\n"
+            "ShowAllTrades=no\n"
+            "FIX=no\n"
+            "IbAutoClosedown=no\n"
+            "ClosedownAt=\n"
+            "AllowBlindTrading=yes\n"
+            "DismissPasswordExpiryWarning=yes\n"
+            "DismissNSEComplianceNotice=yes\n"
+            "AcceptBidAskLastSizeDisplayUpdateNotification=accept\n"
+            "LogComponents=never\n"
+            "LoginDialogDisplayTimeout=90\n"
+        )
         try:
             with open(IBC_CONFIG, 'w', encoding='utf-8') as f:
                 f.write(config)
@@ -145,6 +149,98 @@ LogComponents=never
             logger.error(f"Failed to write IBC config: {e}")
             logger.error(traceback.format_exc())
             return False
+
+    def _ensure_clean_jts_ini(self):
+        """
+        Strip saved SSO session tokens from jts.ini before IBC launch.
+        IB Gateway 10.37 with s3store=true + UserNameToDirectory skips the
+        login dialog entirely via SSO auto-login. IBC then waits 60s for a
+        dialog that never appears -> exit 1112.
+        Fix: remove UserNameToDirectory and s3store so Gateway shows the
+        real login dialog which IBC can intercept and fill.
+        """
+        jts_candidates = [
+            Path(self.gateway_dir) / "jts.ini",
+            Path(self.gateway_dir) / "TWSibgateway" / "jts.ini",
+        ]
+        for jts in jts_candidates:
+            if not jts.exists():
+                continue
+            try:
+                lines = jts.read_text(encoding='utf-8', errors='ignore').splitlines()
+                cleaned = []
+                removed = []
+                for line in lines:
+                    key = line.split('=')[0].strip().lower()
+                    if key in ('usernametodirectory', 's3store', 'useremotesettings'):
+                        removed.append(line)
+                    else:
+                        cleaned.append(line)
+                if removed:
+                    jts.write_text('\n'.join(cleaned) + '\n', encoding='utf-8')
+                    logger.info(f"Cleared SSO tokens from {jts}: {removed}")
+                else:
+                    logger.info(f"jts.ini already clean (no SSO tokens): {jts}")
+            except Exception as e:
+                logger.warning(f"Could not clean jts.ini at {jts}: {e}")
+
+    # ── Java discovery ───────────────────────────────────────────────────
+
+    def _find_java17(self) -> str:
+        """
+        Return path to javaw.exe that is Java 17+.
+        Checks Zulu JRE (downloaded by setup_ibc.py) first, then
+        other known locations, then a broad glob fallback.
+        Returns empty string if nothing >= Java 17 found.
+        """
+        import glob as _glob
+        import re as _re
+        import subprocess as _sp
+        import os as _os
+
+        userprofile = _os.environ.get('USERPROFILE', r'C:\Users\Public')
+        zulu_home = Path(userprofile) / 'zulu-jre17'
+
+        # i4j shared JRE cache - IB Gateway installer places its bundled
+        # Zulu+JavaFX JRE here. This is the correct JRE for IB Gateway 10.37.
+        i4j_base = Path(userprofile) / 'AppData' / 'Local' / 'Programs' / 'Common' / 'i4j_jres'
+        i4j_hits = sorted(i4j_base.glob('**/javaw.exe'), reverse=True) if i4j_base.exists() else []
+
+        candidates = (
+            [str(p) for p in i4j_hits]                     # i4j bundled JRE (has JavaFX)
+            + [str(zulu_home / 'bin' / 'javaw.exe')]        # Zulu 17 from setup_ibc.py
+            + [str(Path(self.gateway_dir) / 'jre' / 'bin' / 'javaw.exe')]
+            + [
+                r'C:\Program Files\Zulu\zulu-17\bin\javaw.exe',
+                r'C:\Program Files\Zulu\zulu-21\bin\javaw.exe',
+                r'C:\Program Files\Eclipse Adoptium\jre-17\bin\javaw.exe',
+                r'C:\Program Files\Microsoft\jdk-17\bin\javaw.exe',
+            ]
+        )
+        hits = _glob.glob(r'C:\Program Files\**\javaw.exe', recursive=True)
+        hits += _glob.glob(r'C:\Program Files (x86)\**\javaw.exe', recursive=True)
+        candidates += hits
+
+        for c in candidates:
+            p = Path(c)
+            if not p.is_file():
+                continue
+            try:
+                out = _sp.check_output([str(p), '-version'],
+                                       stderr=_sp.STDOUT, timeout=5).decode(errors='ignore')
+                m = _re.search(r'version "(\d+)(?:\.(\d+))?', out)
+                if m:
+                    major = int(m.group(1))
+                    if major == 1:
+                        major = int(m.group(2) or 0)
+                    if major >= 17:
+                        logger.info(f"Found Java {major} at: {p}")
+                        return str(p)
+            except Exception:
+                continue
+
+        logger.error("No Java 17+ found. Run: python scripts/setup_ibc.py to download Zulu JRE 17.")
+        return ''
 
     # ── Gateway launch ───────────────────────────────────────────────────
 
@@ -161,78 +257,76 @@ LogComponents=never
         if not self.ensure_ibc_config():
             return False
 
-        # Find Java - check Gateway bundled JRE first, then well-known system locations
-        java_candidates = [
-            Path(self.gateway_dir) / "jre" / "bin" / "javaw.exe",
-            Path(self.gateway_dir) / "jre" / "bin" / "java.exe",
-            # Azul Zulu JRE installed by newer IB Gateway
-            Path("C:\\Program Files\\Zulu\\zulu-17\\bin\\javaw.exe"),
-            Path("C:\\Program Files\\Zulu\\zulu-11\\bin\\javaw.exe"),
-            # thinkorswim bundles a JRE on many trader machines
-            Path("C:\\Program Files\\thinkorswim\\jre\\bin\\javaw.exe"),
-            Path("C:\\Program Files\\thinkorswim\\jre_1968.2.0\\bin\\javaw.exe"),
-            # JetBrains JRE (PyCharm etc)
-            Path("C:\\Program Files\\JetBrains"),
-            # Standard Java installs
-            Path("C:\\Program Files\\Java\\jre\\bin\\javaw.exe"),
-            Path("C:\\Program Files\\Java\\jre1.8.0_361\\bin\\javaw.exe"),
-            Path("C:\\Program Files\\Eclipse Adoptium\\jre-17\\bin\\javaw.exe"),
-        ]
-        java_exe = None
-        for j in java_candidates:
-            if j.is_file():
-                java_exe = str(j)
-                logger.info(f"Found Java at: {java_exe}")
-                break
+        self._ensure_clean_jts_ini()
 
-        # Broad fallback: search C:\Program Files recursively for any javaw.exe
-        if not java_exe:
-            import glob
-            hits = glob.glob(r"C:\Program Files\**\javaw.exe", recursive=True)
-            if not hits:
-                hits = glob.glob(r"C:\Program Files (x86)\**\javaw.exe", recursive=True)
-            if hits:
-                java_exe = hits[0]
-                logger.info(f"Found Java via glob: {java_exe}")
+        # IBC works by intercepting ibgateway.exe's Swing login dialog.
+        # We must launch ibgateway.exe (the native install4j launcher) with
+        # IBC injected via -javaagent so IBC can hook the login window.
+        # Calling javaw directly bypasses the display context setup that
+        # install4j performs, causing exit 1112 (login dialog never appeared).
 
+        java_exe = self._find_java17()
         if not java_exe:
-            logger.error("Java not found - cannot launch IBC via classpath. Trying bat fallback.")
+            logger.error("Java 17+ not found - trying bat fallback")
             return self._fallback_bat_launch()
 
-        # Build classpath: IBC.jar + all Gateway jars
-        gateway_jars = list((Path(self.gateway_dir) / "jars").glob("*.jar"))
-        cp_sep = ";"
-        classpath = str(IBC_JAR) + cp_sep + cp_sep.join(str(j) for j in gateway_jars)
+        # Use classpath launch with the i4j-cached JRE (has JavaFX).
+        # Do NOT use ibgateway.exe directly - it ignores our vmoptions
+        # javaagent and picks its own JRE, causing IBC to miss the dialog.
+        # Ensure the javaagent line is removed from vmoptions (cleanup).
+        vmoptions_path = Path(self.gateway_dir) / "ibgateway.vmoptions"
+        self._remove_javaagent(vmoptions_path)
+        return self._launch_via_classpath(java_exe)
 
+    def _remove_javaagent(self, vmoptions_path: Path):
+        """Remove any IBC javaagent line from ibgateway.vmoptions (cleanup)."""
+        if not vmoptions_path.exists():
+            return
+        try:
+            lines = vmoptions_path.read_text(encoding='utf-8').splitlines()
+            cleaned = [l for l in lines if not ('-javaagent:' in l and 'IBC' in l)]
+            if len(cleaned) != len(lines):
+                vmoptions_path.write_text('\n'.join(cleaned) + '\n', encoding='utf-8')
+                logger.info(f"Removed IBC javaagent from {vmoptions_path.name}")
+        except Exception as e:
+            logger.warning(f"Could not clean {vmoptions_path.name}: {e}")
+
+    def _launch_via_classpath(self, java_exe: str) -> bool:
+        """
+        Fallback: launch IBC directly via javaw classpath.
+        Requires Java 17+ and --add-opens flags.
+        """
+        gateway_jars = list((Path(self.gateway_dir) / "jars").glob("*.jar"))
+        classpath = str(IBC_JAR) + ";" + ";".join(str(j) for j in gateway_jars)
+
+        add_opens = [
+            "--add-opens=java.desktop/javax.swing=ALL-UNNAMED",
+            "--add-opens=java.desktop/javax.swing.plaf.basic=ALL-UNNAMED",
+            "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
+            "--add-opens=java.desktop/sun.swing=ALL-UNNAMED",
+            "--add-opens=java.base/java.lang=ALL-UNNAMED",
+            "--add-opens=java.base/java.util=ALL-UNNAMED",
+        ]
         cmd = [
-            java_exe,
+            java_exe, *add_opens,
             "-cp", classpath,
             "ibcalpha.ibc.IbcGateway",
             str(IBC_CONFIG),
             str(self.gateway_dir),
-            "live",   # TradingMode: required 3rd positional arg in IBC 3.18+
+            "live",
         ]
-
         log_file = LOG_DIR / "ibc_gateway.log"
-        logger.info(f"Launching IB Gateway via IBC...")
-        logger.info(f"  Gateway dir : {self.gateway_dir}")
-        logger.info(f"  Java        : {java_exe}")
-        logger.info(f"  Log         : {log_file}")
-
+        logger.info(f"Fallback classpath launch with Java 17...")
         try:
             with open(log_file, 'a', encoding='utf-8') as lf:
                 self.ibc_process = subprocess.Popen(
-                    cmd,
-                    stdout=lf,
-                    stderr=lf,
-                    cwd=str(self.gateway_dir)
+                    cmd, stdout=lf, stderr=lf, cwd=str(self.gateway_dir)
                 )
-            logger.info(f"IBC process started (PID {self.ibc_process.pid})")
+            logger.info(f"IBC classpath process started (PID {self.ibc_process.pid})")
             return True
         except Exception as e:
-            logger.error(f"Failed to launch IBC: {e}")
+            logger.error(f"Classpath launch failed: {e}")
             logger.error(traceback.format_exc())
-            # Fallback: try StartGateway.bat if it exists
             return self._fallback_bat_launch()
 
     def _fallback_bat_launch(self):
