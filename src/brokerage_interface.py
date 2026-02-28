@@ -8,7 +8,11 @@ os.environ['TOKENIZERS_PARALLELISM'] = 'false'
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Any
 from datetime import datetime
-from src.notifications import log_info, log_warning, log_error
+import logging as _logging
+_bi_logger = _logging.getLogger('brokerage_interface')
+def log_info(msg): _bi_logger.info(msg)
+def log_warning(msg): _bi_logger.warning(msg)
+def log_error(msg): _bi_logger.error(msg)
 
 class BrokerageInterface(ABC):
     """Abstract base class for brokerage integrations"""

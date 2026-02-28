@@ -41,6 +41,12 @@ load_dotenv(ROOT / ".env")
 from src.strategy_v7_2 import add_indicators_v7_2
 from src.brokerage_interface import get_brokerage_interface
 from src.email_notifier import EmailNotifier
+from src.strategy_engine import (
+    promote_power_stocks,
+    update_highest_prices,
+    update_high_water_mark,
+    get_dd_scale,
+)
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 LOG_DIR = ROOT / "logs"
@@ -65,14 +71,16 @@ TICKERS_FILE      = ROOT / "tickers.txt"
 INITIAL_CAPITAL   = 100_000.0
 MAX_POSITIONS     = 10
 POSITION_SIZE_PCT = 0.20          # 20% per position (Ironclad Guardrail)
-HARD_STOP_PCT     = 0.05          # 5% hard stop loss
+HARD_STOP_PCT     = 0.08          # v8: 8% hard stop (was 5% — reduces whipsaw stops)
 MIN_PRICE         = 5.0           # no penny stocks
 MIN_LIQUIDITY     = 500_000       # $500k daily dollar volume
 STOCH_LOW         = 32.0
 STOCH_HIGH        = 80.0
-OVERBOUGHT_EXIT   = 70.0
+OVERBOUGHT_EXIT   = 78.0          # v8: K>78 (was 70 — lets winners run longer)
 CAGR_FILTER       = 0.15
 VOLUME_SURGE      = 1.5
+MOMENTUM_DAYS     = 20            # v8: 20-day momentum filter
+MOMENTUM_MIN      = 0.05          # v8: +5% over 20 days required
 ORDER_CONFIRM_SEC = 90            # seconds to wait for order fill confirmation
 
 IBKR_CONFIG = {
@@ -320,13 +328,15 @@ def check_exits(portfolio: dict, latest_prices: Dict[str, float]) -> List[dict]:
                 exits.append({'ticker': ticker, 'price': price,
                               'reason': f'SMA200 break (price={price:.2f} < SMA200={sma200:.2f})'})
         else:
-            # Power stock: SMA25 break or 3xATR trailing stop
+            # Power stock: SMA25 break or 3xATR trailing stop from highest_price
+            highest = pos.get('highest_price', entry)
+            trailing_stop = highest - 3.0 * atr if not np.isnan(atr) else np.nan
             if not np.isnan(sma25) and price < sma25:
                 exits.append({'ticker': ticker, 'price': price,
-                              'reason': f'Power stock SMA25 break'})
-            elif not np.isnan(atr) and price < atr * 3.0:
+                              'reason': f'Power SMA25 break ({price:.2f} < {sma25:.2f})'})
+            elif not np.isnan(trailing_stop) and price < trailing_stop:
                 exits.append({'ticker': ticker, 'price': price,
-                              'reason': f'Power stock ATR trailing stop'})
+                              'reason': f'Power ATR trailing stop (stop={trailing_stop:.2f})'})
 
     return exits
 
@@ -368,8 +378,15 @@ def scan_universe(all_tickers: List[str],
         else:
             annual_ret = np.nan
 
+        # 20-day momentum filter (v8)
+        mom20 = np.nan
+        if close_col and len(df) >= MOMENTUM_DAYS + 1:
+            p20 = df[close_col].iloc[-(MOMENTUM_DAYS + 1)]
+            if p20 > 0:
+                mom20 = (df[close_col].iloc[-1] / p20) - 1
+
         # All conditions must be valid
-        if any(np.isnan(v) for v in [k, d, sma200, vsma, volume, annual_ret]):
+        if any(np.isnan(v) for v in [k, d, sma200, vsma, volume, annual_ret, mom20]):
             scanned += 1
             continue
 
@@ -378,6 +395,7 @@ def scan_universe(all_tickers: List[str],
             price > sma200 and
             volume >= vsma * VOLUME_SURGE and
             annual_ret >= CAGR_FILTER and
+            mom20 >= MOMENTUM_MIN and
             (price * volume) >= MIN_LIQUIDITY
         )
 
@@ -392,7 +410,7 @@ def scan_universe(all_tickers: List[str],
                 'stoch_k':      k,
                 'annual_return': annual_ret,
                 'reason':       (f"Stoch_K={k:.1f} | SMA200 ok | "
-                                 f"Vol surge | 1yr={annual_ret:.1%}")
+                                 f"Vol surge | 1yr={annual_ret:.1%} | 20d={mom20:.1%}")
             })
 
         scanned += 1
@@ -473,12 +491,13 @@ def execute_entries(candidates: List[dict], portfolio: dict,
         if ticker in portfolio.get('positions', {}):
             continue
 
-        # Ironclad position sizing: 20% of current total equity
+        # Ironclad position sizing: 20% of current total equity with drawdown scaling
         total_equity = portfolio.get('cash', 0) + sum(
             p.get('shares', 0) * latest_prices_ref.get(p.get('ticker', t), p.get('entry_price', 0))
             for t, p in portfolio.get('positions', {}).items()
         )
-        alloc  = total_equity * POSITION_SIZE_PCT
+        dd_scale = get_dd_scale(portfolio)
+        alloc  = total_equity * POSITION_SIZE_PCT * dd_scale
         shares = int(alloc / price)
         cost   = shares * price
 
@@ -745,12 +764,24 @@ def main():
         logger.error("No prices fetched - aborting. Check Yahoo Finance connectivity.")
         sys.exit(1)
 
+    # ── Step 2b: Update highest_price + high-water mark (Bug 2 + 3 fix) ──
+    update_highest_prices(portfolio, latest_prices)
+    update_high_water_mark(portfolio, latest_prices)
+
     # ── Step 3: Check exits ───────────────────────────────────────────────
     logger.info("--- Step 3: Checking exits ---")
     exit_decisions = check_exits(portfolio, latest_prices)
     logger.info(f"Exit signals: {len(exit_decisions)}")
 
     executed_exits = execute_exits(exit_decisions, portfolio, ibkr, paper_mode)
+
+    # ── Step 3b: Power stock promotion (Bug 1 fix) ────────────────────────
+    logger.info("--- Step 3b: Power stock promotion check ---")
+    def _load_for_promotion(ticker):
+        return load_ticker_with_latest(ticker, latest_prices)
+    promoted = promote_power_stocks(portfolio, latest_prices, _load_for_promotion)
+    if promoted:
+        logger.info(f"Power promoted: {promoted}")
 
     # ── Step 4: Scan universe for new entries ─────────────────────────────
     logger.info("--- Step 4: Scanning universe ---")

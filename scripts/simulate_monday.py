@@ -35,6 +35,12 @@ sys.path.insert(0, str(ROOT))
 load_dotenv(ROOT / '.env')
 
 from src.strategy_v7_2 import add_indicators_v7_2
+from src.strategy_engine import (
+    promote_power_stocks,
+    update_highest_prices,
+    update_high_water_mark,
+    get_dd_scale,
+)
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 SIM_DATE        = date(2026, 2, 24)   # last Monday
@@ -184,12 +190,14 @@ def check_exits(portfolio: dict, prices: Dict[str, float],
                 exits.append({'ticker': ticker, 'price': price,
                               'reason': f'SMA200 break'})
         else:
+            highest = pos.get('highest_price', entry)
+            trailing_stop = highest - 3.0 * atr if not np.isnan(atr) else np.nan
             if not np.isnan(sma25) and price < sma25:
                 exits.append({'ticker': ticker, 'price': price,
-                              'reason': f'Power stock SMA25 break'})
-            elif not np.isnan(atr) and price < atr * 3.0:
+                              'reason': f'Power SMA25 break ({price:.2f} < {sma25:.2f})'})
+            elif not np.isnan(trailing_stop) and price < trailing_stop:
                 exits.append({'ticker': ticker, 'price': price,
-                              'reason': f'Power stock ATR trailing stop'})
+                              'reason': f'Power ATR trailing stop (stop={trailing_stop:.2f})'})
     return exits
 
 
@@ -283,7 +291,8 @@ def simulate_entries(candidates: List[dict], portfolio: dict,
             for t, p in portfolio.get('positions', {}).items()
         )
         total_equity = portfolio.get('cash', 0) + pos_value
-        alloc  = total_equity * POSITION_SIZE_PCT
+        dd_scale = get_dd_scale(portfolio)
+        alloc  = total_equity * POSITION_SIZE_PCT * dd_scale
         shares = int(alloc / price)
         cost   = shares * price
         if shares <= 0 or cost > portfolio.get('cash', 0):
@@ -323,6 +332,10 @@ def main():
     global latest_prices_ref
     latest_prices_ref = prices
 
+    # Step 2b: Update highest_price + high-water mark
+    update_highest_prices(portfolio, prices)
+    update_high_water_mark(portfolio, prices)
+
     # Print current position values
     logger.info("--- Current portfolio as of sim date ---")
     total_pos_value = 0.0
@@ -342,6 +355,14 @@ def main():
     exits = check_exits(portfolio, prices, SIM_DATE)
     exit_trades = simulate_exits(exits, portfolio)
     logger.info(f"Exits triggered: {len(exit_trades)}")
+
+    # Step 3b: Power stock promotion
+    logger.info("--- Step 3b: Power stock promotion check ---")
+    def _load_sim(ticker):
+        return load_ticker_sim(ticker, SIM_DATE, prices)
+    promoted = promote_power_stocks(portfolio, prices, _load_sim)
+    if promoted:
+        logger.info(f"Power promoted: {promoted}")
 
     # Step 4: Scan universe
     logger.info("--- Step 4: Universe scan ---")
