@@ -125,9 +125,7 @@ class AutoTWSManager:
         config = (
             "# IBC config - auto-managed by auto_tws_manager.py\n"
             "[IBC]\n"
-            f"IbLoginId={IBKR_USER}\n"
-            f"IbPassword={IBKR_PASS}\n"
-            f"IbDir={self.gateway_dir.replace(chr(92), chr(92)+chr(92))}\n"
+            f"IbDir={self.gateway_dir.replace(chr(92), '/')}\n"
             "StoreSettingsOnServer=no\n"
             "MinimizeMainWindow=yes\n"
             "ExistingSessionDetectedAction=primary\n"
@@ -142,9 +140,10 @@ class AutoTWSManager:
             "AcceptBidAskLastSizeDisplayUpdateNotification=accept\n"
             "LogComponents=never\n"
             "LoginDialogDisplayTimeout=90\n"
+            "TradingMode=paper\n"
         )
         try:
-            with open(IBC_CONFIG, 'w', encoding='utf-8') as f:
+            with open(IBC_CONFIG, 'w', encoding='utf-8', newline='\n') as f:
                 f.write(config)
             logger.info(f"IBC config written: {IBC_CONFIG}")
             return True
@@ -179,11 +178,46 @@ class AutoTWSManager:
                         removed.append(line)
                     else:
                         cleaned.append(line)
-                if removed:
-                    jts.write_text('\n'.join(cleaned) + '\n', encoding='utf-8')
-                    logger.info(f"Cleared SSO tokens from {jts}: {removed}")
-                else:
-                    logger.info(f"jts.ini already clean (no SSO tokens): {jts}")
+                # Force paper mode + username in jts.ini so IB Gateway
+                # pre-fills the username field correctly. IBC then only
+                # needs to fill the password (avoids field-clear bug in 10.37).
+                # Rewrite jts.ini: ensure tradingMode=p and Username are
+                # inside [Logon] section so IB Gateway pre-fills them.
+                final = []
+                in_logon = False
+                mode_set = False
+                user_set = False
+                for line in cleaned:
+                    stripped = line.strip()
+                    if stripped.startswith('['):
+                        # Leaving a section - inject missing keys before closing
+                        if in_logon:
+                            if not mode_set:
+                                final.append('tradingMode=p')
+                                mode_set = True
+                            if not user_set:
+                                final.append(f'Username={IBKR_USER}')
+                                user_set = True
+                        in_logon = stripped.lower() == '[logon]'
+                        final.append(line)
+                        continue
+                    key = line.split('=')[0].strip().lower()
+                    if in_logon and key == 'tradingmode':
+                        final.append('tradingMode=p')
+                        mode_set = True
+                    elif in_logon and key == 'username':
+                        final.append(f'Username={IBKR_USER}')
+                        user_set = True
+                    else:
+                        final.append(line)
+                # Handle keys missing at end of file
+                if in_logon:
+                    if not mode_set:
+                        final.append('tradingMode=p')
+                    if not user_set:
+                        final.append(f'Username={IBKR_USER}')
+                jts.write_text('\n'.join(final) + '\n', encoding='utf-8')
+                logger.info(f"jts.ini updated: paper mode + username in [Logon] section in {jts}")
             except Exception as e:
                 logger.warning(f"Could not clean jts.ini at {jts}: {e}")
 
@@ -316,7 +350,7 @@ class AutoTWSManager:
             "ibcalpha.ibc.IbcGateway",
             str(IBC_CONFIG),
             str(self.gateway_dir),
-            "live",
+            "paper",
         ]
         log_file = LOG_DIR / "ibc_gateway.log"
         logger.info(f"Fallback classpath launch with Java 17...")
@@ -326,6 +360,13 @@ class AutoTWSManager:
                     cmd, stdout=lf, stderr=lf, cwd=str(self.gateway_dir)
                 )
             logger.info(f"IBC classpath process started (PID {self.ibc_process.pid})")
+            # Spawn login helper to fill credentials via GUI automation
+            # (IBC 3.23 misidentifies field index in IB Gateway 10.37 new UI)
+            helper = Path(__file__).parent / "ibc_login_helper.py"
+            if helper.exists():
+                subprocess.Popen([sys.executable, str(helper)],
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                logger.info("Login helper spawned (will fill credentials in Gateway window)")
             return True
         except Exception as e:
             logger.error(f"Classpath launch failed: {e}")
