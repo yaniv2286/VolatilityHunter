@@ -69,8 +69,11 @@ GATEWAY_PROCESS_NAMES = ['ibgateway.exe', 'tws.exe', 'javaw.exe']
 class AutoTWSManager:
     def __init__(self):
         self.gateway_dir  = self._find_gateway()
-        self.ibc_process  = None    # subprocess.Popen handle for IBC
+        self.ibc_process = None
         self.keep_alive_process = None
+        self._api_last_seen_up = None
+        self._api_closed_since = None
+        self.USER_GRACE_PERIOD = 300
 
     # ── Discovery ────────────────────────────────────────────────────────
 
@@ -432,11 +435,23 @@ class AutoTWSManager:
                         continue
 
                 # ── 2. API port check ──────────────────────────────────
-                if not self.is_api_ready():
-                    logger.warning("API port closed but process running - waiting 30s")
-                    time.sleep(30)
-                    if not self.is_api_ready():
-                        logger.error("API still closed - restarting Gateway")
+                if self.is_api_ready():
+                    self._api_last_seen_up = time.time()
+                    self._api_closed_since = None
+                else:
+                    now_ts = time.time()
+                    if self._api_closed_since is None:
+                        self._api_closed_since = now_ts
+                        logger.warning("API port closed - may be user browsing IBKR portal. Grace period: 5 min")
+                    elapsed = now_ts - self._api_closed_since
+                    if elapsed < 300:
+                        remaining = int(300 - elapsed)
+                        logger.info(f"API closed for {int(elapsed)}s - waiting (grace period, {remaining}s left)")
+                        time.sleep(CHECK_INTERVAL)
+                        continue
+                    else:
+                        logger.error("API closed for >5 min - restarting Gateway")
+                        self._api_closed_since = None
                         if self.ibc_process:
                             try:
                                 self.ibc_process.terminate()
