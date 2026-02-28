@@ -299,7 +299,7 @@ Checks run:
 
 ## Testing
 
-`ash
+`bash
 # Full system health gate
 python scripts/functional_health_check.py
 
@@ -318,3 +318,166 @@ python scripts/simulate_monday.py
 # Validate specific fix
 python scripts/verify_X.py  # per Rule 4.1
 `
+
+---
+
+## Pipeline File Map (All Active Files)
+
+Every file that participates in the live/paper/simulation/backtest pipeline.
+
+```python
+ENTRY POINTS (Task Scheduler)
+══════════════════════════════════════════════════════════════════════
+scripts/DAILY_ROUTINE/run_trading.bat          Task Scheduler trigger (17:06 IST)
+scripts/DAILY_ROUTINE/run_auto_tws_manager.bat Task Scheduler trigger (at logon)
+
+INFRASTRUCTURE (runs 24/7)
+══════════════════════════════════════════════════════════════════════
+scripts/auto_tws_manager.py        IBC gateway watchdog, 5-min health loop
+    └── scripts/tws_keep_alive.py      Called by auto_tws_manager to keep port alive
+    └── scripts/ibc_login_helper.py    pyautogui credential injector for IBC
+
+DAILY TRADING PIPELINE (17:06 IST each trading day)
+══════════════════════════════════════════════════════════════════════
+scripts/functional_health_check.py     GATE: must exit 0 before trading starts
+    └── src/agents/data/agent.py           DataAgent health
+    └── src/agents/strategy/agent.py       StrategyAgent health
+    └── src/agents/execution/agent.py      ExecutionAgent + IBKR reachability
+    └── src/agents/notification/agent.py   NotificationAgent + email config
+    └── src/agents/sync/agent.py           SyncAgent + portfolio reconcile
+    └── src/agents/scheduler/agent.py      SchedulerAgent health
+    └── src/agents/testing/agent.py        (testing/ not used in live path)
+
+scripts/daily_trading_loop.py          MAIN: full autonomous trading cycle
+    │
+    ├── [Step 1] IBKR reconciliation
+    │   └── src/brokerage_interface.py         IBKR ib_insync wrapper
+    │
+    ├── [Step 2] Price fetch
+    │   └── (yfinance direct — no wrapper)
+    │
+    ├── [Step 2b] Tracking update
+    │   └── src/strategy_engine.py             update_highest_prices()
+    │   └── src/strategy_engine.py             update_high_water_mark()
+    │
+    ├── [Step 3] Exit check
+    │   └── src/strategy_engine.py             check_exits()  ← reads PARAMS[DEFAULT_VERSION]
+    │       └── src/strategy_v7_2.py           add_indicators_v7_2()
+    │
+    ├── [Step 3b] Power stock promotion
+    │   └── src/strategy_engine.py             promote_power_stocks()
+    │
+    ├── [Step 4] Universe scan
+    │   └── src/strategy_engine.py             scan_universe()  ← reads PARAMS[DEFAULT_VERSION]
+    │       └── src/strategy_v7_2.py           add_indicators_v7_2()
+    │       └── data/*.parquet                 26yr Tiingo history (2,147 tickers)
+    │
+    ├── [Step 4b] Regime check
+    │   └── src/strategy_engine.py             get_spy_regime()
+    │       └── data/SPY.parquet               SPY 26yr history
+    │
+    ├── [Step 5] Execute entries
+    │   └── src/strategy_engine.py             can_enter() + calc_position_size()
+    │   └── src/brokerage_interface.py         place_market_order()
+    │
+    ├── [Step 6] Order monitor
+    │   └── src/brokerage_interface.py         poll openTrades()
+    │
+    ├── [Step 7] Email summary
+    │   └── src/email_notifier.py              Gmail SMTP
+    │
+    └── [Step 8] Save state
+        └── data/portfolio.json                live portfolio state
+
+STRATEGY LOGIC (single source of truth)
+══════════════════════════════════════════════════════════════════════
+src/strategy_engine.py        *** CHANGE PARAMS HERE — all modes use this ***
+    └── src/strategy_v7_2.py  add_indicators_v7_2() — indicators shared by all versions
+
+SIMULATION MODE
+══════════════════════════════════════════════════════════════════════
+scripts/simulate_monday.py
+    └── src/strategy_engine.py    (same functions as live — full parity)
+    └── src/strategy_v7_2.py
+    └── data/*.parquet
+
+BACKTEST MODE
+══════════════════════════════════════════════════════════════════════
+scripts/backtest_v8_vs_v8_1.py       v8 vs v8.1 comparison (production proof)
+    └── src/strategy_v8.py           v8 backtest engine
+    └── src/strategy_v8_1.py         v8.1 backtest engine
+    └── src/strategy_v7_2.py         indicators
+    └── data/*.parquet
+
+scripts/backtest_v7_vs_v8.py         v7.2 vs v8 comparison (reference)
+    └── src/strategy_v8.py
+    └── src/strategy_v7_2.py
+
+scripts/full_universe_backtest.py    v7.2 standalone backtest (reference)
+    └── src/strategy_v7_2.py
+
+DATA MAINTENANCE (run manually as needed)
+══════════════════════════════════════════════════════════════════════
+scripts/fetch_deep_history.py    Download full 26yr Tiingo history for all tickers
+    └── src/smart_data_loader_factory.py   Tiingo/Yahoo loader
+    └── data/*.parquet                     Output
+
+scripts/update_data.py           Incremental daily data refresh
+    └── src/smart_data_loader_factory.py
+    └── data/*.parquet
+
+CONFIGURATION
+══════════════════════════════════════════════════════════════════════
+config/agents.json               Agent configuration (timeouts, retries, etc.)
+tickers.txt                      2,147 ticker universe
+.env                             API keys (TIINGO_API_KEY, Gmail credentials)
+data/portfolio.json              Live portfolio state (gitignored)
+data/SPY.parquet                 SPY regime data (gitignored)
+```
+
+---
+
+## File Audit: Orphaned / Unused Files
+
+The following files exist in `src/` but are **NOT imported by any active pipeline file**
+(`daily_trading_loop.py`, `simulate_monday.py`, backtest scripts, `functional_health_check.py`,
+or `main_agent_system.py`). They are candidates for deletion or archival.
+
+### Confirmed Orphans (safe to delete/archive)
+
+| File | Why unused |
+|------|-----------|
+| `src/config_manager.py` | Replaced by direct `.env` + `strategy_engine.py` |
+| `src/shields.py` | Power stock logic now lives in `strategy_engine.py` |
+| `src/strategy_factory.py` | Strategy selection hardcoded via `DEFAULT_VERSION` |
+| `src/sweet_spot_strategy.py` | Logic absorbed into `strategy_engine.py` |
+| `src/technical_utils.py` | Utility functions unused by active pipeline |
+| `src/system_monitor.py` | CPU/RAM monitor, not called in trading loop |
+| `src/log_sanitizer.py` | Not imported by any active pipeline file |
+| `src/yfinance_loader.py` | `daily_trading_loop.py` calls `yfinance` directly |
+| `src/orchestrator.py` | `main_agent_system.py` uses it but that's not the live pipeline |
+| `src/portfolio_synchronizer.py` | Sync logic handled directly in `daily_trading_loop.py` |
+| `src/market_microstructure/` | Spread monitor — not used in pipeline |
+| `src/messaging/` | Message bus — not used in active pipeline |
+| `src/workflows/` | Workflow manager — not used in active pipeline |
+| `src/patterns/` | Pattern library — not used in active pipeline |
+| `src/factories/` | Agent factory — only used by `main_agent_system.py` |
+| `src/interfaces/` | Abstract interfaces — only used by agent factory |
+| `src/utils/` | Concurrency/memory managers — not used in live pipeline |
+| `src/config/` (folder) | Config classes — superseded by `.env` + `strategy_engine.py` |
+| `scripts/brain_watcher.py` | Vector DB watcher — dev tool, not pipeline |
+
+### Used Only by `main_agent_system.py` (agent system entry point)
+
+`main_agent_system.py` is the 7-agent orchestrator — it wraps the live pipeline but is
+not the primary entry point (Task Scheduler calls `daily_trading_loop.py` directly).
+These files are used by it but not the direct pipeline:
+
+| File | Used by |
+|------|---------|
+| `src/orchestrator.py` | `main_agent_system.py` |
+| `src/factories/agent_factory.py` | `main_agent_system.py` |
+| `src/agents/*/agent.py` | `main_agent_system.py` + `functional_health_check.py` |
+
+> **Recommendation:** Ask Architect whether `main_agent_system.py` is still needed
+> or if `daily_trading_loop.py` is the sole entry point going forward.
