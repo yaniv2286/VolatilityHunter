@@ -1,6 +1,10 @@
 import pandas as pd
 import numpy as np
-from src.notifications import log_info, log_error, alert_signal
+import logging as _logging
+_strat_logger = _logging.getLogger('strategy_v7_2')
+def log_info(msg): _strat_logger.info(msg)
+def log_error(msg): _strat_logger.error(msg)
+def alert_signal(msg): _strat_logger.info(f"[SIGNAL] {msg}")
 
 # VolatilityHunter v7.2 Hybrid Strategy - Sweet Spot Blueprint
 # This is our most critical update to align with the Sweet Spot Blueprint
