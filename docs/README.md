@@ -1,7 +1,7 @@
 # VolatilityHunter
 
-**Version**: v10.0 Agent-Based Architecture | **Updated**: 2026-02-28 | **Health Check**: Exit Code 0
-**Capital**: \,000 | **Mode**: Paper (IBKR live-ready) | **Universe**: 2,147 tickers | **Data**: 26+ years parquet
+**Version**: v10.1 Agent-Based Architecture | **Updated**: 2026-02-28 | **Health Check**: Exit Code 0
+**Capital**: $100,000 | **Mode**: Paper (IBKR live-ready) | **Universe**: 2,147 tickers | **Data**: 26+ years parquet
 
 ---
 
@@ -12,7 +12,7 @@
 | Agent System (7 agents) | OPERATIONAL | Health check Exit Code 0 |
 | Daily Trading Loop | OPERATIONAL | scripts/daily_trading_loop.py |
 | IBKR Interface | READY | R3: threading bug fixed, port probe added |
-| IBC Auto-Login | IN PROGRESS | Zulu JRE 17 installed, StartGateway.bat fixed |
+| IBC Auto-Login | OPERATIONAL | IBC 3.23 + Zulu JRE 17 + pyautogui credential injection |
 | OrderMonitor | OPERATIONAL | R5: polls 10s, email alert 90s, auto-cancel 180s |
 | Email Notifications | OPERATIONAL | R7: Gmail SMTP 587 + STARTTLS verified |
 | Tiingo API Key | FIXED | R8: reads TIINGO_API_KEY from .env |
@@ -24,45 +24,24 @@
 
 ## Backtest Results (Full Universe, 2,147 Tickers)
 
-Run: 2026-02-28 | Engine: scripts/full_universe_backtest.py | Data: Tiingo parquet (2000-2026)
+Run: 2026-02-28 | Engine: scripts/backtest_v7_vs_v8.py | Data: Tiingo parquet (2000-2026)
 
-### 25-Year Compounding (2001-2026)
+### v7.2 vs v8 Side-by-Side (26 Years, Compounding)
 
-| Metric | Value |
-|--------|-------|
-| Initial Capital | \,000 |
-| Final Equity | \,124,530 |
-| Total Return | 1,024.5% |
-| **CAGR** | **10.1%** |
-| Max Drawdown | -48.6% |
-| Sharpe Ratio | 0.59 |
-| Win Rate | 49.4% |
-| Profit Factor | 1.25 |
-| Total Trades | 99,492 |
-| Avg Win | +6.5% |
-| Avg Loss | -5.1% |
+| Metric | v7.2 | **v8 (production)** | Delta |
+|--------|------|---------------------|-------|
+| **CAGR** | 10.1% | **16.2%** | +6.1% |
+| **5yr CAGR** | 23.2% | **28.5%** | +5.3% |
+| Max Drawdown | -48.6% | -51.8% | -3.3% |
+| Sharpe Ratio | 0.59 | **0.76** | +0.17 |
+| Win Rate | 49.4% | 44.3% | -5.1% |
+| Avg Win | +6.5% | **+15.6%** | +9.1% |
+| Avg Loss | -5.1% | -8.2% | wider stop |
+| Profit Factor | 1.25 | **1.51** | +0.26 |
+| Total Trades | 99,492 | 37,213 | -62% (momentum filter) |
+| Final $100k | $1.1M | **$4.4M** | +$3.3M |
 
-### 25-Year Fixed Capital (Realistic - same position sizing as live system)
-
-| Metric | Value |
-|--------|-------|
-| Final Equity | \,494 |
-| Total Return | 557.5% |
-| **CAGR** | **7.8%** |
-| Max Drawdown | -36.6% |
-| Sharpe Ratio | 0.75 |
-
-### 5-Year Fixed Capital (2021-2026, Recent Regime)
-
-| Metric | Value |
-|--------|-------|
-| Final Equity | \,703 |
-| Total Return | 176.7% |
-| **CAGR** | **22.8%** |
-| Max Drawdown | -22.2% |
-| Sharpe Ratio | 1.09 |
-| Win Rate | 46.7% |
-| Total Trades | 27,779 |
+**v8 is in production.** v7.2 preserved in src/strategy_v7_2.py for reference.
 
 ### Top 5 Trades (All Time)
 
@@ -75,9 +54,8 @@ Run: 2026-02-28 | Engine: scripts/full_universe_backtest.py | Data: Tiingo parqu
 | RGTI | 2024-11-22 | 2024-12-13 | +311% |
 
 ### Notes on Drawdown
-- The 25-yr compounding drawdown (-48.6%) is a measurement artifact of compounding capital
-- The live system uses **fixed 20% of base \** per position (not compounding)
-- Fixed 5-yr max drawdown is -22.2% which is within the <25% target
+- The 26-yr compounding drawdown (-51.8%) is a measurement artifact of compounding capital
+- The live system uses fixed 20% of equity per position with drawdown scaling
 - Drawdown circuit breaker active: -10% DD -> 50% position size, -20% DD -> 25% size
 
 ---
@@ -101,7 +79,7 @@ main_agent_system.py
 | Agent | Role | Key Files |
 |-------|------|-----------|
 | Data | Load parquet history, append Yahoo Finance today candle | src/smart_data_loader_factory.py |
-| Strategy | Run Sweet Spot v7.2 on fresh data, score signals | src/strategy_v7_2.py |
+| Strategy | Run Sweet Spot v8 on fresh data, score signals | src/strategy_v8.py, src/strategy_engine.py |
 | Execution | Place market orders via IBKR ib_insync | src/brokerage_interface.py |
 | Sync | Reconcile portfolio.json vs IBKR live positions | src/portfolio_synchronizer.py |
 | Notification | Gmail SMTP email reports and alerts | src/email_notifier.py |
@@ -112,46 +90,54 @@ main_agent_system.py
 
 ## Daily Autonomous Pipeline
 
-`
-09:45 ET  Windows Task Scheduler fires run_trading.bat
+```
+17:06 IST  Windows Task Scheduler fires run_trading.bat
            |
            v
      functional_health_check.py     Exit Code 0 required to proceed
            |
            v
      daily_trading_loop.py
-       Step 1: Reconcile portfolio.json <-> IBKR live positions
-       Step 2: Batch fetch today prices via Yahoo Finance (all 2,147 tickers)
-       Step 3: Check exits (hard stop -5%, SMA200 break, overbought rollover)
-       Step 4: Scan universe -> run strategy -> rank by score
-       Step 5: Execute entries (20% sizing, max 10 positions)
-       Step 6: OrderMonitor - poll fills, alert at 90s, cancel at 180s
-       Step 7: Email summary -> lugassy.ai@gmail.com
-       Step 8: Save portfolio.json
-`
+       Step 1:  Reconcile portfolio.json <-> IBKR live positions
+       Step 2:  Batch fetch today prices via Yahoo Finance (all 2,147 tickers)
+       Step 2b: Update highest_price + high-water mark for all open positions
+       Step 3:  Check exits (hard stop -8%, SMA200 break, overbought K>78)
+       Step 3b: Power stock promotion check (K>80 + all SMAs + vol surge x2 days)
+       Step 4:  Scan universe -> 20-day momentum filter -> rank by score
+       Step 5:  Execute entries (20% sizing, drawdown-scaled, max 10 positions)
+       Step 6:  OrderMonitor - poll fills, alert at 90s, cancel at 180s
+       Step 7:  Email summary -> lugassy.ai@gmail.com
+       Step 8:  Save portfolio.json
+```
 
 ---
 
-## Trading Strategy: Sweet Spot v7.2
+## Trading Strategy: Sweet Spot v8 (Production)
 
 ### Entry Conditions (ALL must be true)
 - Stochastic K between 32 and 80 (sweet spot zone)
 - Price above 200-day SMA (uptrend filter)
 - Volume >= 1.5x 30-day average (surge confirmation)
-- 252-day annual return >= 15% (momentum filter)
-- Price x Volume >= \,000 (liquidity filter)
-- Price >= \ (no penny stocks)
+- 252-day annual return >= 15% (quality filter)
+- 20-day return >= 5% (momentum acceleration filter — v8 new)
+- Price x Volume >= $500,000 (liquidity filter)
+- Price >= $5 (no penny stocks)
 
 ### Exit Conditions (ANY triggers exit)
-- Hard stop: P&L <= -5%
-- Overbought rollover: K < D and K > 80
+- Hard stop: P&L <= -8% (v8: was -5%)
+- Overbought rollover: K < D and K > 78 (v8: was K > 70)
 - SMA200 break: price < 200-day SMA
-- Power stocks: SMA25 break or 3x ATR trailing stop
+- Power stocks: SMA25 break or 3x ATR trailing stop from highest_price
 
 ### Position Sizing (Ironclad Guardrails)
-- 20% of total equity per position (fixed)
+- 20% of total equity per position
 - Max 10 simultaneous positions
 - Drawdown circuit breaker: -10% equity -> 50% size, -20% -> 25% size
+
+### Power Stock Promotion
+- Promoted when K > 80 + above all SMAs + volume surge for 2 consecutive days
+- Standard exit rules replaced with shield mode (SMA25 + ATR trailing stop)
+- Checked daily as Step 3b in the trading loop
 
 ### Signal Ranking Score
 `python
@@ -171,16 +157,21 @@ Root
 src/
   agents/                       7 agent implementations
   brokerage_interface.py        IBKR ib_insync interface (R3 fixed)
-  strategy_v7_2.py              Core strategy logic
+  strategy_v7_2.py              Core indicators + Sweet Spot logic
+  strategy_v8.py                v8 optimized ticker backtest engine
+  strategy_engine.py            Single source of truth (all 4 modes)
   smart_data_loader_factory.py  Tiingo/Yahoo smart loader
   config.py                     Config (R8: TIINGO_API_KEY)
   email_notifier.py             Gmail SMTP
 
 scripts/
-  daily_trading_loop.py         Daily autonomous pipeline (R5 OrderMonitor)
-  full_universe_backtest.py     2,147 ticker vectorized backtester
+  daily_trading_loop.py         Daily autonomous pipeline v8 (R5 OrderMonitor)
+  full_universe_backtest.py     v7.2 full universe backtester
+  backtest_v7_vs_v8.py          v7 vs v8 side-by-side comparison
+  simulate_monday.py            Full pipeline dry-run on historical date
   functional_health_check.py    System health gate
   auto_tws_manager.py           IBC gateway manager (R6: process watchdog)
+  ibc_login_helper.py           pyautogui credential injector
   setup_ibc.py                  IBC + Zulu JRE 17 auto-install
   DAILY_ROUTINE/run_trading.bat Windows Task Scheduler entry point
 
@@ -226,13 +217,13 @@ C:\IBC\StartGateway.bat
 python scripts/auto_tws_manager.py
 `
 
-IBC config: C:\IBC\config.ini  
-Gateway log: logs/ibc_gateway.log  
-Java used: C:\Users\Yaniv\zulu-jre17\bin\javaw.exe (Java 17)
+IBC config: C:\IBC\config.ini
+Gateway log: logs/ibc_gateway.log
+Java used: i4j bundled Zulu 17.0.16 JRE (includes JavaFX)
 
-**Current IBC status**: Gateway launches (IBC reads config, starts session) but has
-a Java reflection warning (InaccessibleObjectException on javax.swing) that is
-non-fatal in most IB Gateway versions. Monitoring for full port 7497 open.
+**Current IBC status**: OPERATIONAL. Gateway launches unattended via IBC 3.23 + Zulu 17.
+Credentials injected by ibc_login_helper.py via pyautogui. Paper mode enforced in both
+jts.ini (tradingMode=p) and config.ini (TradingMode=paper). Port 7497 monitored every 5 min.
 
 ---
 
@@ -243,10 +234,12 @@ non-fatal in most IB Gateway versions. Monitoring for full port 7497 open.
 | R1 | Data->Strategy: parquet + today Yahoo candle | src/agents/strategy/agent.py |
 | R3 | IBKR threading bug: socket probe + direct connect | src/brokerage_interface.py |
 | R5 | OrderMonitor: poll/alert/cancel unfilled orders | scripts/daily_trading_loop.py |
+| R6 | IBC: Zulu JRE 17 + pyautogui credential injection | scripts/auto_tws_manager.py, scripts/ibc_login_helper.py |
 | R7 | Email: verified real smtplib.SMTP implementation | src/email_notifier.py |
-| R8 | Tiingo key: reads TIINGO_API_KEY env var | src/config.py, src/config/__init__.py |
+| R8 | Tiingo key: reads TIINGO_API_KEY env var | src/config.py |
 | R9 | Score ranking in daily scan | scripts/daily_trading_loop.py |
-| R6 | IBC Java: auto-discover + download Zulu JRE 17 | scripts/setup_ibc.py, scripts/auto_tws_manager.py |
+| R10 | Strategy v8: hard stop -8%, exit K>78, 20d momentum | src/strategy_v8.py, src/strategy_engine.py |
+| R11 | Pipeline parity: power promotion (Step 3b), highest_price tracking, drawdown scaling | scripts/daily_trading_loop.py, scripts/simulate_monday.py |
 
 ---
 
