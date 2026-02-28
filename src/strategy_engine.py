@@ -2,14 +2,18 @@
 strategy_engine.py
 ==================
 Single source of truth for all VolatilityHunter pipeline logic.
-Imported by: daily_trading_loop.py, simulate_monday.py, full_universe_backtest.py
+Imported by: daily_trading_loop.py, simulate_monday.py, full_universe_backtest.py,
+             strategy_v8_1.py (backtest), strategy_v8.py (backtest)
 
 All 4 modes (backtest, simulation, paper, live) use the same functions from here.
 No strategy logic lives in the caller scripts — only orchestration.
 
 Strategy versions:
-  V7  = original (HARD_STOP=5%, OVERBOUGHT_EXIT=70)
-  V8  = optimized (HARD_STOP=8%, OVERBOUGHT_EXIT=78, 20-day momentum, re-entry)
+  v7   = original  (HARD_STOP=5%, OVERBOUGHT_EXIT=70)
+  v8   = optimized (HARD_STOP=8%, OVERBOUGHT_EXIT=78, 20d momentum, re-entry)
+  v8.1 = production (v8 + regime filter + sector cap + time stop + vol sizing)
+
+CHANGE STRATEGY PARAMETERS HERE — all modes pick them up automatically.
 """
 
 import logging
@@ -34,24 +38,45 @@ STOCH_LOW         = 32.0
 STOCH_HIGH        = 80.0
 
 # ── Version-specific parameters ───────────────────────────────────────────────
+# !! THIS IS THE SINGLE SOURCE OF TRUTH !!
+# Change parameters here — backtest, simulation, paper, and live all read from PARAMS.
 PARAMS = {
     'v7': {
         'HARD_STOP_PCT':    0.05,
         'OVERBOUGHT_EXIT':  70.0,
-        'MOMENTUM_DAYS':    None,   # disabled
+        'MOMENTUM_DAYS':    None,
         'MOMENTUM_MIN':     None,
         'REENTRY':          False,
+        'TIME_STOP_DAYS':   None,   # disabled
+        'REGIME_MAX_POS':   None,   # disabled (always 10)
+        'SECTOR_MAX':       None,   # disabled
+        'VOL_SIZE':         False,
     },
     'v8': {
         'HARD_STOP_PCT':    0.08,
         'OVERBOUGHT_EXIT':  78.0,
-        'MOMENTUM_DAYS':    20,     # 20-day return filter
-        'MOMENTUM_MIN':     0.05,   # must be +5% over 20 days
-        'REENTRY':          True,   # re-enter if conditions re-qualify after exit
+        'MOMENTUM_DAYS':    20,
+        'MOMENTUM_MIN':     0.05,
+        'REENTRY':          True,
+        'TIME_STOP_DAYS':   None,
+        'REGIME_MAX_POS':   None,
+        'SECTOR_MAX':       None,
+        'VOL_SIZE':         False,
+    },
+    'v8.1': {
+        'HARD_STOP_PCT':    0.08,   # hard stop loss
+        'OVERBOUGHT_EXIT':  78.0,   # K > this triggers overbought rollover exit
+        'MOMENTUM_DAYS':    20,     # 20-day momentum lookback
+        'MOMENTUM_MIN':     0.05,   # minimum +5% over 20 days
+        'REENTRY':          True,   # re-enter same day after exit if signal holds
+        'TIME_STOP_DAYS':   10,     # exit losing position after N trading days
+        'REGIME_MAX_POS':   3,      # max positions when SPY < SMA200 (bear market)
+        'SECTOR_MAX':       3,      # max positions per sector simultaneously
+        'VOL_SIZE':         True,   # volatility-adjusted position sizing
     },
 }
 
-DEFAULT_VERSION = 'v7'
+DEFAULT_VERSION = 'v8.1'  # ← change this to switch all modes at once
 
 
 def get_params(version: str = DEFAULT_VERSION) -> dict:
@@ -206,20 +231,42 @@ def update_highest_prices(portfolio: dict, prices: Dict[str, float]) -> None:
             pos['highest_price'] = current
 
 
+# ── Sector helper ────────────────────────────────────────────────────────────
+
+def get_sector(ticker: str) -> str:
+    """Simple sector bucket by ticker initial. Replace with GICS CSV for production."""
+    buckets = {
+        'ABCDE': 'Technology', 'FGHIJ': 'Healthcare',
+        'KLMNO': 'Financials',  'PQRST': 'Energy',
+        'UVWXYZ': 'Industrials'
+    }
+    t = ticker[0].upper() if ticker else 'A'
+    for letters, sector in buckets.items():
+        if t in letters:
+            return sector
+    return 'Consumer'
+
+
 # ── Exit logic ────────────────────────────────────────────────────────────────
 
 def check_exits(portfolio: dict,
                 prices: Dict[str, float],
                 load_fn,
-                version: str = DEFAULT_VERSION) -> List[dict]:
+                version: str = DEFAULT_VERSION,
+                today=None) -> List[dict]:
     """
     Check all open positions for exit conditions.
     Returns list of exit dicts: {ticker, price, reason}
-    Shared by daily_loop, simulate_monday.
+    Shared by daily_loop, simulate_monday, and any future mode.
     """
     p = get_params(version)
     HARD_STOP_PCT   = p['HARD_STOP_PCT']
     OVERBOUGHT_EXIT = p['OVERBOUGHT_EXIT']
+    TIME_STOP_DAYS  = p['TIME_STOP_DAYS']
+
+    if today is None:
+        from datetime import date as _date
+        today = _date.today()
 
     exits = []
     for ticker, pos in portfolio.get('positions', {}).items():
@@ -237,6 +284,19 @@ def check_exits(portfolio: dict,
                           'reason': f'Hard stop ({pnl_pct:.1%})'})
             continue
 
+        # Time stop (v8.1)
+        if TIME_STOP_DAYS is not None:
+            try:
+                from datetime import date as _date, datetime as _dt
+                entry_dt = _dt.strptime(pos.get('entry_date', str(today)), '%Y-%m-%d').date()
+                days_held = (today - entry_dt).days
+                if days_held >= TIME_STOP_DAYS and pnl_pct < 0:
+                    exits.append({'ticker': ticker, 'price': price,
+                                  'reason': f'Time stop ({days_held}d, {pnl_pct:.1%})'})
+                    continue
+            except Exception:
+                pass
+
         df = load_fn(ticker)
         if df is None or df.empty:
             continue
@@ -251,18 +311,15 @@ def check_exits(portfolio: dict,
         is_power = pos.get('is_power_stock', False)
 
         if not is_power:
-            # Standard exit: overbought rollover OR SMA200 break
             if not np.isnan(k) and not np.isnan(d) and k < d and k > OVERBOUGHT_EXIT:
                 exits.append({'ticker': ticker, 'price': price,
-                              'reason': f'Overbought rollover K={k:.1f} (threshold={OVERBOUGHT_EXIT})'})
+                              'reason': f'Overbought rollover K={k:.1f} (>{OVERBOUGHT_EXIT})'})
             elif not np.isnan(sma200) and price < sma200:
                 exits.append({'ticker': ticker, 'price': price,
                               'reason': f'SMA200 break ({price:.2f} < {sma200:.2f})'})
         else:
-            # Power stock: SMA25 break or ATR trailing stop from highest_price
             highest = pos.get('highest_price', entry)
             trailing_stop = highest - 3.0 * atr if not np.isnan(atr) else np.nan
-
             if not np.isnan(sma25) and price < sma25:
                 exits.append({'ticker': ticker, 'price': price,
                               'reason': f'Power SMA25 break ({price:.2f} < {sma25:.2f})'})
@@ -384,22 +441,121 @@ def scan_universe(all_tickers: List[str],
     return candidates
 
 
+# ── SPY regime check ─────────────────────────────────────────────────────────
+
+def get_spy_regime(spy_parquet_path, cutoff_date=None) -> bool:
+    """
+    Returns True if SPY is above its 200-day SMA (bull regime).
+    cutoff_date: use for simulation/backtest (slice data up to that date).
+    Defaults to True (bull) if SPY data unavailable.
+    """
+    try:
+        import os
+        from pathlib import Path
+        path = Path(spy_parquet_path)
+        if not path.exists():
+            logger.warning(f"SPY parquet not found at {path} - defaulting BULL")
+            return True
+        spy_df = pd.read_parquet(path)
+        if 'date' in spy_df.columns:
+            spy_df = spy_df.set_index('date')
+        spy_df.index = pd.to_datetime(spy_df.index)
+        if hasattr(spy_df.index, 'tz') and spy_df.index.tz:
+            spy_df.index = spy_df.index.tz_localize(None)
+        if cutoff_date is not None:
+            spy_df = spy_df[spy_df.index <= pd.Timestamp(cutoff_date)]
+        spy_df = add_indicators_v7_2(spy_df)
+        close_col = get_col(spy_df, ['close', 'adjClose', 'Close'])
+        if close_col is None or 'sma_200' not in spy_df.columns or spy_df.empty:
+            return True
+        last = spy_df.iloc[-1]
+        is_bull = float(last[close_col]) > float(last['sma_200'])
+        logger.info(f"SPY regime: {'BULL' if is_bull else 'BEAR'} "
+                    f"(close={last[close_col]:.2f} vs SMA200={last['sma_200']:.2f})")
+        return is_bull
+    except Exception as e:
+        logger.warning(f"get_spy_regime failed: {e} - defaulting BULL")
+        logger.warning(traceback.format_exc())
+        return True
+
+
+def get_regime_max_positions(is_bull: bool, version: str = DEFAULT_VERSION) -> int:
+    """Returns max allowed positions given current market regime."""
+    p = get_params(version)
+    if not is_bull and p['REGIME_MAX_POS'] is not None:
+        return p['REGIME_MAX_POS']
+    return MAX_POSITIONS
+
+
 # ── Position sizing ───────────────────────────────────────────────────────────
 
 def calc_position_size(portfolio: dict,
                        price: float,
                        prices: Dict[str, float],
+                       ticker: str = '',
+                       load_fn=None,
                        version: str = DEFAULT_VERSION) -> Tuple[int, float]:
     """
-    Returns (shares, cost) using 20% of equity with drawdown scaling.
+    Returns (shares, cost) using 20% of equity with drawdown + vol scaling.
     Returns (0, 0) if position not viable.
     """
+    p = get_params(version)
     dd_scale     = get_dd_scale(portfolio)
     total_equity = _portfolio_equity(portfolio, prices)
-    alloc        = total_equity * POSITION_SIZE_PCT * dd_scale
-    shares       = int(alloc / price)
-    cost         = shares * price
+
+    # v8.1: volatility-adjusted sizing
+    vol_scale = 1.0
+    if p['VOL_SIZE'] and load_fn is not None and ticker:
+        try:
+            # median ATR% across open positions
+            atr_pcts = []
+            for t, pos in portfolio.get('positions', {}).items():
+                ep = pos.get('entry_price', 0)
+                if ep > 0 and pos.get('atr', 0) > 0:
+                    atr_pcts.append(pos['atr'] / ep)
+            median_atr = float(np.median(atr_pcts)) if atr_pcts else 0.02
+
+            df_c = load_fn(ticker)
+            if df_c is not None and not df_c.empty:
+                atr_val = float(df_c.iloc[-1].get('atr', 0))
+                if atr_val > 0 and price > 0 and median_atr > 0:
+                    atr_pct = atr_val / price
+                    vol_scale = min(1.0, median_atr / atr_pct)
+                    vol_scale = max(0.25, vol_scale)
+        except Exception as e:
+            logger.debug(f"vol_scale calc failed for {ticker}: {e}")
+
+    alloc  = total_equity * POSITION_SIZE_PCT * dd_scale * vol_scale
+    shares = int(alloc / price)
+    cost   = shares * price
 
     if shares <= 0 or cost > portfolio.get('cash', 0):
         return 0, 0.0
     return shares, cost
+
+
+def can_enter(ticker: str,
+              portfolio: dict,
+              is_bull: bool,
+              version: str = DEFAULT_VERSION) -> Tuple[bool, str]:
+    """
+    Gate check before entering a new position.
+    Returns (allowed, reason_if_blocked).
+    Checks: position limit (regime-aware) + sector cap.
+    """
+    p = get_params(version)
+    positions  = portfolio.get('positions', {})
+    open_count = len(positions)
+    max_pos    = get_regime_max_positions(is_bull, version)
+
+    if open_count >= max_pos:
+        regime_label = 'BULL' if is_bull else 'BEAR'
+        return False, f'Position limit reached ({open_count}/{max_pos} in {regime_label} regime)'
+
+    if p['SECTOR_MAX'] is not None:
+        sector = get_sector(ticker)
+        sector_count = sum(1 for t in positions if get_sector(t) == sector)
+        if sector_count >= p['SECTOR_MAX']:
+            return False, f"Sector cap: '{sector}' already at {sector_count}/{p['SECTOR_MAX']}"
+
+    return True, ''

@@ -40,6 +40,13 @@ from src.strategy_engine import (
     update_highest_prices,
     update_high_water_mark,
     get_dd_scale,
+    check_exits       as engine_check_exits,
+    scan_universe     as engine_scan_universe,
+    calc_position_size,
+    can_enter,
+    get_spy_regime,
+    get_params        as engine_get_params,
+    DEFAULT_VERSION,
 )
 
 # ── Config ─────────────────────────────────────────────────────────────────────
@@ -53,20 +60,9 @@ LOG_DIR.mkdir(exist_ok=True)
 INITIAL_CAPITAL   = 100_000.0
 MAX_POSITIONS     = 10
 POSITION_SIZE_PCT = 0.20
-HARD_STOP_PCT     = 0.08          # v8.1: was 0.05
 MIN_PRICE         = 5.0
-MIN_LIQUIDITY     = 500_000
-STOCH_LOW         = 32.0
-STOCH_HIGH        = 80.0
-OVERBOUGHT_EXIT   = 78.0          # v8.1: was 70.0
-CAGR_FILTER       = 0.15
-VOLUME_SURGE      = 1.5
-MOMENTUM_DAYS     = 20            # v8.1: 20-day momentum filter
-MOMENTUM_MIN      = 0.05          # v8.1: +5% over 20 days
-TIME_STOP_DAYS    = 10            # v8.1: exit losing trade after 10 days
-REGIME_MAX_POS    = 3             # v8.1: max positions in bear market
-SECTOR_MAX        = 3             # v8.1: max 3 per sector
-VOL_SIZE_ENABLED  = True          # v8.1: volatility-adjusted sizing
+# Strategy parameters are in src/strategy_engine.py PARAMS[DEFAULT_VERSION]
+# Change DEFAULT_VERSION there to switch all modes at once.
 SPY_PARQUET       = DATA_DIR / 'SPY.parquet'
 
 # ── Logging ────────────────────────────────────────────────────────────────────
@@ -162,164 +158,20 @@ def load_ticker_sim(ticker: str, sim_date: date,
         return None
 
 
-def _get_spy_regime_sim(sim_date: date) -> bool:
-    """Returns True if SPY is above its 200-day SMA on sim_date (bull regime)."""
-    try:
-        if not SPY_PARQUET.exists():
-            return True
-        spy_df = pd.read_parquet(SPY_PARQUET)
-        if 'date' in spy_df.columns:
-            spy_df = spy_df.set_index('date')
-        spy_df.index = pd.to_datetime(spy_df.index)
-        if hasattr(spy_df.index, 'tz') and spy_df.index.tz:
-            spy_df.index = spy_df.index.tz_localize(None)
-        spy_df = spy_df[spy_df.index <= pd.Timestamp(sim_date)]
-        spy_df = add_indicators_v7_2(spy_df)
-        close_col = next((c for c in ['close', 'adjClose', 'Close'] if c in spy_df.columns), None)
-        if close_col is None or 'sma_200' not in spy_df.columns:
-            return True
-        last = spy_df.iloc[-1]
-        is_bull = float(last[close_col]) > float(last['sma_200'])
-        logger.info(f"SPY regime on {sim_date}: {'BULL' if is_bull else 'BEAR'} "
-                    f"(close={last[close_col]:.2f} vs SMA200={last['sma_200']:.2f})")
-        return is_bull
-    except Exception as e:
-        logger.warning(f"SPY regime check failed: {e} - defaulting BULL")
-        return True
-
-
-def _get_sector_sim(ticker: str) -> str:
-    """Simple sector bucket by ticker initial."""
-    buckets = {
-        'ABCDE': 'Technology', 'FGHIJ': 'Healthcare',
-        'KLMNO': 'Financials',  'PQRST': 'Energy',
-        'UVWXYZ': 'Industrials'
-    }
-    t = ticker[0].upper() if ticker else 'A'
-    for letters, sector in buckets.items():
-        if t in letters:
-            return sector
-    return 'Consumer'
-
-
 def check_exits(portfolio: dict, prices: Dict[str, float],
                 sim_date: date) -> List[dict]:
-    exits = []
-    for ticker, pos in portfolio.get('positions', {}).items():
-        price = prices.get(ticker)
-        if not price:
-            logger.warning(f"No sim price for {ticker} - skipping exit check")
-            continue
-        entry = pos.get('entry_price', price)
-        pnl_pct = (price - entry) / entry if entry > 0 else 0
-
-        # Hard stop
-        if pnl_pct <= -HARD_STOP_PCT:
-            exits.append({'ticker': ticker, 'price': price,
-                          'reason': f'Hard stop ({pnl_pct:.1%})'})
-            continue
-
-        # v8.1 Time stop
-        try:
-            entry_dt = date.fromisoformat(pos.get('entry_date', str(sim_date)))
-            days_held = (sim_date - entry_dt).days
-            if days_held >= TIME_STOP_DAYS and pnl_pct < 0:
-                exits.append({'ticker': ticker, 'price': price,
-                              'reason': f'Time stop ({days_held}d, {pnl_pct:.1%})'})
-                continue
-        except Exception:
-            pass
-
-        df = load_ticker_sim(ticker, sim_date, prices)
-        if df is None or df.empty:
-            continue
-        last   = df.iloc[-1]
-        k      = last.get('stoch_k', np.nan)
-        d      = last.get('stoch_d', np.nan)
-        sma200 = last.get('sma_200', np.nan)
-        sma25  = last.get('sma_25',  np.nan)
-        atr    = last.get('atr',     np.nan)
-
-        is_power = pos.get('is_power_stock', False)
-        if not is_power:
-            if not np.isnan(k) and not np.isnan(d) and k < d and k > OVERBOUGHT_EXIT:
-                exits.append({'ticker': ticker, 'price': price,
-                              'reason': f'Overbought rollover K={k:.1f}'})
-            elif not np.isnan(sma200) and price < sma200:
-                exits.append({'ticker': ticker, 'price': price,
-                              'reason': f'SMA200 break'})
-        else:
-            highest = pos.get('highest_price', entry)
-            trailing_stop = highest - 3.0 * atr if not np.isnan(atr) else np.nan
-            if not np.isnan(sma25) and price < sma25:
-                exits.append({'ticker': ticker, 'price': price,
-                              'reason': f'Power SMA25 break ({price:.2f} < {sma25:.2f})'})
-            elif not np.isnan(trailing_stop) and price < trailing_stop:
-                exits.append({'ticker': ticker, 'price': price,
-                              'reason': f'Power ATR trailing stop (stop={trailing_stop:.2f})'})
-    return exits
+    def _load(ticker):
+        return load_ticker_sim(ticker, sim_date, prices)
+    return engine_check_exits(portfolio, prices, _load,
+                              version=DEFAULT_VERSION, today=sim_date)
 
 
 def scan_universe(all_tickers: List[str], open_tickers: set,
                   prices: Dict[str, float], sim_date: date) -> List[dict]:
-    candidates = []
-    scanned = 0
-    for ticker in all_tickers:
-        if ticker in open_tickers:
-            continue
-        price = prices.get(ticker)
-        if not price or price < MIN_PRICE:
-            continue
-
-        df = load_ticker_sim(ticker, sim_date, prices)
-        if df is None or df.empty:
-            continue
-
-        last   = df.iloc[-1]
-        k      = last.get('stoch_k',    np.nan)
-        d      = last.get('stoch_d',    np.nan)
-        sma200 = last.get('sma_200',    np.nan)
-        vsma   = last.get('volume_sma', np.nan)
-        volume = last.get('volume',     np.nan)
-
-        close_col = next((c for c in ['adjClose', 'Close', 'close'] if c in df.columns), None)
-        annual_ret = (df[close_col].iloc[-1] / df[close_col].iloc[-253]) - 1 \
-                     if close_col and len(df) >= 253 else np.nan
-
-        # v8.1: 20-day momentum filter
-        mom20 = np.nan
-        if close_col and len(df) >= MOMENTUM_DAYS + 1:
-            p20 = df[close_col].iloc[-(MOMENTUM_DAYS + 1)]
-            if p20 > 0:
-                mom20 = (df[close_col].iloc[-1] / p20) - 1
-
-        if any(np.isnan(v) for v in [k, d, sma200, vsma, volume, annual_ret, mom20]):
-            scanned += 1
-            continue
-
-        buy = (
-            STOCH_LOW <= k <= STOCH_HIGH and
-            price > sma200 and
-            volume >= vsma * VOLUME_SURGE and
-            annual_ret >= CAGR_FILTER and
-            mom20 >= MOMENTUM_MIN and
-            (price * volume) >= MIN_LIQUIDITY
-        )
-        if buy:
-            stoch_score = 1.0 - abs(k - 56) / 24
-            score = 0.6 * annual_ret + 0.4 * stoch_score
-            candidates.append({
-                'ticker': ticker, 'price': price, 'score': score,
-                'stoch_k': k, 'annual_return': annual_ret,
-                'reason': f'K={k:.1f} | 1yr={annual_ret:.1%} | 20d={mom20:.1%} | SMA200 ok | Vol surge'
-            })
-        scanned += 1
-        if scanned % 500 == 0:
-            logger.info(f"  Scanned {scanned}/{len(all_tickers)} | {len(candidates)} candidates")
-
-    candidates.sort(key=lambda x: x['score'], reverse=True)
-    logger.info(f"Scan complete: {len(candidates)} candidates from {scanned} tickers")
-    return candidates
+    def _load(ticker):
+        return load_ticker_sim(ticker, sim_date, prices)
+    return engine_scan_universe(all_tickers, open_tickers, prices,
+                                _load, version=DEFAULT_VERSION)
 
 
 def simulate_exits(exits: List[dict], portfolio: dict) -> List[dict]:
@@ -345,67 +197,42 @@ def simulate_exits(exits: List[dict], portfolio: dict) -> List[dict]:
 
 def simulate_entries(candidates: List[dict], portfolio: dict,
                      prices: Dict[str, float], sim_date: date) -> List[dict]:
-    executed  = []
-    positions = portfolio.get('positions', {})
-
-    # v8.1: regime-aware max positions
-    is_bull = _get_spy_regime_sim(sim_date)
-    max_pos = MAX_POSITIONS if is_bull else REGIME_MAX_POS
+    executed = []
+    p        = engine_get_params(DEFAULT_VERSION)
+    is_bull  = get_spy_regime(SPY_PARQUET, cutoff_date=sim_date)
     if not is_bull:
-        logger.warning(f"BEAR REGIME: max positions reduced to {REGIME_MAX_POS}")
+        logger.warning(f"BEAR REGIME on {sim_date}: max positions -> {p['REGIME_MAX_POS']}")
 
-    # v8.1: ATR median for vol-adjusted sizing
-    atr_pcts = []
-    for t, p in positions.items():
-        ep = p.get('entry_price', 0)
-        if ep > 0 and p.get('atr', 0) > 0:
-            atr_pcts.append(p['atr'] / ep)
-    median_atr = float(np.median(atr_pcts)) if atr_pcts else 0.02
+    def _load(ticker):
+        return load_ticker_sim(ticker, sim_date, prices)
 
     for cand in candidates:
-        if len(positions) >= max_pos:
-            break
         ticker = cand['ticker']
         price  = cand['price']
-        if ticker in positions:
+        if ticker in portfolio.get('positions', {}):
             continue
 
-        # v8.1: sector cap
-        sector = _get_sector_sim(ticker)
-        sector_count = sum(1 for t in positions if _get_sector_sim(t) == sector)
-        if sector_count >= SECTOR_MAX:
-            logger.info(f"Skipping {ticker}: sector '{sector}' at cap ({sector_count}/{SECTOR_MAX})")
+        allowed, reason = can_enter(ticker, portfolio, is_bull, DEFAULT_VERSION)
+        if not allowed:
+            logger.info(f"Skipping {ticker}: {reason}")
             continue
 
-        pos_value = sum(
-            p.get('shares', 0) * prices.get(t, p.get('entry_price', 0))
-            for t, p in positions.items()
-        )
-        total_equity = portfolio.get('cash', 0) + pos_value
-        dd_scale = get_dd_scale(portfolio)
-
-        # v8.1: vol-adjusted sizing
-        vol_scale = 1.0
-        if VOL_SIZE_ENABLED:
-            df_c = load_ticker_sim(ticker, sim_date, prices)
-            if df_c is not None and not df_c.empty:
-                atr_val = float(df_c.iloc[-1].get('atr', 0))
-                if atr_val > 0 and price > 0 and median_atr > 0:
-                    atr_pct_t = atr_val / price
-                    vol_scale = min(1.0, median_atr / atr_pct_t)
-                    vol_scale = max(0.25, vol_scale)
-
-        alloc  = total_equity * POSITION_SIZE_PCT * dd_scale * vol_scale
-        shares = int(alloc / price)
-        cost   = shares * price
+        shares, cost = calc_position_size(portfolio, price, prices,
+                                          ticker=ticker, load_fn=_load,
+                                          version=DEFAULT_VERSION)
         if shares <= 0 or cost > portfolio.get('cash', 0):
             continue
+
         portfolio['cash'] -= cost
-        positions[ticker] = {
-            'shares': shares, 'entry_price': price,
-            'entry_date': str(SIM_DATE), 'ticker': ticker,
-            'execution_mode': 'PAPER_SIM', 'is_power_stock': False,
-            'stop_loss_price': price * (1 - HARD_STOP_PCT)
+        portfolio.setdefault('positions', {})[ticker] = {
+            'shares':          shares,
+            'entry_price':     price,
+            'entry_date':      str(SIM_DATE),
+            'ticker':          ticker,
+            'execution_mode':  'PAPER_SIM',
+            'is_power_stock':  False,
+            'stop_loss_price': price * (1 - p['HARD_STOP_PCT']),
+            'highest_price':   price,
         }
         executed.append({'ticker': ticker, 'shares': shares, 'price': price,
                          'cost': cost, 'reason': cand['reason']})
