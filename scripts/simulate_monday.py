@@ -35,6 +35,7 @@ sys.path.insert(0, str(ROOT))
 load_dotenv(ROOT / '.env')
 
 from src.strategy_v7_2 import add_indicators_v7_2
+from src.email_notifier import EmailNotifier
 from src.strategy_engine import (
     promote_power_stocks,
     update_highest_prices,
@@ -240,6 +241,76 @@ def simulate_entries(candidates: List[dict], portfolio: dict,
     return executed
 
 
+# ── Step 6: Email summary ─────────────────────────────────────────────────────
+
+def send_summary(portfolio: dict, exits: List[dict], entries: List[dict],
+                 candidates: List[dict], sim_date: date, total_equity: float):
+    try:
+        log_file = LOG_DIR / f'simulate_monday_{sim_date}.log'
+
+        total_value = portfolio.get('cash', 0) + sum(
+            p.get('shares', 0) * p.get('entry_price', 0)
+            for p in portfolio.get('positions', {}).values()
+        )
+
+        lines = [
+            f"VolatilityHunter SIMULATION Report - {sim_date}",
+            f"Mode: PAPER_SIM (portfolio.json NOT modified)",
+            f"",
+            f"ACCOUNT SUMMARY (simulated)",
+            f"  Starting equity : ${total_equity:>12,.2f}",
+            f"  Cash            : ${portfolio.get('cash', 0):>12,.2f}",
+            f"  Open positions  : {len(portfolio.get('positions', {})):>12}",
+            f"  Final equity    : ${total_value:>12,.2f}",
+            f"  Delta           : ${total_value - total_equity:>+12,.2f}",
+            f"",
+            f"TODAY'S ACTIVITY",
+            f"  Exits triggered : {len(exits)}",
+            f"  Entries executed: {len(entries)}",
+            f"",
+        ]
+
+        if exits:
+            lines.append("EXITS:")
+            for e in exits:
+                lines.append(f"  SELL {e['ticker']:8s} {e.get('shares',0):4d} @ ${e.get('price',0):.2f} "
+                              f"P&L={e.get('pnl_pct',0):+.1f}% | {e.get('reason','')}")
+            lines.append("")
+
+        if entries:
+            lines.append("ENTRIES:")
+            for e in entries:
+                lines.append(f"  BUY  {e['ticker']:8s} {e.get('shares',0):4d} @ ${e.get('price',0):.2f} "
+                              f"= ${e.get('cost',0):,.2f} | {e.get('reason','')[:60]}")
+            lines.append("")
+
+        lines.append("OPEN POSITIONS:")
+        for ticker, pos in portfolio.get('positions', {}).items():
+            lines.append(f"  {ticker:8s} {pos.get('shares',0):4d} shares  "
+                         f"entry=${pos.get('entry_price',0):.2f}  "
+                         f"stop=${pos.get('stop_loss_price',0):.2f}")
+        lines.append("")
+
+        if candidates:
+            lines.append("TOP 10 BUY CANDIDATES (not all executed):")
+            for c in candidates[:10]:
+                lines.append(f"  {c['ticker']:6s} | score={c['score']:.3f} | ${c['price']:.2f} | {c['reason']}")
+
+        body = "\n".join(lines)
+        subject = f"VH SIM {sim_date} | {len(exits)} exits {len(entries)} entries | ${total_value:,.0f}"
+
+        notifier = EmailNotifier()
+        attachment = str(log_file) if log_file.exists() else None
+        if notifier.send_email(subject, body, attachment_path=attachment):
+            logger.info("Simulation summary email sent.")
+        else:
+            logger.warning("Email send failed - check EmailNotifier config.")
+
+    except Exception as e:
+        logger.error(f"send_summary error: {e}")
+        logger.error(traceback.format_exc())
+
+
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 def main():
@@ -333,6 +404,11 @@ def main():
     logger.info("=" * 65)
     logger.info("SIMULATION COMPLETE — portfolio.json was NOT modified")
     logger.info("=" * 65)
+
+    # Step 6: Email summary with log attached
+    logger.info("--- Step 6: Sending simulation summary email ---")
+    send_summary(portfolio, exit_trades, entries, candidates, SIM_DATE, total_equity)
+
     return 0
 
 
