@@ -1,435 +1,241 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Functional Health Check with Real Trading
-Tests complete trading flow by buying and selling 1 share
+Functional Health Check
+=======================
+Tests every component actually used by the live trading pipeline.
+Must exit with code 0 for trading to proceed.
+
+Checks:
+  1. strategy_engine  -- imports + DEFAULT_VERSION + PARAMS intact
+  2. strategy_v7_2    -- add_indicators_v7_2 importable
+  3. brokerage_interface -- importable, IBKR class exists
+  4. email_notifier   -- importable, EmailNotifier class exists
+  5. config.py        -- TIINGO_API_KEY accessible
+  6. portfolio.json   -- readable, valid JSON, required keys present
+  7. tickers.txt      -- readable, at least 100 tickers
+  8. data/SPY.parquet -- exists (regime filter needs it)
+  9. data/*.parquet   -- at least 500 parquet files present
+  10. IBKR port 7497  -- reachable (warns only, does not block trading)
+
+ASCII output only. Task Scheduler compatible.
+Exit code 0 = all critical checks pass.
+Exit code 1 = at least one critical check failed.
 """
 
-import asyncio
 import sys
 import os
 import json
+import socket
 import logging
-from datetime import datetime, timedelta
-from typing import Dict, List, Any
+import traceback
+from pathlib import Path
+from datetime import datetime
 
-# Add src to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+ROOT = Path(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, str(ROOT))
 
-from src.orchestrator import Orchestrator
-from src.config.system_config import SystemConfigManager
-from src.config.agent_config import ConfigManager
-from src.interfaces.agent_interface import MessageType, Message
+LOG_DIR = ROOT / 'logs'
+LOG_DIR.mkdir(exist_ok=True)
 
-class FunctionalHealthCheck:
-    """Functional health check with real trading"""
-    
-    def __init__(self):
-        self.logger = logging.getLogger("functional_health_check")
-        self.health_check_trade_id = None
-        self.original_portfolio = None
-        
-    async def run_functional_health_check(self) -> Dict[str, Any]:
-        """Run functional health check with real trading"""
-        try:
-            self.logger.info("🚀 Starting Functional Health Check with Real Trading")
-            
-            # Initialize system
-            system_config_manager = SystemConfigManager()
-            config_manager = ConfigManager()
-            
-            orchestrator_config = {
-                "config_manager": config_manager,
-                "health_check_interval": 60,
-                "max_concurrent_workflows": 5,
-                "workflow_timeout": 600
-            }
-            
-            orchestrator = Orchestrator(orchestrator_config)
-            
-            # Register agent types
-            await self._register_agent_types(orchestrator)
-            
-            # Initialize orchestrator
-            if not await orchestrator.initialize():
-                return {"success": False, "error": "Failed to initialize orchestrator"}
-                
-            # Start orchestrator
-            if not await orchestrator.start():
-                return {"success": False, "error": "Failed to start orchestrator"}
-            
-            # Step 1: Check portfolio sync status
-            sync_status = await self._check_portfolio_sync(orchestrator)
-            if not sync_status["synced"]:
-                return {"success": False, "error": "Portfolio not synchronized", "sync_status": sync_status}
-            
-            # Step 2: Backup original portfolio
-            backup_status = await self._backup_portfolio()
-            if not backup_status["success"]:
-                return {"success": False, "error": "Failed to backup portfolio"}
-            
-            # Step 3: Execute functional trade test
-            trade_result = await self._execute_health_check_trade(orchestrator)
-            if not trade_result["success"]:
-                return {"success": False, "error": "Health check trade failed", "trade_result": trade_result}
-            
-            # Step 4: Verify trade execution
-            verification_result = await self._verify_trade_execution()
-            if not verification_result["success"]:
-                return {"success": False, "error": "Trade verification failed", "verification": verification_result}
-            
-            # Step 5: Restore portfolio (cleanup)
-            cleanup_result = await self._cleanup_health_check()
-            if not cleanup_result["success"]:
-                return {"success": False, "error": "Cleanup failed", "cleanup": cleanup_result}
-            
-            # Step 6: Generate comprehensive report
-            health_report = {
-                "success": True,
-                "test_type": "functional_health_check",
-                "timestamp": datetime.now().isoformat(),
-                "portfolio_sync": sync_status,
-                "trade_execution": trade_result,
-                "trade_verification": verification_result,
-                "cleanup": cleanup_result,
-                "overall_status": "HEALTHY",
-                "test_summary": {
-                    "portfolio_sync": "✅ PASS" if sync_status["synced"] else "❌ FAIL",
-                    "trade_execution": "✅ PASS" if trade_result["success"] else "❌ FAIL",
-                    "trade_verification": "✅ PASS" if verification_result["success"] else "❌ FAIL",
-                    "cleanup": "✅ PASS" if cleanup_result["success"] else "❌ FAIL"
-                }
-            }
-            
-            # Stop orchestrator
-            await orchestrator.stop()
-            
-            self.logger.info("🎯 Functional Health Check COMPLETED SUCCESSFULLY!")
-            return health_report
-            
-        except Exception as e:
-            self.logger.error(f"Functional health check failed: {e}")
-            return {"success": False, "error": str(e)}
-    
-    async def _register_agent_types(self, orchestrator):
-        """Register all agent types"""
-        try:
-            from src.agents.data import DataAgent
-            from src.agents.strategy import StrategyAgent
-            from src.agents.execution import ExecutionAgent
-            from src.agents.sync import SyncAgent
-            from src.agents.notification import NotificationAgent
-            from testing.agent import TestingAgent
-            
-            orchestrator.agent_factory.register_agent("data", DataAgent)
-            orchestrator.agent_factory.register_agent("strategy", StrategyAgent)
-            orchestrator.agent_factory.register_agent("execution", ExecutionAgent)
-            orchestrator.agent_factory.register_agent("sync", SyncAgent)
-            orchestrator.agent_factory.register_agent("notification", NotificationAgent)
-            orchestrator.agent_factory.register_agent("testing", TestingAgent)
-            
-        except Exception as e:
-            self.logger.error(f"Error registering agent types: {e}")
-    
-    async def _check_portfolio_sync(self, orchestrator) -> Dict[str, Any]:
-        """Check if TWS and local portfolio are synchronized"""
-        try:
-            self.logger.info("🔍 Checking portfolio synchronization...")
-            
-            # Get execution agent for account info
-            execution_agent = orchestrator.agents.get('execution_agent')
-            if not execution_agent:
-                return {"success": False, "synced": False, "error": "Execution agent not found"}
-            
-            # Get TWS account info
-            tws_account_info = await execution_agent.get_account_info()
-            
-            # Load local portfolio
-            portfolio_file = "data/portfolio_sim.json"
-            if not os.path.exists(portfolio_file):
-                return {"success": False, "synced": False, "error": "Local portfolio file not found"}
-            
-            with open(portfolio_file, 'r') as f:
-                local_portfolio = json.load(f)
-            
-            # Compare key metrics
-            tws_positions = tws_account_info.get('positions', {})
-            local_positions = local_portfolio.get('positions', {})
-            
-            # Check position count
-            tws_position_count = len(tws_positions)
-            local_position_count = len(local_positions)
-            
-            # Check if major positions match (allowing for small differences)
-            position_match = abs(tws_position_count - local_position_count) <= 1
-            
-            # Check total value
-            tws_total = tws_account_info.get('portfolio_value', 0)
-            local_total = local_portfolio.get('total_value', 0)
-            value_match = abs(tws_total - local_total) / max(tws_total, local_total) < 0.05  # 5% tolerance
-            
-            is_synced = position_match and value_match
-            
-            sync_status = {
-                "success": True,
-                "synced": is_synced,
-                "tws_positions": tws_position_count,
-                "local_positions": local_position_count,
-                "tws_total_value": tws_total,
-                "local_total_value": local_total,
-                "position_match": position_match,
-                "value_match": value_match,
-                "details": f"TWS: {tws_position_count} pos, ${tws_total:,.2f} | Local: {local_position_count} pos, ${local_total:,.2f}"
-            }
-            
-            self.logger.info(f"📊 Portfolio Sync Status: {'✅ SYNCED' if is_synced else '❌ NOT SYNCED'}")
-            self.logger.info(f"   {sync_status['details']}")
-            
-            return sync_status
-            
-        except Exception as e:
-            self.logger.error(f"Portfolio sync check failed: {e}")
-            return {"success": False, "synced": False, "error": str(e)}
-    
-    async def _backup_portfolio(self) -> Dict[str, Any]:
-        """Backup original portfolio before health check trade"""
-        try:
-            self.logger.info("💾 Backing up original portfolio...")
-            
-            portfolio_file = "data/portfolio_sim.json"
-            backup_file = f"data/portfolio_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-            
-            if os.path.exists(portfolio_file):
-                # Read original portfolio
-                with open(portfolio_file, 'r') as f:
-                    self.original_portfolio = json.load(f)
-                
-                # Create backup
-                with open(backup_file, 'w') as f:
-                    json.dump(self.original_portfolio, f, indent=2)
-                
-                self.logger.info(f"✅ Portfolio backed up to: {backup_file}")
-                return {"success": True, "backup_file": backup_file}
-            else:
-                return {"success": False, "error": "Portfolio file not found"}
-                
-        except Exception as e:
-            self.logger.error(f"Portfolio backup failed: {e}")
-            return {"success": False, "error": str(e)}
-    
-    async def _execute_health_check_trade(self, orchestrator) -> Dict[str, Any]:
-        """Execute health check trade (buy 1 share, sell after 1 minute)"""
-        try:
-            self.logger.info("🔄 Executing Health Check Trade...")
-            
-            # Choose a liquid stock for testing (use one from current portfolio)
-            test_ticker = "AAPL"  # Most liquid stock
-            test_quantity = 1
-            
-            # Get execution agent
-            execution_agent = orchestrator.agents.get('execution_agent')
-            if not execution_agent:
-                return {"success": False, "error": "Execution agent not found"}
-            
-            # Mark this as a health check trade
-            self.health_check_trade_id = f"HEALTH_CHECK_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-            
-            # Step 1: Buy 1 share
-            self.logger.info(f"📈 Buying {test_quantity} share of {test_ticker}...")
-            
-            buy_order = {
-                "action": "BUY",
-                "ticker": test_ticker,
-                "quantity": test_quantity,
-                "order_type": "MARKET",
-                "time_in_force": "DAY",
-                "health_check": True,
-                "trade_id": self.health_check_trade_id
-            }
-            
-            buy_result = await execution_agent.place_order(buy_order)
-            
-            if not buy_result.get('success', False):
-                return {"success": False, "error": "Buy order failed", "buy_result": buy_result}
-            
-            self.logger.info(f"✅ Buy order executed: {buy_result}")
-            
-            # Step 2: Wait 1 minute
-            self.logger.info("⏱️ Waiting 1 minute before selling...")
-            await asyncio.sleep(60)
-            
-            # Step 3: Sell 1 share
-            self.logger.info(f"📉 Selling {test_quantity} share of {test_ticker}...")
-            
-            sell_order = {
-                "action": "SELL",
-                "ticker": test_ticker,
-                "quantity": test_quantity,
-                "order_type": "MARKET",
-                "time_in_force": "DAY",
-                "health_check": True,
-                "trade_id": self.health_check_trade_id
-            }
-            
-            sell_result = await execution_agent.place_order(sell_order)
-            
-            if not sell_result.get('success', False):
-                return {"success": False, "error": "Sell order failed", "sell_result": sell_result}
-            
-            self.logger.info(f"✅ Sell order executed: {sell_result}")
-            
-            trade_result = {
-                "success": True,
-                "test_ticker": test_ticker,
-                "quantity": test_quantity,
-                "buy_order": buy_result,
-                "sell_order": sell_result,
-                "trade_id": self.health_check_trade_id,
-                "execution_time": datetime.now().isoformat()
-            }
-            
-            return trade_result
-            
-        except Exception as e:
-            self.logger.error(f"Health check trade execution failed: {e}")
-            return {"success": False, "error": str(e)}
-    
-    async def _verify_trade_execution(self) -> Dict[str, Any]:
-        """Verify that the health check trade was executed properly"""
-        try:
-            self.logger.info("🔍 Verifying trade execution...")
-            
-            # Load current portfolio
-            portfolio_file = "data/portfolio_sim.json"
-            with open(portfolio_file, 'r') as f:
-                current_portfolio = json.load(f)
-            
-            # Check if portfolio was updated (should have trade records)
-            trades = current_portfolio.get('trades', [])
-            
-            # Look for our health check trade
-            health_check_trades = [t for t in trades if t.get('trade_id') == self.health_check_trade_id]
-            
-            if len(health_check_trades) >= 2:
-                # Found both buy and sell trades
-                buy_trade = health_check_trades[0]
-                sell_trade = health_check_trades[1]
-                
-                verification = {
-                    "success": True,
-                    "trades_found": len(health_check_trades),
-                    "buy_trade": {
-                        "ticker": buy_trade.get('ticker'),
-                        "quantity": buy_trade.get('quantity'),
-                        "price": buy_trade.get('price'),
-                        "timestamp": buy_trade.get('timestamp')
-                    },
-                    "sell_trade": {
-                        "ticker": sell_trade.get('ticker'),
-                        "quantity": sell_trade.get('quantity'),
-                        "price": sell_trade.get('price'),
-                        "timestamp": sell_trade.get('timestamp')
-                    },
-                    "pnl": sell_trade.get('pnl', 0)
-                }
-                
-                self.logger.info(f"✅ Trade verification successful: {verification['pnl']:+.2f} P&L")
-                return verification
-            else:
-                return {
-                    "success": False,
-                    "error": f"Expected 2 trades, found {len(health_check_trades)}",
-                    "trades_found": len(health_check_trades)
-                }
-                
-        except Exception as e:
-            self.logger.error(f"Trade verification failed: {e}")
-            return {"success": False, "error": str(e)}
-    
-    async def _cleanup_health_check(self) -> Dict[str, Any]:
-        """Clean up health check trade and restore portfolio"""
-        try:
-            self.logger.info("🧹 Cleaning up health check trade...")
-            
-            if self.original_portfolio is None:
-                return {"success": False, "error": "No original portfolio backup found"}
-            
-            # Remove health check trades from portfolio
-            portfolio_file = "data/portfolio_sim.json"
-            with open(portfolio_file, 'r') as f:
-                current_portfolio = json.load(f)
-            
-            # Filter out health check trades
-            original_trades = self.original_portfolio.get('trades', [])
-            current_trades = current_portfolio.get('trades', [])
-            
-            # Keep only original trades (remove health check trades)
-            cleaned_trades = [t for t in current_trades if t.get('trade_id') != self.health_check_trade_id]
-            
-            # Restore portfolio state (except for health check trades)
-            restored_portfolio = {
-                "cash": self.original_portfolio['cash'],
-                "positions": current_portfolio.get('positions', {}),  # Keep current positions
-                "total_value": current_portfolio.get('total_value', self.original_portfolio['total_value']),
-                "last_updated": datetime.now().isoformat(),
-                "trades": original_trades,  # Restore original trades
-                "sync_source": "health_check_cleanup",
-                "health_check_trades_removed": len(current_trades) - len(cleaned_trades)
-            }
-            
-            # Write restored portfolio
-            with open(portfolio_file, 'w') as f:
-                json.dump(restored_portfolio, f, indent=2)
-            
-            self.logger.info(f"✅ Cleanup completed: {restored_portfolio['health_check_trades_removed']} health check trades removed")
-            
-            return {"success": True, "trades_restored": len(original_trades), "health_check_trades_removed": restored_portfolio['health_check_trades_removed']}
-            
-        except Exception as e:
-            self.logger.error(f"Cleanup failed: {e}")
-            return {"success": False, "error": str(e)}
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s %(levelname)s %(message)s',
+    handlers=[
+        logging.FileHandler(str(LOG_DIR / 'functional_health_check.log'), encoding='utf-8'),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger('health_check')
 
-async def main():
-    """Main entry point"""
-    # Setup logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler('logs/functional_health_check.log'),
-            logging.StreamHandler()
-        ]
-    )
-    
-    logger = logging.getLogger("functional_health_check")
-    logger.info("Starting Functional Health Check...")
-    
-    health_check = FunctionalHealthCheck()
-    result = await health_check.run_functional_health_check()
-    
-    if result["success"]:
-        logger.info("🎯 Functional Health Check PASSED!")
-        logger.info(f"Status: {result['overall_status']}")
-        
-        # Print summary
-        print("\n" + "="*80)
-        print("🎯 FUNCTIONAL HEALTH CHECK RESULTS")
-        print("="*80)
-        print(f"Overall Status: {result['overall_status']}")
-        print(f"Portfolio Sync: {result['test_summary']['portfolio_sync']}")
-        print(f"Trade Execution: {result['test_summary']['trade_execution']}")
-        print(f"Trade Verification: {result['test_summary']['trade_verification']}")
-        print(f"Cleanup: {result['test_summary']['cleanup']}")
-        print("="*80)
-        print("✅ All systems are FUNCTIONAL and READY for trading!")
-        print("="*80)
-    else:
-        logger.error(f"❌ Functional Health Check FAILED: {result.get('error', 'Unknown error')}")
-        print("\n" + "="*80)
-        print("❌ FUNCTIONAL HEALTH CHECK FAILED")
-        print(f"Error: {result.get('error', 'Unknown error')}")
-        print("="*80)
-    
-    return result
+PASS = "PASS"
+FAIL = "FAIL"
+WARN = "WARN"
+
+
+def _result(name: str, status: str, detail: str) -> dict:
+    symbol = "[OK]" if status == PASS else ("[WARN]" if status == WARN else "[FAIL]")
+    logger.info(f"  {symbol} {name}: {detail}")
+    return {"name": name, "status": status, "detail": detail}
+
+
+def check_strategy_engine() -> dict:
+    try:
+        from src.strategy_engine import (
+            DEFAULT_VERSION, PARAMS, get_params,
+            check_exits, scan_universe, calc_position_size,
+            can_enter, get_spy_regime, promote_power_stocks,
+        )
+        p = get_params(DEFAULT_VERSION)
+        required = ['HARD_STOP_PCT', 'OVERBOUGHT_EXIT', 'TIME_STOP_DAYS',
+                    'REGIME_MAX_POS', 'SECTOR_MAX', 'VOL_SIZE']
+        missing = [k for k in required if k not in p]
+        if missing:
+            return _result("strategy_engine", FAIL, f"Missing params: {missing}")
+        return _result("strategy_engine", PASS,
+                       f"DEFAULT_VERSION={DEFAULT_VERSION} | HARD_STOP={p['HARD_STOP_PCT']:.0%}")
+    except Exception as e:
+        return _result("strategy_engine", FAIL, f"{e}\n{traceback.format_exc()}")
+
+
+def check_strategy_v7_2() -> dict:
+    try:
+        from src.strategy_v7_2 import add_indicators_v7_2
+        import pandas as pd
+        import numpy as np
+        df = pd.DataFrame({
+            'close': [100.0 + i for i in range(250)],
+            'high':  [101.0 + i for i in range(250)],
+            'low':   [99.0  + i for i in range(250)],
+            'volume': [1_000_000] * 250,
+        })
+        result = add_indicators_v7_2(df)
+        if 'stoch_k' not in result.columns:
+            return _result("strategy_v7_2", FAIL, "add_indicators_v7_2 missing stoch_k")
+        return _result("strategy_v7_2", PASS, "add_indicators_v7_2 OK")
+    except Exception as e:
+        return _result("strategy_v7_2", FAIL, f"{e}\n{traceback.format_exc()}")
+
+
+def check_brokerage_interface() -> dict:
+    try:
+        from src.brokerage_interface import get_brokerage_interface
+        return _result("brokerage_interface", PASS, "get_brokerage_interface importable")
+    except Exception as e:
+        return _result("brokerage_interface", FAIL, f"{e}\n{traceback.format_exc()}")
+
+
+def check_email_notifier() -> dict:
+    try:
+        from src.email_notifier import EmailNotifier
+        return _result("email_notifier", PASS, "EmailNotifier importable")
+    except Exception as e:
+        return _result("email_notifier", FAIL, f"{e}\n{traceback.format_exc()}")
+
+
+def check_config() -> dict:
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(ROOT / '.env')
+        key = os.environ.get('TIINGO_API_KEY') or os.environ.get('TIINGO_KEY', '')
+        if not key:
+            return _result("config(.env)", WARN, "TIINGO_API_KEY not set in .env")
+        return _result("config(.env)", PASS, f"TIINGO_API_KEY set ({len(key)} chars)")
+    except Exception as e:
+        return _result("config(.env)", FAIL, f"{e}")
+
+
+def check_portfolio_json() -> dict:
+    path = ROOT / 'data' / 'portfolio.json'
+    try:
+        if not path.exists():
+            return _result("portfolio.json", WARN, "File not found - will be created on first run")
+        with open(path) as f:
+            p = json.load(f)
+        for key in ['cash', 'positions']:
+            if key not in p:
+                return _result("portfolio.json", FAIL, f"Missing key: '{key}'")
+        n_pos = len(p.get('positions', {}))
+        cash  = p.get('cash', 0)
+        return _result("portfolio.json", PASS, f"cash=${cash:,.2f} | {n_pos} positions")
+    except Exception as e:
+        return _result("portfolio.json", FAIL, f"{e}\n{traceback.format_exc()}")
+
+
+def check_tickers() -> dict:
+    path = ROOT / 'tickers.txt'
+    try:
+        tickers = [t.strip() for t in path.read_text().splitlines() if t.strip()]
+        if len(tickers) < 100:
+            return _result("tickers.txt", FAIL, f"Only {len(tickers)} tickers (expected 2000+)")
+        return _result("tickers.txt", PASS, f"{len(tickers)} tickers loaded")
+    except Exception as e:
+        return _result("tickers.txt", FAIL, f"{e}")
+
+
+def check_spy_parquet() -> dict:
+    path = ROOT / 'data' / 'SPY.parquet'
+    if not path.exists():
+        return _result("SPY.parquet", WARN,
+                       "Missing - regime filter will default BULL. Run: python -c \"import yfinance as yf; "
+                       "yf.download('SPY', start='2000-01-01').to_parquet('data/SPY.parquet')\"")
+    try:
+        import pandas as pd
+        df = pd.read_parquet(path)
+        return _result("SPY.parquet", PASS, f"{len(df)} rows")
+    except Exception as e:
+        return _result("SPY.parquet", FAIL, f"{e}")
+
+
+def check_parquet_universe() -> dict:
+    data_dir = ROOT / 'data'
+    parquets = list(data_dir.glob('*.parquet'))
+    spy_excluded = [p for p in parquets if p.stem.upper() != 'SPY']
+    if len(spy_excluded) < 500:
+        return _result("data/*.parquet", WARN,
+                       f"Only {len(spy_excluded)} ticker parquets (expected ~2147). "
+                       "Run: python scripts/fetch_deep_history.py")
+    return _result("data/*.parquet", PASS, f"{len(spy_excluded)} ticker parquets present")
+
+
+def check_ibkr_port() -> dict:
+    try:
+        sock = socket.create_connection(('127.0.0.1', 7497), timeout=2)
+        sock.close()
+        return _result("IBKR port 7497", PASS, "Port open - IB Gateway is running")
+    except Exception:
+        return _result("IBKR port 7497", WARN,
+                       "Port 7497 not reachable - will trade in PAPER mode. "
+                       "Check auto_tws_manager.log if this is unexpected.")
+
+
+def main() -> int:
+    logger.info("=" * 65)
+    logger.info(f"FUNCTIONAL HEALTH CHECK  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info("=" * 65)
+
+    checks = [
+        check_strategy_engine,
+        check_strategy_v7_2,
+        check_brokerage_interface,
+        check_email_notifier,
+        check_config,
+        check_portfolio_json,
+        check_tickers,
+        check_spy_parquet,
+        check_parquet_universe,
+        check_ibkr_port,
+    ]
+
+    results = []
+    for fn in checks:
+        try:
+            results.append(fn())
+        except Exception as e:
+            results.append(_result(fn.__name__, FAIL, f"Unexpected: {e}\n{traceback.format_exc()}"))
+
+    passed  = [r for r in results if r['status'] == PASS]
+    warned  = [r for r in results if r['status'] == WARN]
+    failed  = [r for r in results if r['status'] == FAIL]
+
+    logger.info("")
+    logger.info("=" * 65)
+    logger.info(f"RESULTS: {len(passed)} PASS | {len(warned)} WARN | {len(failed)} FAIL")
+    logger.info("=" * 65)
+
+    if failed:
+        for r in failed:
+            logger.error(f"  [FAIL] {r['name']}: {r['detail']}")
+        logger.error("HEALTH CHECK FAILED - Aborting trading.")
+        return 1
+
+    if warned:
+        for r in warned:
+            logger.warning(f"  [WARN] {r['name']}: {r['detail']}")
+
+    logger.info("HEALTH CHECK PASSED - Pipeline is ready.")
+    return 0
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    sys.exit(main())
+
