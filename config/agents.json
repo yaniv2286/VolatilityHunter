@@ -25,7 +25,8 @@
     "timeout": 30.0,
     "max_concurrent_tasks": 5,
     "health_check_interval": 60.0,
-    "default_strategy": "sweet_spot_v7_2",
+    "default_strategy": "sweet_spot_v8_1",
+    "strategy_version": "v8.1",
     "shields_enabled": true,
     "max_signals_per_run": 100,
     "signal_timeout": 120.0,
@@ -35,7 +36,17 @@
       "rsi",
       "macd",
       "bollinger"
-    ]
+    ],
+    "v8_1_params": {
+      "hard_stop_pct": 0.08,
+      "overbought_exit": 78.0,
+      "momentum_days": 20,
+      "momentum_min": 0.05,
+      "time_stop_days": 10,
+      "regime_max_positions": 3,
+      "sector_max": 3,
+      "vol_size_enabled": true
+    }
   },
   "execution_agent": {
     "agent_id": "execution_agent",
