@@ -10,7 +10,7 @@
                     VOLATILITYHUNTER v10.0
                     AGENT-BASED ARCHITECTURE
 
-  Windows Task Scheduler (09:45 ET daily)
+  Windows Task Scheduler (17:06 IST / 10:06 AM ET daily)
               |
               v
     run_trading.bat
@@ -156,24 +156,33 @@ IBKR_PASSWORD    # IB Gateway password
 `
 auto_tws_manager.py (runs continuously, 5-min health loop)
     |
+    +-- _ensure_clean_jts_ini()
+    |     strip SSO tokens, force tradingMode=p, set Username in [Logon]
+    |
     +-- check: is port 7497 open?
     |
-    +-- NO -> start_gateway_via_ibc()
+    +-- NO (weekday) -> start_gateway_via_ibc()
     |           |
-    |           +-- find_java() -> Zulu JRE 17 (C:\Users\Yaniv\zulu-jre17)
+    |           +-- find_java() -> i4j bundled Zulu 17.0.16 JRE (has JavaFX)
     |           +-- build classpath: IBC.jar + ibgateway/jars/*.jar
-    |           +-- Popen: javaw -cp ... IbcGateway config.ini gateway_dir live
-    |           |
-    |           +-- FALLBACK: C:\IBC\StartGateway.bat
+    |           +-- Popen: javaw -cp ... IbcGateway config.ini gateway_dir paper
+    |           +-- spawn ibc_login_helper.py (pyautogui fills credentials)
+    |
+    +-- NO (weekend) -> log "API not required", skip restart
+    |
+    +-- closed < 5 min -> grace period (user may be browsing IBKR portal)
     |
     +-- YES -> is_api_ready() -> start_keep_alive()
 `
 
 IBC Config: C:\IBC\config.ini
-- Credentials from .env (auto-written by setup_ibc.py)
-- TradingMode passed as 3rd CLI arg (not in config.ini) [IBC 3.18+ requirement]
+- IbDir uses forward slashes, LF line endings (avoids Windows backslash parse bug)
+- Credentials NOT in config.ini (IBC 3.23 misidentifies field index in GW 10.37 UI)
+- Credentials injected by ibc_login_helper.py via pyautogui after window appears
+- TradingMode=paper + jts.ini tradingMode=p (paper mode enforced in both places)
 - IbAutoClosedown=no (gateway runs 24/7)
 - AcceptIncomingConnectionAction=accept (auto-accepts API connections)
+- 2FA disabled via IBKR SLS Opt Out for fully unattended login
 
 ---
 
