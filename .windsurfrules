@@ -1,5 +1,5 @@
 # VOLATILITYHUNTER OPERATIONAL PROTOCOL
-> **STATUS:** ACTIVE | **VERSION:** 1.2 | **LAST UPDATED:** 2026-02-27
+> **STATUS:** ACTIVE | **VERSION:** 1.3 | **LAST UPDATED:** 2026-02-28
 
 ## 0. GLOBAL DIRECTIVES
 - **DOCUMENTATION FIRST:** ALWAYS READ all files under `docs/` BEFORE performing any other action.
@@ -11,36 +11,39 @@
 ## 1. SYSTEM IDENTITY & ARCHITECTURE
 <system_identity>
 Role: Lead Engineer for VolatilityHunter ($100k deterministic quant fund).
-Core Architecture: Agent-Based System (7 Specialized Agents).
-Design Philosophy: SOLID principles, Factory Pattern (Data), Strategy Pattern (Agents).
-Current Version: v10.0 Agent-Based Architecture
+Core Architecture: Lean Pipeline (strategy_engine.py is the single source of truth).
+Design Philosophy: SOLID principles, Factory Pattern (Data), Strategy Pattern (versions).
+Current Version: v8.1 Strategy | Lean Pipeline Architecture
 </system_identity>
 
-### Agent Delegation Map (7 agents)
-- **Data changes** → `src/agents/data/`
-- **Strategy changes** → `src/agents/strategy/`
-- **Execution changes** → `src/agents/execution/`
-- **Sync changes** → `src/agents/sync/`
-- **Notification changes** → `src/agents/notification/`
-- **Testing changes** → `src/agents/testing/`
-- **Scheduler changes** → `src/agents/scheduler/`
+### Pipeline Delegation Map
+- **Strategy param changes** → `src/strategy_engine.py` (change `DEFAULT_VERSION` or `PARAMS`)
+- **Live/paper trading changes** → `scripts/daily_trading_loop.py`
+- **Simulation changes** → `scripts/simulate_monday.py`
+- **Backtest changes** → `scripts/backtest_v8_vs_v8_1.py`
+- **Health check changes** → `scripts/functional_health_check.py`
+- **IBC/gateway changes** → `scripts/auto_tws_manager.py`
+- **Email changes** → `src/email_notifier.py`
+- **Data loading changes** → `src/smart_data_loader_factory.py`
+
+> NOTE: `src/agents/` is ARCHIVED in `archive/src_orphans/`. Do NOT create or modify files there.
 
 ---
 
 ## 2. DEVELOPMENT RULES
 
-### Rule 2.1: THE AGENT-FIRST RULE
-ALL system changes MUST be implemented through the agent architecture. NEVER modify core logic directly; ALWAYS delegate to the appropriate agent.
+### Rule 2.1: THE ENGINE-FIRST RULE
+ALL strategy logic and parameter changes MUST go through `src/strategy_engine.py`. NEVER hardcode strategy params in `daily_trading_loop.py`, `simulate_monday.py`, or backtest scripts. Change `DEFAULT_VERSION` or `PARAMS` in one place — all 4 modes inherit it automatically.
 
 ### Rule 2.2: THE NO-GUESSING RULE
-Before modifying core logic, you MUST read the actual file content and all relevant imports. Never assume variable names or signatures. Check agent interfaces first.
+Before modifying any file, you MUST read the actual file content and all relevant imports. Never assume function signatures or variable names.
 
 ### Rule 2.3: THE ATOMIC STATE RULE
 If `portfolio.json` or state files are modified, you MUST ensure all active objects (PortfolioManager, Executor, etc.) reload state from disk immediately. No stale caches.
 
-### Rule 2.4: AGENT COMMUNICATION & CONFIG
-- All inter-component communication MUST use the message bus/orchestrator.
-- All agent configuration MUST go through `config/agents.json`. NEVER hardcode settings.
+### Rule 2.4: CONFIG RULE
+- All configuration MUST go through `config/agents.json` or `.env`. NEVER hardcode settings.
+- Strategy parameters are the exception: they live in `src/strategy_engine.py` PARAMS dict.
 
 ### Rule 2.5: IMPORT PATH SAFETY
 When moving files, ALWAYS update imports:
@@ -56,7 +59,7 @@ When moving files, ALWAYS update imports:
 - **MANDATORY REDIRECTS:** - Core Logic → `src/` | Agents → `src/agents/` | Utilities/Permanent Scripts → `scripts/`
   - Validation/Verification scripts → `scripts/` (per Rule 4.1)
   - Config → `config/` | Docs → `docs/` | Data → `data/` | Logs → `logs/`
-- **ROOT EXCEPTIONS:** Only `.env`, `.gitignore`, `.windsurfrules`, `README.md`,`pyproject.toml`,`requirements.txt`, `tickers.txt`, `main_agent_system.py` are permitted in root.
+- **ROOT EXCEPTIONS:** Only `.env`, `.gitignore`, `.windsurfrules`, `README.md`, `pyproject.toml`, `requirements.txt`, `tickers.txt` are permitted in root.
 
 ### Rule 3.2: THE TEMP SANDBOX
 - **TEMP WORKSPACE:** All temporary scripts, thought logs, or intermediate research `.md` files MUST be placed in the `temp/` folder.
@@ -82,8 +85,8 @@ CRITICAL: Exit Code 0 is the only acceptable result. Stop for any Traceback or P
 ### Rule 4.1: STANDALONE VALIDATION
 For every architectural change, create a `scripts/verify_X.py` script. You are forbidden from reporting success until this returns **Exit Code: 0**.
 
-### Rule 4.2: VH-BRAIN SYNC
-You MUST verify if `scripts/brain_watcher.py` is active when modifying `.py` or `.md` files to ensure the vector database stays synced.
+### Rule 4.2: HEALTH CHECK GATE
+After any change to core pipeline files, run `python scripts/functional_health_check.py`. Exit Code 0 is the only acceptable result.
 
 ---
 
@@ -98,18 +101,24 @@ You MUST verify if `scripts/brain_watcher.py` is active when modifying `.py` or 
 ---
 
 ## 6. CORE COMPONENTS LIST
-### Agent Architecture Components:
-1. `src/agents/data/agent.py` - Data Agent
-2. [src/agents/strategy/agent.py](cci:7://file:///d:/GitHub/VolatilityHunter/src/agents/strategy/agent.py:0:0-0:0) - Strategy Agent  
-3. `src/agents/execution/agent.py` - Execution Agent
-4. `src/agents/sync/agent.py` - Sync Agent
-5. `src/agents/notification/agent.py` - Notification Agent
-6. `src/agents/testing/agent.py` - Testing Agent
-7. `src/agents/scheduler/agent.py` - Scheduler Agent
+### Active Pipeline Components:
+1. `src/strategy_engine.py` - SINGLE SOURCE OF TRUTH (params + all strategy logic)
+2. `src/strategy_v7_2.py` - Indicators (add_indicators_v7_2, shared by all versions)
+3. `scripts/daily_trading_loop.py` - Autonomous daily pipeline (live/paper)
+4. `scripts/simulate_monday.py` - Full pipeline dry-run on historical date
+5. `scripts/functional_health_check.py` - 10-check health gate (Exit Code 0 required)
+6. `scripts/auto_tws_manager.py` - IBC gateway watchdog (24/7)
+7. `src/brokerage_interface.py` - IBKR ib_insync wrapper
+8. `src/email_notifier.py` - Gmail SMTP
+9. `src/smart_data_loader_factory.py` - Tiingo/Yahoo data loader
 
-### Legacy Support:
-8. `src/strategy_v7_2.py` - Core Strategy Logic
-9. `main_agent_system.py` - System Entry Point
+### Reference/Backtest (do not modify):
+10. `src/strategy_v8.py` - v8 backtest engine
+11. `src/strategy_v8_1.py` - v8.1 backtest engine
+12. `scripts/backtest_v8_vs_v8_1.py` - v8 vs v8.1 comparison
+
+### Archived (do not touch):
+- `archive/src_orphans/` - Former 7-agent layer + 35 orphaned files (archived 2026-02-28)
 ---
 
 ## 7. EMERGENCY & AUTHORITY
