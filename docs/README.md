@@ -14,11 +14,11 @@
 | IBKR Interface | READY | R3: threading bug fixed, port probe added |
 | IBC Auto-Login | OPERATIONAL | IBC 3.23 + Zulu JRE 17 + pyautogui credential injection |
 | OrderMonitor | OPERATIONAL | R5: polls 10s, email alert 90s, auto-cancel 180s |
-| Email Notifications | OPERATIONAL | R7: Gmail SMTP 587 + STARTTLS verified |
+| Email Notifications | OPERATIONAL | Gmail SMTP 587 + STARTTLS. EMAIL_RECIPIENTS in .env (config.json does not exist) |
 | Tiingo API Key | FIXED | R8: reads TIINGO_API_KEY from .env |
 | Score-Based Ranking | OPERATIONAL | R9: 60% annual_return + 40% stoch_position |
 | Data to Strategy Wire | OPERATIONAL | R1: parquet + today Yahoo candle per analysis run |
-| Windows Task Scheduler | CONFIGURED | scripts/DAILY_ROUTINE/run_trading.bat |
+| Windows Task Scheduler | CONFIGURED | 2 active tasks only: Auto_TWS_Manager (logon) + VolatilityHunter_Daily_Live (17:06 IST) |
 
 ---
 
@@ -192,7 +192,9 @@ config/
   agents.json                   Configuration (timeouts, retries, v8.1 params)
 
 data/
-  portfolio.json                Live portfolio state (gitignored)
+  portfolio.json                Live/paper state — daily_trading_loop.py (gitignored)
+  portfolio_sim.json            Simulation snapshot — simulate_monday.py (gitignored)
+  portfolio_backtest.json       Backtest scratch state (gitignored)
   SPY.parquet                   SPY regime history (gitignored)
   *.parquet                     Tiingo price history (gitignored)
 
@@ -215,7 +217,8 @@ archive/src_orphans/            Archived 2026-02-28 (not used by active pipeline
 `
 EMAIL_SENDER=lugassy.ai@gmail.com
 EMAIL_PASSWORD=<gmail app password>
-TIINGO_API_KEY=<tiingo key>       # Note: TIINGO_API_KEY not TIINGO_KEY
+EMAIL_RECIPIENTS=lugassy.ai@gmail.com   # REQUIRED: config.json does not exist
+TIINGO_API_KEY=<tiingo key>             # Note: TIINGO_API_KEY not TIINGO_KEY
 IBKR_USER_NAME=yanivl228
 IBKR_PASSWORD=<ibkr password>
 `

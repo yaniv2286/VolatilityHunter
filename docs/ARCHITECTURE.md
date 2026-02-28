@@ -155,7 +155,9 @@ VolatilityHunter/
     agents.json                   Configuration (timeouts, retries, v8.1 params)
 
   data/
-    portfolio.json                Live portfolio state (gitignored)
+    portfolio.json                Live/paper state — daily_trading_loop.py (gitignored)
+    portfolio_sim.json            Simulation snapshot — simulate_monday.py (gitignored)
+    portfolio_backtest.json       Backtest scratch state (gitignored)
     SPY.parquet                   SPY history for regime filter (gitignored)
     *.parquet                     Tiingo price history (gitignored)
 
@@ -341,8 +343,11 @@ CONFIGURATION
 ══════════════════════════════════════════════════════════════════════
 config/agents.json               Agent configuration (timeouts, retries, etc.)
 tickers.txt                      2,147 ticker universe
-.env                             API keys (TIINGO_API_KEY, Gmail credentials)
-data/portfolio.json              Live portfolio state (gitignored)
+.env                             API keys + EMAIL_RECIPIENTS (TIINGO_API_KEY, Gmail, IBKR)
+                                 NOTE: EMAIL_RECIPIENTS must be in .env — config.json does not exist
+data/portfolio.json              Live/paper state — daily_trading_loop.py (gitignored)
+data/portfolio_sim.json          Simulation snapshot — simulate_monday.py (gitignored)
+data/portfolio_backtest.json     Backtest scratch state (gitignored)
 data/SPY.parquet                 SPY regime data (gitignored)
 ```
 

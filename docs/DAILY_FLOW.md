@@ -26,7 +26,7 @@
         |
         v
   ┌─────────────────────────────────────────────┐
-  │         Auto_IBGateway_Manager              │
+  │         Auto_TWS_Manager                   │
   │         (Task Scheduler, At Logon)          │
   │                                             │
   │  Every 5 minutes, checks:                  │
@@ -66,12 +66,17 @@
   │  PILLAR I: HEALTH CHECK                     │
   │  scripts/functional_health_check.py         │
   │                                             │
-  │  Checks:                                    │
-  │    All 7 agents initialize OK?              │
-  │    Portfolio synced with IBKR?              │
-  │    Data feeds reachable?                    │
-  │    Email config working?                    │
-  │    IBKR API reachable?                      │
+  │  10 checks:                                 │
+  │    strategy_engine imports + PARAMS OK?     │
+  │    strategy_v7_2 indicators OK?             │
+  │    brokerage_interface importable?          │
+  │    email_notifier importable?               │
+  │    .env TIINGO_API_KEY present?             │
+  │    portfolio.json valid JSON?               │
+  │    tickers.txt 100+ tickers?                │
+  │    data/SPY.parquet readable?               │
+  │    data/*.parquet 500+ files?               │
+  │    IBKR port 7497 reachable? (WARN only)    │
   │                                             │
   │  Result must be Exit Code 0                 │
   │  FAIL --> ABORT. No trading today.          │
@@ -80,7 +85,7 @@
         v
   ┌─────────────────────────────────────────────┐
   │  STEP 1: SYNC PORTFOLIO                     │
-  │  SyncAgent                                  │
+  │  daily_trading_loop.py -> brokerage_interface│
   │                                             │
   │  Compares:                                  │
   │    Local  portfolio.json  (what we think)   │
@@ -100,7 +105,7 @@
         v
   ┌─────────────────────────────────────────────┐
   │  STEP 3: CHECK EXITS (open positions first) │
-  │  ExecutionAgent                             │
+  │  strategy_engine.check_exits()              │
   │                                             │
   │  For each of our current positions:         │
   │  --> See EXIT RULES section below           │
@@ -116,8 +121,8 @@
         |
         v
   ┌─────────────────────────────────────────────┐
-  │  STEP 3: SCAN UNIVERSE                      │
-  │  DataAgent + StrategyAgent                  │
+  │  STEP 4: SCAN UNIVERSE                      │
+  │  strategy_engine.scan_universe()            │
   │                                             │
   │  2,147 tickers from tickers.txt             │
   │                                             │
@@ -131,8 +136,8 @@
         |
         v
   ┌─────────────────────────────────────────────┐
-  │  STEP 4: RANK SIGNALS                       │
-  │  StrategyAgent                              │
+  │  STEP 4b: RANK SIGNALS                      │
+  │  strategy_engine.scan_universe() output     │
   │                                             │
   │  Score = 0.6 x annual_return               │
   │        + 0.4 x stoch_score                 │
@@ -155,7 +160,7 @@
         v
   ┌─────────────────────────────────────────────┐
   │  STEP 5: EXECUTE ENTRIES                    │
-  │  ExecutionAgent -> IBKR                     │
+  │  strategy_engine.can_enter() -> IBKR        │
   │                                             │
   │  Slots = regime_max - current positions     │
   │  Sector cap: max 3 per sector               │
@@ -182,7 +187,7 @@
         v
   ┌─────────────────────────────────────────────┐
   │  STEP 7: EMAIL REPORT                       │
-  │  NotificationAgent -> Gmail SMTP            │
+  │  email_notifier.py -> Gmail SMTP 587        │
   │                                             │
   │  Summary includes:                          │
   │    Positions opened today                   │
@@ -460,33 +465,33 @@
 
 ---
 
-## 7-AGENT SYSTEM — Who Does What
+## LEAN PIPELINE — Who Does What
 
 ```
-  ┌─────────────────┬──────────────────────────────────────────────────┐
-  │  Agent          │  Job                                             │
-  ├─────────────────┼──────────────────────────────────────────────────┤
-  │  DataAgent      │  Loads 26yr Tiingo history + today's candle      │
-  │                 │  2,147 tickers, parquet files, Yahoo fallback    │
-  ├─────────────────┼──────────────────────────────────────────────────┤
-  │  StrategyAgent  │  Runs Sweet Spot filters on every ticker         │
-  │                 │  Scores and ranks all signals                    │
-  ├─────────────────┼──────────────────────────────────────────────────┤
-  │  ExecutionAgent │  Places orders via IBKR API                      │
-  │                 │  Paper mode fallback if IBKR unreachable         │
-  ├─────────────────┼──────────────────────────────────────────────────┤
-  │  SyncAgent      │  Reconciles local portfolio vs IBKR live state   │
-  │                 │  Runs at start of every session                  │
-  ├─────────────────┼──────────────────────────────────────────────────┤
-  │  NotifyAgent    │  Sends daily email summary (Gmail SMTP)          │
-  │                 │  Alerts for unfilled orders                      │
-  ├─────────────────┼──────────────────────────────────────────────────┤
-  │  SchedulerAgent │  Watches IB Gateway 24/7, restarts if it dies    │
-  │                 │  5-minute health loop                            │
-  ├─────────────────┼──────────────────────────────────────────────────┤
-  │  TestingAgent   │  Runs health check before every trading session  │
-  │                 │  Exit Code 0 = green light. Anything else = stop │
-  └─────────────────┴──────────────────────────────────────────────────┘
+  ┌─────────────────────────────────────┬──────────────────────────────────────────────────┐
+  │  Component                          │  Job                                             │
+  ├─────────────────────────────────────┼──────────────────────────────────────────────────┤
+  │  smart_data_loader_factory.py       │  Loads 26yr Tiingo history + today's candle      │
+  │                                     │  2,147 tickers, parquet files, Yahoo fallback    │
+  ├─────────────────────────────────────┼──────────────────────────────────────────────────┤
+  │  strategy_engine.py                 │  ALL strategy logic + params (single source)     │
+  │  (DEFAULT_VERSION = v8.1)           │  check_exits, scan_universe, can_enter, sizing   │
+  ├─────────────────────────────────────┼──────────────────────────────────────────────────┤
+  │  brokerage_interface.py             │  Places orders via IBKR API                      │
+  │                                     │  Paper mode fallback if IBKR unreachable         │
+  ├─────────────────────────────────────┼──────────────────────────────────────────────────┤
+  │  daily_trading_loop.py (Step 1)     │  Reconciles portfolio.json vs IBKR live state    │
+  │                                     │  Runs at start of every session                  │
+  ├─────────────────────────────────────┼──────────────────────────────────────────────────┤
+  │  email_notifier.py                  │  Sends daily email summary (Gmail SMTP 587)      │
+  │                                     │  Alerts for unfilled orders via OrderMonitor     │
+  ├─────────────────────────────────────┼──────────────────────────────────────────────────┤
+  │  auto_tws_manager.py                │  Watches IB Gateway 24/7, restarts if it dies    │
+  │                                     │  5-minute health loop, Task Scheduler at logon   │
+  ├─────────────────────────────────────┼──────────────────────────────────────────────────┤
+  │  functional_health_check.py         │  Runs 10 checks before every trading session     │
+  │                                     │  Exit Code 0 = green light. Anything else = stop │
+  └─────────────────────────────────────┴──────────────────────────────────────────────────┘
 ```
 
 ---
@@ -494,11 +499,11 @@
 ## DAILY TIMELINE (IST)
 
 ```
-  ALL DAY     Auto_IBGateway_Manager watches port 7497, restarts if dead
+  ALL DAY     Auto_TWS_Manager watches port 7497, restarts if dead
   16:30       US Market opens (NYSE/NASDAQ) - 9:30 AM ET
   17:06       Task Scheduler fires run_trading.bat  [Blueprint: 10:06 AM ET rule]
   17:06       Weekend guard check (skip Sat/Sun)
-  17:07       Health check runs (all 7 agents, portfolio sync)
+  17:07       Health check runs (10 checks, Exit Code 0 required)
   17:10       Sync portfolio with IBKR live state
   17:11       Check exits on all open positions
   17:15       Scan 2,147 tickers (data load + strategy filters)
