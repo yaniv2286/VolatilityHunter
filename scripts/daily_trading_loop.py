@@ -46,6 +46,7 @@ from src.strategy_engine import (
     update_highest_prices,
     update_high_water_mark,
     get_dd_scale,
+    get_params,
     check_exits       as engine_check_exits,
     scan_universe     as engine_scan_universe,
     calc_position_size,
@@ -155,6 +156,8 @@ def reconcile_with_ibkr(portfolio: dict) -> Tuple[dict, Optional[object]]:
             local_tickers = set(portfolio.get('positions', {}).keys())
 
             # Positions in IBKR but not local -> add them
+            params = get_params(DEFAULT_VERSION)
+            hard_stop_pct = params['HARD_STOP_PCT']
             for pos in ibkr_positions:
                 sym = pos['symbol']
                 if sym not in portfolio['positions']:
@@ -168,7 +171,7 @@ def reconcile_with_ibkr(portfolio: dict) -> Tuple[dict, Optional[object]]:
                         'is_power_stock': False,
                         'highest_price':  pos.get('current_price', 0),
                         'quality_score':  0,
-                        'stop_loss_price': pos.get('entry_price', 0) * (1 - HARD_STOP_PCT)
+                        'stop_loss_price': pos.get('entry_price', 0) * (1 - hard_stop_pct)
                     }
 
             # Positions local but not in IBKR -> remove them
@@ -325,6 +328,7 @@ def execute_exits(exits: List[dict], portfolio: dict,
 
         success = True
         if not paper_mode and ibkr:
+            # Use market order for guaranteed fills (swing trading strategy)
             result = ibkr.place_market_order(ticker, shares, 'sell')
             success = result.get('success', False)
             if not success:
@@ -397,6 +401,7 @@ def execute_entries(candidates: List[dict], portfolio: dict,
 
         success = True
         if not paper_mode and ibkr:
+            # Use market order for guaranteed fills (swing trading strategy)
             result = ibkr.place_market_order(ticker, shares, 'buy')
             success = result.get('success', False)
             if not success:
@@ -445,7 +450,7 @@ class OrderMonitor:
     """
     POLL_INTERVAL  = 10    # seconds between polls
     FILL_TIMEOUT   = 90    # alert after this many seconds unfilled
-    CANCEL_TIMEOUT = 180   # cancel order after this many seconds unfilled
+    CANCEL_TIMEOUT = 300   # cancel order after this many seconds unfilled (increased from 180)
 
     def __init__(self, ibkr, paper_mode: bool):
         self.ibkr       = ibkr

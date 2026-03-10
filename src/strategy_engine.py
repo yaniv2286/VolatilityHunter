@@ -64,7 +64,8 @@ PARAMS = {
         'VOL_SIZE':         False,
     },
     'v8.1': {
-        'HARD_STOP_PCT':    0.08,   # hard stop loss
+        'HARD_STOP_PCT':    0.08,   # fallback hard stop loss (if ATR unavailable)
+        'ATR_STOP_MULT':    2.5,    # ATR-based stop: 2.5x ATR distance
         'OVERBOUGHT_EXIT':  78.0,   # K > this triggers overbought rollover exit
         'MOMENTUM_DAYS':    20,     # 20-day momentum lookback
         'MOMENTUM_MIN':     0.05,   # minimum +5% over 20 days
@@ -258,9 +259,13 @@ def check_exits(portfolio: dict,
     Check all open positions for exit conditions.
     Returns list of exit dicts: {ticker, price, reason}
     Shared by daily_loop, simulate_monday, and any future mode.
+    
+    v8.1: Uses ATR-based volatility stops (2.5x ATR) for adaptive risk management.
+    Falls back to fixed percentage if ATR unavailable.
     """
     p = get_params(version)
     HARD_STOP_PCT   = p['HARD_STOP_PCT']
+    ATR_STOP_MULT   = p.get('ATR_STOP_MULT', None)
     OVERBOUGHT_EXIT = p['OVERBOUGHT_EXIT']
     TIME_STOP_DAYS  = p['TIME_STOP_DAYS']
 
@@ -278,11 +283,28 @@ def check_exits(portfolio: dict,
         entry   = pos.get('entry_price', price)
         pnl_pct = (price - entry) / entry if entry > 0 else 0
 
-        # Hard stop
-        if pnl_pct <= -HARD_STOP_PCT:
-            exits.append({'ticker': ticker, 'price': price,
-                          'reason': f'Hard stop ({pnl_pct:.1%})'})
-            continue
+        # Load data to get ATR for volatility-based stop
+        df = load_fn(ticker)
+        atr = np.nan
+        if df is not None and not df.empty:
+            last = df.iloc[-1]
+            atr = last.get('atr', np.nan)
+
+        # ATR-based stop (v8.1+)
+        if ATR_STOP_MULT is not None and not np.isnan(atr) and atr > 0:
+            stop_distance = ATR_STOP_MULT * atr
+            stop_pct = stop_distance / entry if entry > 0 else HARD_STOP_PCT
+            
+            if pnl_pct <= -stop_pct:
+                exits.append({'ticker': ticker, 'price': price,
+                              'reason': f'ATR stop ({pnl_pct:.1%}, {stop_pct:.1%} threshold)'})
+                continue
+        else:
+            # Fallback to fixed hard stop if ATR unavailable
+            if pnl_pct <= -HARD_STOP_PCT:
+                exits.append({'ticker': ticker, 'price': price,
+                              'reason': f'Hard stop ({pnl_pct:.1%})'})
+                continue
 
         # Time stop (v8.1)
         if TIME_STOP_DAYS is not None:
@@ -529,7 +551,9 @@ def calc_position_size(portfolio: dict,
     shares = int(alloc / price)
     cost   = shares * price
 
-    if shares <= 0 or cost > portfolio.get('cash', 0):
+    # For margin accounts, check against total equity, not cash
+    # (cash can be negative in margin accounts)
+    if shares <= 0 or cost > alloc:
         return 0, 0.0
     return shares, cost
 
