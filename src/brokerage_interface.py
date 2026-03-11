@@ -381,39 +381,47 @@ class IBKRInterface(BrokerageInterface):
             return {}
         
         try:
-            # Get portfolio items to calculate total value
-            portfolio_items = self.ib.portfolio()
-            
-            # Calculate total portfolio value from positions (in USD)
-            portfolio_value = sum(float(item.marketValue) for item in portfolio_items if item.contract.secType == 'STK')
-            
             # Get account values
             account_values = self.ib.accountValues()
             
-            # For multi-currency accounts, we need to find the right values
-            # Try to get cash balance in USD first
-            cash_usd = 0.0
+            # Multi-currency support: read base currency values
+            # BASE currency is the account's base currency (USD, ILS, etc.)
+            cash = 0.0
+            equity = 0.0
+            available_funds = 0.0
+            
             for value in account_values:
-                if value.tag == 'CashBalance' and value.currency == 'USD':
-                    cash_usd = float(value.value)
-                    break
+                # TotalCashValue in base currency (includes all currencies converted)
+                if value.tag == 'TotalCashValue' and value.currency != 'BASE':
+                    # Use the first non-BASE currency (account's actual currency)
+                    if cash == 0.0:
+                        cash = float(value.value)
+                
+                # NetLiquidation = total account value (cash + positions)
+                if value.tag == 'NetLiquidation' and value.currency != 'BASE':
+                    if equity == 0.0:
+                        equity = float(value.value)
+                
+                # AvailableFunds = cash available for trading
+                if value.tag == 'AvailableFunds' and value.currency != 'BASE':
+                    if available_funds == 0.0:
+                        available_funds = float(value.value)
             
-            # If no USD cash found, calculate from portfolio
-            # Assume total account value = $100k (from config) and cash = total - positions
-            if cash_usd == 0.0:
-                # Use a reasonable estimate: if we have positions, we must have some cash
-                # This will be reconciled with local portfolio.json
-                total_account_value = 100000.0  # Default from config
-                cash = total_account_value - portfolio_value
-            else:
-                cash = cash_usd
+            # Fallback: if still zero, try BASE currency
+            if cash == 0.0 or equity == 0.0:
+                for value in account_values:
+                    if value.tag == 'CashBalance' and value.currency == 'BASE':
+                        cash = float(value.value)
+                    if value.tag == 'NetLiquidation' and value.currency == 'BASE':
+                        equity = float(value.value)
             
-            equity = portfolio_value + cash
+            # Calculate portfolio value
+            portfolio_value = equity - cash if equity > 0 else 0.0
             
             return {
                 'cash': cash,
                 'portfolio_value': portfolio_value,
-                'buying_power': cash,  # Simplified: buying power = available cash
+                'buying_power': available_funds if available_funds > 0 else cash,
                 'equity': equity,
                 'daytrade_count': 0,
                 'pattern_day_trader': False
