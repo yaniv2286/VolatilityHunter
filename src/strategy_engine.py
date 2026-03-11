@@ -551,9 +551,10 @@ def calc_position_size(portfolio: dict,
     shares = int(alloc / price)
     cost   = shares * price
 
-    # For margin accounts, check against total equity, not cash
-    # (cash can be negative in margin accounts)
-    if shares <= 0 or cost > alloc:
+    # NO MARGIN/LEVERAGE: Only trade with available cash
+    # Check cost against actual cash balance, not just allocation
+    available_cash = portfolio.get('cash', 0)
+    if shares <= 0 or cost > available_cash or cost > alloc:
         return 0, 0.0
     return shares, cost
 

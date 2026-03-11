@@ -1,4 +1,24 @@
-# CRITICAL FIXES SUMMARY - March 10, 2026
+# CRITICAL FIXES SUMMARY - March 11, 2026
+
+## ⚠️ NO MARGIN/LEVERAGE POLICY - ENFORCED
+
+**CRITICAL RULE**: The system NEVER uses margin or leverage. Only trades with available cash.
+
+**Implementation**: `src/strategy_engine.py` lines 554-558
+```python
+# NO MARGIN/LEVERAGE: Only trade with available cash
+available_cash = portfolio.get('cash', 0)
+if shares <= 0 or cost > available_cash or cost > alloc:
+    return 0, 0.0
+```
+
+**Why this matters:**
+- Prevents over-leveraging and margin calls
+- Conservative risk management
+- Only trades with cash on hand
+- No borrowing from IBKR
+
+---
 
 ## ✅ COMPLETED FIXES
 

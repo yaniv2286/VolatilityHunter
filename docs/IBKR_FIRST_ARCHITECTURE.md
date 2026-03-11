@@ -157,16 +157,26 @@ If IBKR connection fails:
 - Local portfolio.json is used for calculations
 - **This is a safety feature, not normal operation**
 
-### Rule 4: Cash Can Be Negative (Margin Accounts)
+### Rule 4: NO MARGIN/LEVERAGE - CASH ONLY ⚠️
+**CRITICAL**: The system NEVER uses margin or leverage. Only trade with available cash.
+
 ```python
-# ✅ CORRECT: Check against allocation, not cash
-if shares <= 0 or cost > alloc:
+# ✅ CORRECT: Check against available cash (NO MARGIN)
+available_cash = portfolio.get('cash', 0)
+if shares <= 0 or cost > available_cash or cost > alloc:
     return 0, 0.0
 
-# ❌ WRONG: Check against cash (fails for margin accounts)
-if shares <= 0 or cost > portfolio.get('cash', 0):
+# ❌ WRONG: Only check allocation (allows margin trading)
+if shares <= 0 or cost > alloc:
     return 0, 0.0
 ```
+
+**Why this matters:**
+- Prevents over-leveraging
+- Ensures we only trade with cash on hand
+- No borrowing from IBKR
+- No margin calls
+- Conservative risk management
 
 ---
 

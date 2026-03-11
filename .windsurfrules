@@ -96,6 +96,7 @@ After any change to core pipeline files, run `python scripts/functional_health_c
 - **PERSISTENCE:** ALWAYS use `.get()` with default values for JSON loading to prevent `KeyError` portfolio resets.
 - **ENVIRONMENT:** Python 3.10 ONLY (Tiingo constraint). No 3.12+ features.
 - **LOGGING:** ALWAYS flush log handlers before email attachment. Use ASCII only (No emojis).
+- **NO MARGIN/LEVERAGE:** NEVER use margin or leverage. Position sizing MUST check cost against available cash. Only trade with cash on hand.
 </v5_critical_lessons_learned>
 
 ---
