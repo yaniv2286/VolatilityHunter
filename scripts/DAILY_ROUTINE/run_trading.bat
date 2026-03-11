@@ -23,7 +23,14 @@ set TOKENIZERS_PARALLELISM=false
 :: Activate the Environment
 call venv\Scripts\activate.bat
 
-:: 3. PILLAR I: FUNCTIONAL HEALTH CHECK
+:: 3. PILLAR 0: ENSURE IB GATEWAY IS RUNNING
+echo [VH] Starting IB Gateway manager (will check if already running)...
+start /B python scripts\auto_tws_manager.py
+timeout /t 90 /nobreak >nul
+echo [VH] IB Gateway startup complete (waited 90s).
+echo.
+
+:: 4. PILLAR I: FUNCTIONAL HEALTH CHECK
 echo [VH] Starting Functional Health Check...
 python scripts\functional_health_check.py
 if %ERRORLEVEL% NEQ 0 (

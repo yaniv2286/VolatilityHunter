@@ -142,6 +142,23 @@ class AutoTWSManager:
             "LoginDialogDisplayTimeout=90\n"
             "TradingMode=paper\n"
         )
+        # Add LOGON section with credentials
+        config += (
+            "\n[LOGON]\n"
+            f"Username={IBKR_USER}\n"
+            f"Password={IBKR_PASS}\n"
+        )
+        # Add IBGateway section with API configuration
+        config += (
+            "\n[IBGateway]\n"
+            "ApiOnly=yes\n"
+            "ReadOnlyApi=no\n"
+            "OtherTrades=none\n"
+            "MasterClientId=1\n"
+            "ClientId=100\n"
+            "AcceptIncomingConnectionAction=accept\n"
+            "LocalServerPort=7497\n"
+        )
         try:
             with open(IBC_CONFIG, 'w', encoding='utf-8', newline='\n') as f:
                 f.write(config)
@@ -396,7 +413,19 @@ class AutoTWSManager:
     def wait_for_api(self):
         """Wait up to API_WAIT_SECS for port 7497 to open."""
         logger.info(f"Waiting up to {API_WAIT_SECS}s for IB Gateway API on port {TWS_PORT}...")
+        start_time = time.time()
         for i in range(API_WAIT_SECS):
+            # Check if we've been waiting too long and process is stuck
+            if time.time() - start_time > API_WAIT_SECS - 60:  # Give 60s buffer
+                logger.error(f"Gateway process stuck - forcing restart")
+                if self.ibc_process:
+                    try:
+                        self.ibc_process.terminate()
+                        logger.info("Terminated stuck Gateway process")
+                    except Exception:
+                        pass
+                return False
+                
             if self.is_api_ready():
                 logger.info(f"IB Gateway API ready after {i}s")
                 return True
@@ -438,6 +467,24 @@ class AutoTWSManager:
 
     # ── Main loop ────────────────────────────────────────────────────────
 
+    def cleanup_processes(self):
+        """Clean up all managed processes."""
+        logger.info("Cleaning up managed processes...")
+        if self.ibc_process:
+            try:
+                self.ibc_process.terminate()
+                logger.info(f"Terminated Gateway process (PID {self.ibc_process.pid})")
+                self.ibc_process = None
+            except Exception:
+                pass
+        if self.keep_alive_process:
+            try:
+                self.keep_alive_process.terminate()
+                logger.info(f"Terminated keep-alive process (PID {self.keep_alive_process.pid})")
+                self.keep_alive_process = None
+            except Exception:
+                pass
+
     def run(self):
         logger.info("=" * 60)
         logger.info("AUTOMATED TWS MANAGER (IBC Edition)")
@@ -477,6 +524,23 @@ class AutoTWSManager:
 
                 # ── 2. API port check ──────────────────────────────────
                 is_weekend = datetime.now().weekday() >= 5  # Sat=5, Sun=6
+                
+                # Watchdog: Check if we've been in this loop too long
+                loop_start = time.time()
+                max_loop_time = 3600  # 1 hour max per health check cycle
+                
+                def check_watchdog():
+                    if time.time() - loop_start > max_loop_time:
+                        logger.error("Watchdog: Health check loop stuck - forcing restart")
+                        if self.ibc_process:
+                            try:
+                                self.ibc_process.terminate()
+                                logger.info("Watchdog: Terminated stuck Gateway process")
+                            except Exception:
+                                pass
+                        return True
+                    return False
+                
                 if self.is_api_ready():
                     self._api_last_seen_up = time.time()
                     self._api_closed_since = None
@@ -509,16 +573,24 @@ class AutoTWSManager:
                     logger.info("Starting keep-alive heartbeat...")
                     self.start_keep_alive()
 
-                # ── 4. All good ───────────────────────────────────────
+                # ── 4. Watchdog check ───────────────────────────────
+                if check_watchdog():
+                    logger.info("Watchdog triggered - restarting loop...")
+                    time.sleep(10)
+                    continue
+
+                # ── 5. All good ───────────────────────────────────────
                 logger.info(f"All systems OK - next check in {CHECK_INTERVAL}s")
                 time.sleep(CHECK_INTERVAL)
 
             except KeyboardInterrupt:
                 logger.info("Stopped by user")
+                self.cleanup_processes()
                 break
             except Exception as e:
                 logger.error(f"Manager loop error: {e}")
                 logger.error(traceback.format_exc())
+                self.cleanup_processes()
                 time.sleep(60)
 
 

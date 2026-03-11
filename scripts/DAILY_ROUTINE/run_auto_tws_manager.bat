@@ -9,13 +9,16 @@ echo [%DATE% %TIME%] Auto_IBGateway_Manager started >> "%LOG%"
 
 cd /d "D:\GitHub\VolatilityHunter"
 
-python --version >nul 2>&1
+:: Use full Python path for SYSTEM user
+set PYTHON_EXE=d:\GitHub\VolatilityHunter\venv\Scripts\python.exe
+
+"%PYTHON_EXE%" --version >nul 2>&1
 if errorlevel 1 (
-    echo [%DATE% %TIME%] ERROR: Python not found in PATH >> "%LOG%"
+    echo [%DATE% %TIME%] ERROR: Python not found at %PYTHON_EXE% >> "%LOG%"
     exit /b 1
 )
 
-python scripts\auto_tws_manager.py >> "%LOG%" 2>&1
+"%PYTHON_EXE%" scripts\auto_tws_manager.py >> "%LOG%" 2>&1
 
 echo [%DATE% %TIME%] auto_tws_manager.py exited with code %ERRORLEVEL% >> "%LOG%"
 exit /b %ERRORLEVEL%
