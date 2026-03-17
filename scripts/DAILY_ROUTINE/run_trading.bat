@@ -23,11 +23,19 @@ set TOKENIZERS_PARALLELISM=false
 :: Activate the Environment
 call venv\Scripts\activate.bat
 
-:: 3. PILLAR 0: ENSURE IB GATEWAY IS RUNNING
-echo [VH] Starting IB Gateway manager (will check if already running)...
-start /B python scripts\auto_tws_manager.py
-timeout /t 90 /nobreak >nul
-echo [VH] IB Gateway startup complete (waited 90s).
+:: 3. PILLAR 0: START IB GATEWAY WITH RETRIES
+echo [VH] Starting IB Gateway (IBC method, 120s timeout, 3 retries)...
+python scripts\start_gateway_with_retry.py
+if %ERRORLEVEL% NEQ 0 (
+    echo.
+    echo [CRITICAL ERROR] IB Gateway failed after 3 retries
+    echo [VH] Sending failure notification email...
+    python scripts\send_gateway_failure_email.py
+    echo [VH] Trading SKIPPED - check email for details
+    echo.
+    exit /b %ERRORLEVEL%
+)
+echo [VH] IB Gateway API ready - proceeding to health check
 echo.
 
 :: 4. PILLAR I: FUNCTIONAL HEALTH CHECK
@@ -57,6 +65,18 @@ if %ERRORLEVEL% NEQ 0 (
 echo.
 echo [VH] Daily Trading Loop COMPLETED SUCCESSFULLY.
 echo [VH] Check email for summary report.
+echo.
+
+:: 5. PILLAR IV: STOP IB GATEWAY (CLEANUP)
+echo [VH] Stopping IB Gateway...
+python scripts\stop_gateway.py
+echo [VH] Gateway stopped - daily routine complete.
+echo.
+
+:: 6. PILLAR V: LOG MONITORING (QUALITY CONTROL)
+echo [VH] Monitoring logs for critical issues...
+python scripts\monitor_trading_logs.py
+echo [VH] Log monitoring complete.
 echo.
 
 exit /b 0
