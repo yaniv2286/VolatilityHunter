@@ -14,6 +14,10 @@
 
 - **[🔄 FUNCTIONAL_HEALTH_CHECK.md](FUNCTIONAL_HEALTH_CHECK.md)** - NEW: Real trading health check system
 
+- **[📊 LOG_MONITORING_SYSTEM.md](docs/LOG_MONITORING_SYSTEM.md)** - NEW: Comprehensive log monitoring and alerting
+
+- **[🔍 TODAYS_ISSUES_ANALYSIS.md](docs/TODAYS_ISSUES_ANALYSIS.md)** - NEW: Analysis of trading issues and solutions
+
 ---
 
 ## 🚀 Quick Start
@@ -42,6 +46,21 @@ python scripts/check_data_dates.py
 
 # 8. Sync portfolio with TWS
 python sync_with_tws_screenshot.py
+
+# 9. Start IB Gateway (NEW - Automated)
+python scripts/start_gateway_with_retry.py
+
+# 10. Stop IB Gateway (NEW - Automated)
+python scripts/stop_gateway.py
+
+# 11. Monitor logs for issues (NEW - Real-time)
+python scripts/monitor_trading_logs.py
+
+# 12. Real-time log monitoring (NEW - Background)
+python scripts/realtime_log_monitor.py
+
+# 13. Complete automated daily task (NEW - All-in-one)
+python scripts/DAILY_ROUTINE/run_trading.bat
 ```
 
 ---
@@ -99,6 +118,14 @@ python sync_with_tws_screenshot.py
 - **Real-Time Sync**: Automatic position and value updates
 - **Performance Tracking**: Accurate P&L calculations
 - **Account Management**: Multiple account support
+
+### ✅ **Complete Automation System** (NEW)
+- **IB Gateway Auto-Login**: No manual intervention required
+- **Automated Daily Workflow**: Start → Trade → Stop → Monitor
+- **Real-Time Log Monitoring**: Instant alerts for critical issues
+- **Market Hours Validation**: Prevents off-hours trading errors
+- **Order Failure Detection**: Automatic cancellation alerts
+- **Email Notifications**: Comprehensive status reports
 
 ---
 
