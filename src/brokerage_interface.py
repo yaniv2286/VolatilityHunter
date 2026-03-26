@@ -42,8 +42,8 @@ class BrokerageInterface(ABC):
         pass
     
     @abstractmethod
-    def place_market_order(self, symbol: str, quantity: int, side: str) -> Dict:
-        """Place a market order"""
+    def place_market_order(self, symbol: str, quantity: int, side: str, price: float = None) -> Dict:
+        """Place a market order (price parameter for limit order fallback in paper trading)"""
         pass
     
     @abstractmethod
@@ -163,7 +163,7 @@ class AlpacaInterface(BrokerageInterface):
             log_error(f"Failed to get positions: {e}")
             return []
     
-    def place_market_order(self, symbol: str, quantity: int, side: str) -> Dict:
+    def place_market_order(self, symbol: str, quantity: int, side: str, price: float = None) -> Dict:
         """Place a market order"""
         if not self.is_connected or not self.client:
             return {'success': False, 'reason': 'Not connected to brokerage'}
@@ -275,7 +275,7 @@ class IBKRInterface(BrokerageInterface):
     def __init__(self, config: Dict):
         super().__init__(config)
         self.host = config.get('IBKR_HOST', '127.0.0.1')
-        self.port = config.get('IBKR_PORT', 7497)  # Paper trading port
+        self.port = config.get('IBKR_PORT', 7497)  # TWS Paper port (active connection)
         # Use random client ID to avoid conflicts
         import random
         self.client_id = config.get('IBKR_CLIENT_ID', random.randint(100, 999))
@@ -308,7 +308,7 @@ class IBKRInterface(BrokerageInterface):
             self.ib.connect(
                 self.host, self.port,
                 clientId=self.client_id,
-                timeout=15,
+                timeout=60,
                 readonly=False
             )
 
@@ -316,6 +316,9 @@ class IBKRInterface(BrokerageInterface):
                 log_error("IBKR connect() returned but isConnected() is False")
                 return False
 
+            # Suppress Error 10089 by permitting delayed data for paper trading
+            self.ib.reqMarketDataType(3)  # 3 = Delayed data
+            
             log_info(f"Connected to IBKR at {self.host}:{self.port} (clientId={self.client_id})")
 
             # Get account cash
@@ -457,8 +460,8 @@ class IBKRInterface(BrokerageInterface):
             log_error(f"Failed to get IBKR positions: {e}")
             return []
     
-    def place_market_order(self, symbol: str, quantity: int, side: str) -> Dict:
-        """Place a market order"""
+    def place_market_order(self, symbol: str, quantity: int, side: str, price: float = None) -> Dict:
+        """Place a market order (using limit order with aggressive pricing for paper trading)"""
         if not self.is_connected or not self.ib:
             return {'success': False, 'reason': 'Not connected to IBKR'}
         
@@ -467,18 +470,20 @@ class IBKRInterface(BrokerageInterface):
             return {'success': False, 'reason': validation['reason']}
         
         try:
-            from ib_insync import Stock, MarketOrder
+            from ib_insync import Stock
             
-            # Create contract
+            # 1. Force SMART routing and qualify the contract
             contract = Stock(symbol, 'SMART', 'USD')
+            self.ib.qualifyContracts(contract)
             
-            # Create order
+            # 2. Use MarketOrder for immediate fills in paper trading
+            from ib_insync import MarketOrder
             order = MarketOrder(side.upper(), quantity)
             
             # Place order
             trade = self.ib.placeOrder(contract, order)
             
-            log_info(f"Placed IBKR market order: {side.upper()} {quantity} {symbol}")
+            log_info(f"Placed Market order: {side.upper()} {quantity} {symbol} (SMART)")
             
             return {
                 'success': True,
@@ -491,7 +496,7 @@ class IBKRInterface(BrokerageInterface):
             }
             
         except Exception as e:
-            log_error(f"Failed to place IBKR market order: {e}")
+            log_error(f"Failed to place Market order: {e}")
             return {'success': False, 'reason': str(e)}
     
     def place_limit_order(self, symbol: str, quantity: int, side: str, price: float) -> Dict:

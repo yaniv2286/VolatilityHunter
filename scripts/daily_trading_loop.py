@@ -30,10 +30,12 @@ from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 import numpy as np
-import yfinance as yf
+import requests
 from dotenv import load_dotenv
 
-ROOT = Path(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Fix Python pathing - ensure ROOT is correctly set
+import os, sys, pathlib
+ROOT = pathlib.Path(__file__).parent.parent.absolute()
 sys.path.insert(0, str(ROOT))
 
 load_dotenv(ROOT / ".env")
@@ -127,6 +129,7 @@ def save_portfolio(portfolio: dict):
 def reconcile_with_ibkr(portfolio: dict) -> Tuple[dict, Optional[object]]:
     """
     Connect to IBKR, sync local portfolio with actual positions.
+    IBKR-FIRST: IBKR is the golden reference - always overwrites local data.
     Returns (updated_portfolio, ibkr_interface).
     ibkr_interface=None means IBKR unavailable — run in PAPER mode.
     """
@@ -135,91 +138,104 @@ def reconcile_with_ibkr(portfolio: dict) -> Tuple[dict, Optional[object]]:
         ibkr = get_brokerage_interface(IBKR_CONFIG)
         if not ibkr.connect():
             logger.warning("IBKR not available - running in PAPER mode")
+            logger.warning("Using local portfolio.json from last successful IBKR sync")
+            last_sync = portfolio.get('last_ibkr_sync', 'NEVER')
+            logger.warning(f"Last IBKR sync: {last_sync}")
+            portfolio['ibkr_available'] = False
             return portfolio, None
 
         account = ibkr.get_account_info()
         ibkr_positions = ibkr.get_positions()
 
+        # IBKR-FIRST: Overwrite cash with IBKR value (golden reference)
         if account:
             ibkr_cash = account.get('cash', 0)
             ibkr_equity = account.get('equity', 0)
             logger.info(f"IBKR account: cash=${ibkr_cash:,.2f}, equity=${ibkr_equity:,.2f}")
+            
+            # ALWAYS use IBKR cash (discard local value)
+            old_cash = portfolio.get('cash', 0)
+            portfolio['cash'] = ibkr_cash
+            if abs(ibkr_cash - old_cash) > 100:
+                logger.warning(f"Cash reset: local=${old_cash:,.2f} -> IBKR=${ibkr_cash:,.2f}")
 
-            # Reconcile cash
-            local_cash = portfolio.get('cash', 0)
-            if abs(ibkr_cash - local_cash) > 100:
-                logger.warning(f"Cash mismatch: local=${local_cash:,.2f} vs IBKR=${ibkr_cash:,.2f} - using IBKR")
-                portfolio['cash'] = ibkr_cash
-
-        if ibkr_positions:
-            ibkr_tickers = {p['symbol'] for p in ibkr_positions}
-            local_tickers = set(portfolio.get('positions', {}).keys())
-
-            # Positions in IBKR but not local -> add them
-            params = get_params(DEFAULT_VERSION)
-            hard_stop_pct = params['HARD_STOP_PCT']
-            for pos in ibkr_positions:
-                sym = pos['symbol']
-                if sym not in portfolio['positions']:
-                    logger.warning(f"IBKR has {sym} not in local portfolio - adding")
-                    portfolio['positions'][sym] = {
-                        'shares':      int(pos['quantity']),
-                        'entry_price': pos.get('entry_price', pos.get('current_price', 0)),
-                        'entry_date':  today_str,
-                        'ticker':      sym,
-                        'execution_mode': 'LIVE',
-                        'is_power_stock': False,
-                        'highest_price':  pos.get('current_price', 0),
-                        'quality_score':  0,
-                        'stop_loss_price': pos.get('entry_price', 0) * (1 - hard_stop_pct)
-                    }
-
-            # Positions local but not in IBKR -> remove them
-            for sym in list(local_tickers):
-                if sym not in ibkr_tickers:
-                    logger.warning(f"Local has {sym} not in IBKR - removing from local")
-                    portfolio['positions'].pop(sym, None)
-
-        logger.info(f"Reconciliation complete: {len(portfolio['positions'])} positions")
+        # IBKR-FIRST: Replace all positions with IBKR positions
+        old_positions = portfolio.get('positions', {})
+        portfolio['positions'] = {}
+        
+        params = get_params(DEFAULT_VERSION)
+        hard_stop_pct = params['HARD_STOP_PCT']
+        
+        for pos in ibkr_positions:
+            sym = pos['symbol']
+            portfolio['positions'][sym] = {
+                'shares':      int(pos['quantity']),
+                'entry_price': pos.get('entry_price', pos.get('current_price', 0)),
+                'entry_date':  today_str,
+                'ticker':      sym,
+                'execution_mode': 'LIVE',
+                'is_power_stock': False,
+                'highest_price':  pos.get('current_price', 0),
+                'quality_score':  0,
+                'stop_loss_price': pos.get('entry_price', 0) * (1 - hard_stop_pct)
+            }
+        
+        # Log discarded PAPER positions (if any)
+        paper_positions = {k: v for k, v in old_positions.items() 
+                          if v.get('execution_mode') == 'PAPER'}
+        if paper_positions:
+            logger.warning(f"Discarded {len(paper_positions)} PAPER positions (IBKR is master):")
+            for sym in paper_positions:
+                logger.warning(f"  - {sym}: {paper_positions[sym]['shares']} shares")
+        
+        # Update sync timestamp
+        portfolio['last_ibkr_sync'] = datetime.now().isoformat()
+        portfolio['ibkr_available'] = True
+        
+        logger.info(f"IBKR sync complete: {len(portfolio['positions'])} LIVE positions")
         return portfolio, ibkr
 
     except Exception as e:
         logger.error(f"Reconciliation error: {e}")
         logger.error(traceback.format_exc())
+        portfolio['ibkr_available'] = False
         return portfolio, None
 
 
 # ── Step 2: Fetch today's data ────────────────────────────────────────────────
 
 def fetch_latest_prices(tickers: List[str]) -> Dict[str, float]:
-    """Fetch today's close for a list of tickers from Yahoo Finance."""
-    logger.info(f"Fetching latest prices for {len(tickers)} tickers...")
-    prices = {}
+    """Fetch today's close for a list of tickers using Tiingo Professional API only."""
+    logger.info(f"Production: Fetching latest prices for {len(tickers)} tickers via Tiingo Professional API")
+    
     try:
-        # Batch download — much faster than per-ticker
-        batch_size = 100
-        for i in range(0, len(tickers), batch_size):
-            batch = tickers[i:i + batch_size]
-            try:
-                data = yf.download(
-                    batch,
-                    period='2d',
-                    auto_adjust=True,
-                    progress=False,
-                    threads=True
-                )
-                if 'Close' in data:
-                    close = data['Close'].iloc[-1]
-                    for t in batch:
-                        if t in close.index and not pd.isna(close[t]):
-                            prices[t] = float(close[t])
-            except Exception as e:
-                logger.warning(f"Batch price fetch error (tickers {i}-{i+batch_size}): {e}")
+        # Use the professional data loader (Tiingo only)
+        from src.smart_data_loader_factory import get_data_loader
+        loader = get_data_loader()
+        
+        # Call Tiingo bulk API - this handles 1000 tickers per request
+        result = loader.update_all_stocks(tickers, full_refresh=False, batch_size=1000)
+        
+        if result['success']:
+            prices = result.get('prices', {})
+            logger.info(f"Production: Successfully fetched {len(prices)}/{len(tickers)} ticker prices via Tiingo bulk API")
+            
+            # Log first few prices for verification
+            for i, (ticker, price) in enumerate(prices.items()):
+                if i < 5:  # Log first 5 for verification
+                    logger.info(f"Production: Got price for {ticker}: ${price:.2f}")
+                else:
+                    break
+                    
+            return prices
+        else:
+            logger.error(f"Production: Tiingo API failed - {result.get('error', 'Unknown error')}")
+            return {}
+            
     except Exception as e:
-        logger.error(f"fetch_latest_prices error: {e}")
+        logger.error(f"Production: Critical error in fetch_latest_prices: {e}")
         logger.error(traceback.format_exc())
-    logger.info(f"Fetched prices for {len(prices)}/{len(tickers)} tickers")
-    return prices
+        return {}
 
 
 def load_ticker_with_latest(ticker: str, latest_prices: Dict[str, float]) -> Optional[pd.DataFrame]:
@@ -329,7 +345,7 @@ def execute_exits(exits: List[dict], portfolio: dict,
         success = True
         if not paper_mode and ibkr:
             # Use market order for guaranteed fills (swing trading strategy)
-            result = ibkr.place_market_order(ticker, shares, 'sell')
+            result = ibkr.place_market_order(ticker, shares, 'sell', price)
             success = result.get('success', False)
             if not success:
                 logger.error(f"IBKR sell order FAILED for {ticker}: {result.get('reason')}")
@@ -402,7 +418,7 @@ def execute_entries(candidates: List[dict], portfolio: dict,
         success = True
         if not paper_mode and ibkr:
             # Use market order for guaranteed fills (swing trading strategy)
-            result = ibkr.place_market_order(ticker, shares, 'buy')
+            result = ibkr.place_market_order(ticker, shares, 'buy', price)
             success = result.get('success', False)
             if not success:
                 logger.error(f"IBKR buy order FAILED for {ticker}: {result.get('reason')}")
@@ -450,7 +466,7 @@ class OrderMonitor:
     """
     POLL_INTERVAL  = 10    # seconds between polls
     FILL_TIMEOUT   = 90    # alert after this many seconds unfilled
-    CANCEL_TIMEOUT = 300   # cancel order after this many seconds unfilled (increased from 180)
+    CANCEL_TIMEOUT = 300   # cancel order after this many seconds unfilled (5 minutes - limit orders should fill faster)
 
     def __init__(self, ibkr, paper_mode: bool):
         self.ibkr       = ibkr
@@ -604,10 +620,19 @@ def send_summary(portfolio: dict, exits: List[dict], entries: List[dict],
 
         notifier = EmailNotifier()
         subject = f"VH {mode} | {len(exits)} exits {len(entries)} entries | ${total_value:,.0f}"
-        if notifier.send_email(subject, body):
-            logger.info("Summary email sent.")
+        
+        # Attach daily log file
+        log_file = LOG_DIR / f"trading_{today_str}.log"
+        if log_file.exists():
+            if notifier.send_email(subject, body, str(log_file)):
+                logger.info("Summary email sent with log attachment.")
+            else:
+                logger.warning("Email send failed - check EmailNotifier config.")
         else:
-            logger.warning("Email send failed - check EmailNotifier config.")
+            if notifier.send_email(subject, body):
+                logger.info("Summary email sent (no log file found).")
+            else:
+                logger.warning("Email send failed - check EmailNotifier config.")
 
     except Exception as e:
         logger.error(f"send_summary error: {e}")
@@ -648,7 +673,7 @@ def main():
     latest_prices_ref = latest_prices   # make available to execute_entries
 
     if not latest_prices:
-        logger.error("No prices fetched - aborting. Check Yahoo Finance connectivity.")
+        logger.error("No prices fetched - aborting. Check Tiingo API connectivity.")
         sys.exit(1)
 
     # ── Step 2b: Update highest_price + high-water mark (Bug 2 + 3 fix) ──
@@ -683,8 +708,21 @@ def main():
         logger.info(f"No slots available ({len(open_set)}/{MAX_POSITIONS} positions full)")
 
     # ── Step 5: Execute entries ───────────────────────────────────────────
-    logger.info("--- Step 5: Executing entries ---")
-    executed_entries = execute_entries(candidates[:MAX_POSITIONS], portfolio, ibkr, paper_mode)
+    logger.info("--- Step 5: Market hours validation ---")
+    
+    # Check market hours before placing orders
+    try:
+        from src.market_hours import validate_before_trading
+        if not validate_before_trading():
+            logger.error("🚨 MARKET CLOSED - Skipping order execution")
+            executed_entries = []
+        else:
+            logger.info("--- Step 5: Executing entries ---")
+            executed_entries = execute_entries(candidates[:MAX_POSITIONS], portfolio, ibkr, paper_mode)
+    except Exception as e:
+        logger.error(f"Market hours check failed: {e}")
+        logger.info("--- Step 5: Executing entries (fallback) ---")
+        executed_entries = execute_entries(candidates[:MAX_POSITIONS], portfolio, ibkr, paper_mode)
 
     # ── Step 6: Verify fills (OrderMonitor R5) ───────────────────────────
     logger.info("--- Step 6: OrderMonitor: verifying fills ---")
@@ -720,6 +758,26 @@ def main():
                 f"Total: ${total_value:,.2f}")
     logger.info(f"Exits: {len(executed_exits)} | Entries: {len(executed_entries)}")
     logger.info("=" * 68)
+    
+    # Clean up Gateway after trading completes
+    try:
+        import psutil
+        logger.info("🔄 Cleaning up IB Gateway...")
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            try:
+                name = proc.info['name'].lower()
+                cmdline = ' '.join(proc.info.get('cmdline') or []).lower()
+                if 'ibgateway' in name or 'ibgateway' in cmdline:
+                    proc.terminate()
+                    logger.info(f"✅ Terminated Gateway process (PID {proc.pid})")
+                elif name == 'javaw.exe' and ('ibgateway' in cmdline or 'ibcgateway' in cmdline):
+                    proc.terminate()
+                    logger.info(f"✅ Terminated Gateway Java process (PID {proc.pid})")
+            except (psutil.NoSuchProcess, psutil.AccessDenied, PermissionError):
+                continue
+        logger.info("🧹 Gateway cleanup complete")
+    except Exception as e:
+        logger.warning(f"⚠️ Gateway cleanup failed: {e}")
 
     return 0
 

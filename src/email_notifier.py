@@ -58,8 +58,8 @@ class EmailNotifier:
         today = datetime.now().strftime('%Y-%m-%d')
         return f"logs/VH_{today}.log"
     
-    def send_email(self, subject: str, body: str, attachment_path: str = None) -> bool:
-        """Send email with optional file attachment"""
+    def send_email(self, subject: str, body: str, attachment_path: str = None, attachments: list = None) -> bool:
+        """Send email with optional file attachments (single or multiple)"""
         if not self.sender_email or not self.sender_password:
             logger.warning("⚠️ Credentials missing. Email not sent.")
             return False
@@ -73,32 +73,40 @@ class EmailNotifier:
             # Attach HTML body
             msg.attach(MIMEText(body, 'html'))
             
-            # Add attachment if provided
-            if attachment_path and os.path.exists(attachment_path):
-                try:
-                    # CRITICAL FIX: Flush logs to ensure everything is written to disk before emailing
-                    import logging
-                    for handler in logging.getLogger().handlers:
-                        handler.flush()
+            # Normalize attachments to list
+            attachment_list = []
+            if attachment_path:
+                attachment_list.append(attachment_path)
+            if attachments:
+                attachment_list.extend(attachments)
+            
+            # Add attachments if provided
+            for attachment_path in attachment_list:
+                if os.path.exists(attachment_path):
+                    try:
+                        # CRITICAL FIX: Flush logs to ensure everything is written to disk before emailing
+                        import logging
+                        for handler in logging.getLogger().handlers:
+                            handler.flush()
+                        
+                        with open(attachment_path, 'rb') as attachment:
+                            part = MIMEBase('application', 'octet-stream')
+                            part.set_payload(attachment.read())
+                        
+                        encoders.encode_base64(part)
                     
-                    with open(attachment_path, 'rb') as attachment:
-                        part = MIMEBase('application', 'octet-stream')
-                        part.set_payload(attachment.read())
-                    
-                    encoders.encode_base64(part)
-                    
-                    filename = os.path.basename(attachment_path)
-                    part.add_header(
-                        'Content-Disposition',
-                        f'attachment; filename= {filename}'
-                    )
-                    
-                    msg.attach(part)
-                    logger.info(f"Attached file: {filename}")
-                    
-                except Exception as attach_error:
-                    logger.warning(f"Failed to attach file {attachment_path}: {attach_error}")
-                    # Continue without attachment - email still useful
+                        filename = os.path.basename(attachment_path)
+                        part.add_header(
+                            'Content-Disposition',
+                            f'attachment; filename= {filename}'
+                        )
+                        
+                        msg.attach(part)
+                        logger.info(f"Attached file: {filename}")
+                        
+                    except Exception as attach_error:
+                        logger.warning(f"Failed to attach file {attachment_path}: {attach_error}")
+                        # Continue without attachment - email still useful
             
             # Send email
             server = smtplib.SMTP('smtp.gmail.com', 587)

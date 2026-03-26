@@ -1,10 +1,24 @@
-# VolatilityHunter Architecture
+# VolatilityHunter Architecture - Single Source of Truth
 
-**Version**: v10.2 | **Updated**: 2026-02-28 | **Strategy**: v8.1 (single source of truth: `strategy_engine.py`)
+**Version**: Production v10.5 | **Updated**: 2026-03-26 | **Strategy**: v8.1 (Lean Pipeline)
 
 ---
 
-## High-Level Overview
+## 🎯 Executive Summary
+
+VolatilityHunter is a **deterministic quantitative trading fund** ($100k) using a **Lean Pipeline Architecture** with **100% autonomy**. The system executes one complete trading cycle per market day via Windows Task Scheduler, using **Tiingo Professional API** for data and **IBKR Paper Trading** for execution.
+
+**🔒 CURRENT STATUS**: Order execution crisis resolved - market orders filling successfully with delayed data protocol and SMART routing.
+
+### Core Philosophy
+- **No Silent Failures**: Every error is logged, reported, and visible in Command Center
+- **Single Source of Truth**: All strategy logic in `strategy_engine.py`
+- **Professional Data Tier**: Tiingo bulk API for 2,147 ticker universe
+- **Dead Man's Switch**: Window never closes silently, always awaits Architect review
+
+---
+
+## 🏗️ Production Architecture
 
 ```
                     VOLATILITYHUNTER v8.1
@@ -13,7 +27,7 @@
   Windows Task Scheduler (17:06 IST / 10:06 AM ET daily)
               |
               v
-    run_trading.bat
+    run_trading.bat (Command Center with Dead Man's Switch)
               |
     +---------------------------+
     | functional_health_check   |  --> Exit Code 0 gate (10 checks)
@@ -35,341 +49,367 @@
 
 ---
 
-## Core Component Specifications
+## 🔧 Core Component Specifications
 
-### strategy_engine.py  (single source of truth)
-- `DEFAULT_VERSION = 'v8.1'` — change here to switch all modes at once
-- `PARAMS['v8.1']`: HARD_STOP_PCT=8%, OVERBOUGHT_EXIT=78, TIME_STOP_DAYS=10, REGIME_MAX_POS=3, SECTOR_MAX=3, VOL_SIZE=True
-- Functions used by all 4 modes: `check_exits()`, `scan_universe()`, `calc_position_size()`, `can_enter()`, `get_spy_regime()`, `promote_power_stocks()`, `get_params()`
-- Signal ranking: 0.6 * annual_return + 0.4 * stoch_score
+### strategy_engine.py (Single Source of Truth)
+- **DEFAULT_VERSION = 'v8.1'** — change here to switch all modes at once
+- **PARAMS['v8.1']**: 
+  - `HARD_STOP_PCT = 8%` — Maximum loss tolerance
+  - `OVERBOUGHT_EXIT = 78` — Stochastic exit threshold
+  - `TIME_STOP_DAYS = 10` — Maximum holding period
+  - `REGIME_MAX_POS = 3` — Positions in drawdown regime
+  - `SECTOR_MAX = 3` — Maximum per sector
+  - `VOL_SIZE = True` — Volatility-adjusted sizing
+- **Signal Ranking**: `0.6 * annual_return + 0.4 * stoch_score`
 
-### daily_trading_loop.py  (live / paper entry point)
-- 8-step autonomous pipeline (scan -> rank -> execute -> monitor -> email -> save)
-- All strategy logic delegated to `strategy_engine.py` — no hardcoded params here
-- IBKR ib_insync interface via `brokerage_interface.py`
-- Pre-flight socket probe (5s timeout) before connect; paper mode fallback
-- OrderMonitor: poll fills every 10s, email alert at 90s, cancel at 180s
+### daily_trading_loop.py (Live/Paper Entry Point)
+- **8-step autonomous pipeline**: scan → rank → execute → monitor → email → save
+- **Tiingo Bulk API Integration**: 3 requests for 2,147 tickers (1000 per request)
+- **IBKR Interface**: Port 7497 with paper mode fallback
+- **OrderMonitor**: Poll fills every 10s, alert at 90s, cancel at 180s
 
-### functional_health_check.py  (gate)
-- 10 checks: strategy_engine, strategy_v7_2, brokerage_interface, email_notifier,
-  .env keys, portfolio.json, tickers.txt, SPY.parquet, data/*.parquet universe, IBKR port 7497
-- Critical failures (FAIL) → exit code 1, trading aborted
-- Non-critical issues (WARN) → logged, trading continues
+### functional_health_check.py (Gate)
+- **10 Critical Checks**: strategy_engine, strategy_v7_2, brokerage_interface, email_notifier, .env keys, portfolio.json, tickers.txt, SPY.parquet, data/*.parquet universe, IBKR port 7497
+- **Exit Code 0 Required**: Any failure aborts trading
+- **No Silent Failures**: All errors visible in Command Center
 
-### auto_tws_manager.py  (IBC watchdog, runs 24/7)
-- 5-minute health loop: checks port 7497, restarts gateway if down on weekdays
-- Launches IBC via Zulu JRE 17 + `ibc_login_helper.py` (pyautogui credential injection)
-- Paper mode enforced in both `jts.ini` and `C:\IBC\config.ini`
+### auto_tws_manager.py (IBC Watchdog, 24/7)
+- **5-minute health loop**: Checks port 7497, restarts gateway if down
+- **Ghost-Typist Login**: `ibc_login_helper.py` with enhanced focus control
+- **Paper Mode Enforced**: Both `jts.ini` and `C:\IBC\config.ini`
 
 ### brokerage_interface.py
-- IBKR ib_insync wrapper; socket probe + direct `ib.connect(timeout=15)`
-- Paper mode fallback when port 7497 unreachable
-- Ironclad guardrails: 20% max position size, max 10 positions
+- **Port 7497 Standard**: Active connection to IBKR TWS/Gateway
+- **Paper Mode Fallback**: Automatic switching when port unreachable
+- **Ironclad Guardrails**: 20% max position size, max 10 positions
 
-### email_notifier.py
-- Gmail SMTP 587 + STARTTLS
-- Daily trade summary + OrderMonitor alerts + health check status
-
-### smart_data_loader_factory.py
-- Tiingo primary → Yahoo Finance fallback
-- Returns DataFrame with 26+ years of OHLCV + today's candle appended
+### smart_data_loader_factory.py (Professional Data Tier)
+- **Tiingo Exclusive**: Professional API with bulk metadata endpoint
+- **Optimized Fetching**: 1000 tickers per request, 3 requests total
+- **Error Handling**: Comprehensive retry logic with rate limit protection
 
 ---
 
-## Data Flow
+## 📊 Data Flow & Execution
 
 ```
-data/*.parquet  (Tiingo 26yr history, 2,147 tickers)
+Tiingo Professional API (Bulk Metadata)
     |
-    +-- load_ticker_with_latest(ticker)         [daily_trading_loop.py]
-    |       |
-    |       +-- smart_data_loader_factory       Tiingo parquet + today yfinance candle
+    +-- smart_data_loader_factory.update_all_stocks()
+    |       |-- 1000 tickers per request
+    |       |-- 3 total requests for 2,147 tickers
+    |       |-- Latest close + volume data
     |       v
-    |   df: full history + today (200+ rows minimum)
+    |   data/*.parquet (26yr history + today's candle)
     |
     v
-strategy_engine.scan_universe()                 [delegated from daily_trading_loop]
+strategy_engine.scan_universe()
     |
-    +-- add_indicators_v7_2(df)                 [strategy_v7_2.py]
-    +-- apply PARAMS[DEFAULT_VERSION] filters
+    +-- add_indicators_v7_2() [strategy_v7_2.py]
+    +-- Apply PARAMS[DEFAULT_VERSION] filters
     |   (stoch 32-80, SMA200, vol 1.5x, CAGR 15%, momentum 5%)
-    +-- score = 0.6 * annual_return + 0.4 * stoch_score
+    +-- Score calculation: 0.6 * annual_return + 0.4 * stoch_score
     v
-    ranked candidate list
+    Ranked candidate list
     |
     v
 strategy_engine.can_enter() + calc_position_size()
     |
-    +-- regime check: get_spy_regime()          data/SPY.parquet
-    +-- sector cap: max 3 per sector
-    +-- vol-adjusted size: base * (median_atr / ticker_atr)
+    +-- Regime check: get_spy_regime() [data/SPY.parquet]
+    +-- Sector cap: max 3 per sector
+    +-- Vol-adjusted size: base * (median_atr / ticker_atr)
     v
-brokerage_interface.place_market_order()        [live] OR paper log [paper]
+brokerage_interface.place_market_order() [Port 7497]
     |
     v
-OrderMonitor: poll 10s -> alert 90s -> cancel 180s
+OrderMonitor: poll 10s → alert 90s → cancel 180s
     |
     v
-email_notifier -> Gmail SMTP summary
+email_notifier → Gmail SMTP summary
     |
     v
-data/portfolio.json  (saved)
+data/portfolio.json (state saved)
 ```
 
 ---
 
-## File Structure
+## 🚀 Command Center Execution Flow
+
+### Batch Execution Sequence (run_trading.bat)
+
+```batch
+:: 1. Weekday Validation
+if %dayofweek%==6 goto WEEKEND_SKIP
+if %dayofweek%==0 goto WEEKEND_SKIP
+
+:: 2. Environment Setup
+cd /d "D:\GitHub\VolatilityHunter"
+call venv\Scripts\activate.bat
+
+:: 3. Ignition - Start IB Gateway Watchdog
+start "VH_Watchdog" /min python scripts\auto_tws_manager.py
+if %ERRORLEVEL% NEQ 0 goto :FAILED
+
+:: 4. Ping Loop - Wait for Port 7497
+:PING_LOOP
+powershell -Command "try { $tcp = New-Object System.Net.Sockets.TcpClient; $tcp.Connect('127.0.0.1', 7497); $tcp.Close(); exit 0 } catch { exit 1 }" 2>nul
+if %ERRORLEVEL% EQU 0 goto :CONTINUE_EXECUTION
+goto :PING_LOOP
+
+:: 5. Health Check Gate
+python scripts\functional_health_check.py
+if %ERRORLEVEL% NEQ 0 goto :FAILED
+
+:: 6. Trading Loop Execution
+python scripts\daily_trading_loop.py
+if %ERRORLEVEL% NEQ 0 goto :FAILED
+
+:: 7. Cleanup
+taskkill /F /FI "WINDOWTITLE eq VH_Watchdog*" /T >nul 2>&1
+taskkill /F /IM java.exe /T >nul 2>&1
+taskkill /F /IM javaw.exe /T >nul 2>&1
+
+:: 8. Success
+goto :END
+
+:FAILED
+echo [VH] !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+echo [VH] !!           MISSION FAILED               !!
+echo [VH] !!       CRITICAL ERROR - SYSTEMS       !!
+echo [VH] !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+:END
+echo [VH] COMMAND CENTER - Dead Man's Switch Active
+echo [VH] Window will remain open for Architect review
+pause
+exit /b %ERRORLEVEL%
+```
+
+### No Silent Failures Protocol
+
+1. **All Console Output**: No log redirection, real-time Tiingo fetch visible
+2. **Error Redirection**: Every `ERRORLEVEL` check redirects to `:FAILED`
+3. **Big Block Errors**: Failed section displays ERRORLEVEL and details
+4. **Permanent Pause**: `:END` section always triggers, success or failure
+5. **Window Persistence**: Command Center never closes silently
+
+---
+
+## 🔌 Port 7497 Infrastructure
+
+### Global Port Configuration
+- **.env**: `IBKR_PORT=7497` (Global production constant)
+- **brokerage_interface.py**: `self.port = config.get('IBKR_PORT', 7497)`
+- **auto_tws_manager.py**: `TWS_PORT = 7497` and `LocalServerPort=7497`
+- **functional_health_check.py**: Port 7497 reachability check
+- **run_trading.bat**: PowerShell ping loop checks port 7497
+
+### IBKR Connection Flow
+```
+Port 7497 (TWS Paper)
+    |
+    v
+IBKR Interface (ib_insync)
+    |
+    v
+Paper Trading Mode (if port unreachable)
+    |
+    v
+Order Execution
+```
+
+---
+
+## 📡 Tiingo Professional Data Integration
+
+### Bulk API Optimization
+```python
+# Before: 2,136 individual ticker requests
+# After: 3 bulk requests (1000 tickers each)
+
+url = "https://api.tiingo.com/tiingo/daily/prices"
+params = {
+    'tickers': ','.join(chunk),  # 1000 tickers per request
+    'startDate': (datetime.now() - timedelta(days=2)).strftime('%Y-%m-%d'),
+    'endDate': datetime.now().strftime('%Y-%m-%d'),
+    'columns': 'close,volume',
+    'format': 'json',
+    'resampleFreq': 'daily'
+}
+headers = {'Authorization': f'Bearer {TIINGO_API_KEY}'}
+```
+
+### Data Loader Factory
+```python
+def get_data_loader():
+    """Professional data loader - Tiingo exclusive."""
+    log_info("Production: Using Tiingo Professional API")
+    return TiingoLoader()
+```
+
+---
+
+## 🛡️ Safety & Risk Management
+
+### No Margin/Leverage Policy
+```python
+# ENFORCED: Only trade with available cash
+available_cash = portfolio.get('cash', 0)
+if shares <= 0 or cost > available_cash or cost > alloc:
+    return 0, 0.0
+```
+
+### Position Sizing Rules
+- **Maximum 20%** per position
+- **Maximum 10** simultaneous positions
+- **Sector cap**: 3 positions per sector
+- **Volatility-adjusted sizing** enabled
+
+### Drawdown Circuit
+- **-10% DD**: 50% position size
+- **-20% DD**: 25% position size
+- **Hard stop**: 8% maximum loss
+
+---
+
+## 📁 File Structure (Production)
 
 ```
 VolatilityHunter/
-  tickers.txt                     2,149 ticker universe
-
-  src/                            ACTIVE PIPELINE FILES ONLY
-    strategy_engine.py            *** SINGLE SOURCE OF TRUTH — change params here ***
-    strategy_v7_2.py              Indicators shared by all versions
-    strategy_v8.py                v8 backtest engine (reference)
-    strategy_v8_1.py              v8.1 backtest engine (reference)
-    brokerage_interface.py        IBKR ib_insync wrapper
-    email_notifier.py             Gmail SMTP
-    smart_data_loader_factory.py  Tiingo/Yahoo smart loader
-    storage.py                    Parquet read/write
-    config.py                     API key constants
-
-  scripts/
-    daily_trading_loop.py         Autonomous daily pipeline v8.1
-    simulate_monday.py            Full pipeline dry-run on historical date
-    functional_health_check.py    Health gate (10 checks, Exit Code 0 required)
-    auto_tws_manager.py           IBC gateway watchdog (24/7)
-    ibc_login_helper.py           pyautogui credential injector
-    setup_ibc.py                  IBC + Zulu JRE 17 one-time installer
-    full_universe_backtest.py     v7.2 standalone backtest
-    backtest_v7_vs_v8.py          v7.2 vs v8 comparison
-    backtest_v8_vs_v8_1.py        v8 vs v8.1 DD-reduction proof
-    fetch_deep_history.py         Download 26yr Tiingo history
-    update_data.py                Incremental daily data refresh
-    DAILY_ROUTINE/
-      run_trading.bat             Task Scheduler entry point (17:06 IST)
-      run_auto_tws_manager.bat    Task Scheduler entry point (at logon)
-
-  config/
-    agents.json                   Configuration (timeouts, retries, v8.1 params)
-
-  data/
-    portfolio.json                Live/paper state — daily_trading_loop.py (gitignored)
-    portfolio_sim.json            Simulation snapshot — simulate_monday.py (gitignored)
-    portfolio_backtest.json       Backtest scratch state (gitignored)
-    SPY.parquet                   SPY history for regime filter (gitignored)
-    *.parquet                     Tiingo price history (gitignored)
-
-  logs/
-    trading_YYYY-MM-DD.log        Daily loop output
-    functional_health_check.log   Health check log
-    ibc_gateway.log               IBC startup log
-    backtest_v7_vs_v8_*.json      v7 vs v8 comparison results
-    backtest_v8_vs_v8_1_*.json    v8 vs v8.1 DD-reduction results
-
-  archive/src_orphans/            Archived 2026-02-28 (not used by active pipeline)
-    main_agent_system.py          Former orchestrator entry point
-    agents_src/                   7-agent layer (DataAgent, StrategyAgent, etc.)
-    [+ 35 other archived files]
-
-  docs/
-    README.md                     System overview + backtest results
-    ARCHITECTURE.md               This file
-    BLUEPRINT.md                  Original Sweet Spot trading rules
-    DAILY_FLOW.md                 Step-by-step daily pipeline visual
+├── 📄 ARCHITECTURE.md              # This file - Single Source of Truth
+├── 📄 ROADMAP.md                   # Future development goals
+├── 📄 CHANGELOG.md                 # Historical changes
+├── 📄 README.md                    # Brief introduction
+├── 📄 .env                         # API keys + IBKR_PORT=7497
+├── 📄 tickers.txt                  # 2,147 ticker universe
+│
+├── 📁 src/                         # Active pipeline only
+│   ├── strategy_engine.py         # *** SINGLE SOURCE OF TRUTH ***
+│   ├── strategy_v7_2.py           # Indicators (shared by all versions)
+│   ├── brokerage_interface.py     # IBKR port 7497 interface
+│   ├── email_notifier.py          # Gmail SMTP
+│   ├── smart_data_loader_factory.py # Tiingo Professional API
+│   └── storage.py                  # Parquet read/write
+│
+├── 📁 scripts/
+│   ├── daily_trading_loop.py       # Main autonomous pipeline
+│   ├── functional_health_check.py  # Health gate (Exit Code 0)
+│   ├── auto_tws_manager.py         # IBC watchdog (24/7)
+│   ├── ibc_login_helper.py         # Ghost-Typist login recovery
+│   └── DAILY_ROUTINE/
+│       └── run_trading.bat         # Command Center with Dead Man's Switch
+│
+├── 📁 config/
+│   └── agents.json                 # System configuration
+│
+├── 📁 data/
+│   ├── portfolio.json              # Live state (gitignored)
+│   ├── SPY.parquet                 # Regime filter data
+│   └── *.parquet                   # Tiingo 26yr history (gitignored)
+│
+├── 📁 logs/                        # Daily execution logs
+└── 📁 archive/                     # Historical code (not used)
 ```
 
 ---
 
-## Health Check Protocol
+## 🧪 Testing & Validation
 
-Mandatory before any trading session:
-
+### Mandatory Health Check
 ```bash
 python scripts/functional_health_check.py
 # Must exit with code 0
 ```
 
-Checks run (10 total):
-1. `strategy_engine` — imports + DEFAULT_VERSION + all v8.1 PARAMS present
-2. `strategy_v7_2` — `add_indicators_v7_2()` executes without error
-3. `brokerage_interface` — `get_brokerage_interface()` importable
-4. `email_notifier` — `EmailNotifier` importable
-5. `.env` — `TIINGO_API_KEY` set
-6. `portfolio.json` — readable, valid JSON, `cash` + `positions` keys present
-7. `tickers.txt` — at least 100 tickers loaded
-8. `data/SPY.parquet` — exists and readable (regime filter)
-9. `data/*.parquet` — at least 500 ticker parquets present
-10. `IBKR port 7497` — reachable (WARN only if not, trading continues in paper mode)
+### 10 Critical Checks
+1. **strategy_engine** — imports + DEFAULT_VERSION + PARAMS integrity
+2. **strategy_v7_2** — add_indicators_v7_2() smoke test
+3. **brokerage_interface** — importable check
+4. **email_notifier** — importable check
+5. **.env** — TIINGO_API_KEY + IBKR_PORT present
+6. **portfolio.json** — valid JSON, cash + positions keys
+7. **tickers.txt** — 100+ tickers loaded
+8. **data/SPY.parquet** — readable (regime filter)
+9. **data/*.parquet** — 500+ ticker files present
+10. **IBKR port 7497** — reachable (WARN only if not)
 
-**Exit Code 0 = all green. Exit Code 1 = critical failure, abort trading.**
-
----
-
-## Testing
-
+### Simulation Mode
 ```bash
-# Full system health gate
-python scripts/functional_health_check.py
-
-# Backtest full universe v7.2 (takes ~2 min)
-python scripts/full_universe_backtest.py
-
-# Compare v7.2 vs v8 side-by-side (takes ~2 min)
-python scripts/backtest_v7_vs_v8.py
-
-# Compare v8 vs v8.1 DD-reduction (takes ~3 min)
-python scripts/backtest_v8_vs_v8_1.py
-
-# Simulate a historical trading day end-to-end
 python scripts/simulate_monday.py
-
-# Validate specific fix
-python scripts/verify_X.py  # per Rule 4.1
+# Full pipeline dry-run on historical date
 ```
 
 ---
 
-## Pipeline File Map (All Active Files)
+## 🔄 Daily Operations
 
-Every file that participates in the live/paper/simulation/backtest pipeline.
+### Automated Execution (17:06 IST)
+1. **Windows Task Scheduler** triggers `run_trading.bat`
+2. **Command Center** opens with visible output
+3. **Ignition** starts IB Gateway Watchdog
+4. **Ping Loop** waits for port 7497 (3min timeout)
+5. **Health Check** validates all systems (Exit Code 0 required)
+6. **Trading Loop** executes full autonomous cycle
+7. **Cleanup** terminates Gateway processes
+8. **Dead Man's Switch** pauses for Architect review
 
-```python
-ENTRY POINTS (Task Scheduler)
-══════════════════════════════════════════════════════════════════════
-scripts/DAILY_ROUTINE/run_trading.bat          Task Scheduler trigger (17:06 IST)
-scripts/DAILY_ROUTINE/run_auto_tws_manager.bat Task Scheduler trigger (at logon)
-
-INFRASTRUCTURE (runs 24/7)
-══════════════════════════════════════════════════════════════════════
-scripts/auto_tws_manager.py        IBC gateway watchdog, 5-min health loop
-    └── scripts/tws_keep_alive.py      Called by auto_tws_manager to keep port alive
-    └── scripts/ibc_login_helper.py    pyautogui credential injector for IBC
-
-DAILY TRADING PIPELINE (17:06 IST each trading day)
-══════════════════════════════════════════════════════════════════════
-scripts/functional_health_check.py     GATE: must exit 0 before trading starts
-    └── src/strategy_engine.py         DEFAULT_VERSION + PARAMS integrity
-    └── src/strategy_v7_2.py           add_indicators_v7_2() smoke test
-    └── src/brokerage_interface.py     importable check
-    └── src/email_notifier.py          importable check
-    └── .env                           TIINGO_API_KEY present
-    └── data/portfolio.json            valid JSON, cash+positions keys
-    └── tickers.txt                    100+ tickers
-    └── data/SPY.parquet               readable
-    └── data/*.parquet                 500+ files
-    └── port 7497                      IBKR reachable (WARN only)
-
-scripts/daily_trading_loop.py          MAIN: full autonomous trading cycle
-    │
-    ├── [Step 1] IBKR reconciliation
-    │   └── src/brokerage_interface.py         IBKR ib_insync wrapper
-    │
-    ├── [Step 2] Price fetch
-    │   └── (yfinance direct — no wrapper)
-    │
-    ├── [Step 2b] Tracking update
-    │   └── src/strategy_engine.py             update_highest_prices()
-    │   └── src/strategy_engine.py             update_high_water_mark()
-    │
-    ├── [Step 3] Exit check
-    │   └── src/strategy_engine.py             check_exits()  ← reads PARAMS[DEFAULT_VERSION]
-    │       └── src/strategy_v7_2.py           add_indicators_v7_2()
-    │
-    ├── [Step 3b] Power stock promotion
-    │   └── src/strategy_engine.py             promote_power_stocks()
-    │
-    ├── [Step 4] Universe scan
-    │   └── src/strategy_engine.py             scan_universe()  ← reads PARAMS[DEFAULT_VERSION]
-    │       └── src/strategy_v7_2.py           add_indicators_v7_2()
-    │       └── data/*.parquet                 26yr Tiingo history (2,147 tickers)
-    │
-    ├── [Step 4b] Regime check
-    │   └── src/strategy_engine.py             get_spy_regime()
-    │       └── data/SPY.parquet               SPY 26yr history
-    │
-    ├── [Step 5] Execute entries
-    │   └── src/strategy_engine.py             can_enter() + calc_position_size()
-    │   └── src/brokerage_interface.py         place_market_order()
-    │
-    ├── [Step 6] Order monitor
-    │   └── src/brokerage_interface.py         poll openTrades()
-    │
-    ├── [Step 7] Email summary
-    │   └── src/email_notifier.py              Gmail SMTP
-    │
-    └── [Step 8] Save state
-        └── data/portfolio.json                live portfolio state
-
-STRATEGY LOGIC (single source of truth)
-══════════════════════════════════════════════════════════════════════
-src/strategy_engine.py        *** CHANGE PARAMS HERE — all modes use this ***
-    └── src/strategy_v7_2.py  add_indicators_v7_2() — indicators shared by all versions
-
-SIMULATION MODE
-══════════════════════════════════════════════════════════════════════
-scripts/simulate_monday.py
-    └── src/strategy_engine.py    (same functions as live — full parity)
-    └── src/strategy_v7_2.py
-    └── data/*.parquet
-
-BACKTEST MODE
-══════════════════════════════════════════════════════════════════════
-scripts/backtest_v8_vs_v8_1.py       v8 vs v8.1 comparison (production proof)
-    └── src/strategy_v8.py           v8 backtest engine
-    └── src/strategy_v8_1.py         v8.1 backtest engine
-    └── src/strategy_v7_2.py         indicators
-    └── data/*.parquet
-
-scripts/backtest_v7_vs_v8.py         v7.2 vs v8 comparison (reference)
-    └── src/strategy_v8.py
-    └── src/strategy_v7_2.py
-
-scripts/full_universe_backtest.py    v7.2 standalone backtest (reference)
-    └── src/strategy_v7_2.py
-
-DATA MAINTENANCE (run manually as needed)
-══════════════════════════════════════════════════════════════════════
-scripts/fetch_deep_history.py    Download full 26yr Tiingo history for all tickers
-    └── src/smart_data_loader_factory.py   Tiingo/Yahoo loader
-    └── data/*.parquet                     Output
-
-scripts/update_data.py           Incremental daily data refresh
-    └── src/smart_data_loader_factory.py
-    └── data/*.parquet
-
-CONFIGURATION
-══════════════════════════════════════════════════════════════════════
-config/agents.json               Agent configuration (timeouts, retries, etc.)
-tickers.txt                      2,147 ticker universe
-.env                             API keys + EMAIL_RECIPIENTS (TIINGO_API_KEY, Gmail, IBKR)
-                                 NOTE: EMAIL_RECIPIENTS must be in .env — config.json does not exist
-data/portfolio.json              Live/paper state — daily_trading_loop.py (gitignored)
-data/portfolio_sim.json          Simulation snapshot — simulate_monday.py (gitignored)
-data/portfolio_backtest.json     Backtest scratch state (gitignored)
-data/SPY.parquet                 SPY regime data (gitignored)
-```
+### Manual Operations
+- **Data Refresh**: `python scripts/update_data.py`
+- **Backtesting**: `python scripts/backtest_v8_vs_v8_1.py`
+- **IBKR Manual**: `python scripts/auto_tws_manager.py`
 
 ---
 
-## File Audit: Archived 2026-02-28
+## 📞 Support & Troubleshooting
 
-All files not used by the active pipeline were moved to `archive/src_orphans/` on 2026-02-28.
-Backtests confirmed identical numbers before and after cleanup. Health check 10/10 PASS.
+### Critical Error Response
+1. **Command Center** shows big block error display
+2. **ERRORLEVEL** indicates failure point
+3. **Logs** contain detailed traceback
+4. **Window remains open** for Architect review
+5. **No silent failures** - all issues visible
 
-| Archived Group | Contents |
-|----------------|----------|
-| `archive/src_orphans/main_agent_system.py` | Former 7-agent orchestrator entry point |
-| `archive/src_orphans/agents_src/` | All 7 agent implementations |
-| `archive/src_orphans/src/` | config_manager, shields, strategy_factory, sweet_spot_strategy, technical_utils, system_monitor, log_sanitizer, yfinance_loader, orchestrator, portfolio_synchronizer, brain_watcher |
-| `archive/src_orphans/messaging/` | Message bus (not used by active pipeline) |
-| `archive/src_orphans/workflows/` | Workflow manager |
-| `archive/src_orphans/patterns/` | Candlestick/chart pattern library |
-| `archive/src_orphans/factories/` | Agent factory |
-| `archive/src_orphans/interfaces/` | Abstract agent interfaces |
-| `archive/src_orphans/utils/` | Concurrency/memory managers |
-| `archive/src_orphans/config/` | Config dataclasses |
-| `archive/dev/` | Code intelligence tools (index_codebase.py, query_brain.py) |
+### Common Issues
+- **Port 7497 unreachable**: Check IBKR Gateway status
+- **Tiingo API failures**: Verify TIINGO_API_KEY in .env
+- **Health check failures**: Run individual checks manually
+- **Order execution issues**: Resolved with delayed data protocol (reqMarketDataType(3))
 
-> All archived files are available for recovery. Nothing was permanently deleted.
+### 🚀 Execution System (NEW)
+- **Market Data**: Delayed data permission (reqMarketDataType(3))
+- **Order Type**: Market orders for immediate paper trading fills
+- **Routing**: SMART routing with contract qualification
+- **Exchanges**: Multi-exchange execution (NASDAQ, NYSE, ARCA, BYX, LTSE)
+- **Timeout**: 5-minute cancellation for unfilled orders
+- **Monitoring**: Real-time order status tracking
+
+---
+
+## 🎯 Production Readiness Checklist
+
+### ✅ Daily Operations
+- [ ] Windows Task Scheduler enabled (17:06 IST)
+- [ ] IBKR Gateway running on port 7497
+- [ ] Tiingo API key valid and funded
+- [ ] Gmail SMTP credentials working
+- [ ] Command Center visible and responsive
+
+### ✅ System Health
+- [ ] functional_health_check.py exits 0
+- [ ] All 10 critical checks passing
+- [ ] Portfolio state synchronized
+- [ ] Data files up-to-date
+- [ ] Logs rotating properly
+
+### ✅ Risk Management
+- [ ] No margin/leverage usage
+- [ ] Position sizing limits enforced
+- [ ] Drawdown circuit functional
+- [ ] Order monitoring active
+- [ ] Email alerts working
+
+---
+
+**This ARCHITECTURE.md serves as the Single Source of Truth for the VolatilityHunter production system. All technical decisions, port configurations, and execution flows are documented here. No other documentation should contain active technical specifications.**
+
+*Last Updated: 2026-03-23 - Tiingo Professional API Integration Complete*

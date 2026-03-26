@@ -1,136 +1,99 @@
-"""
-IBC Login Helper - fills IBKR Gateway login dialog when IBC fails to.
-Called by auto_tws_manager.py after Gateway window appears.
-Waits for the IBKR Gateway window, clears fields, types credentials, clicks login.
-"""
 import os
 import sys
 import time
-import logging
-import traceback
-
-# ── Setup ──────────────────────────────────────────────────────────────────
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger("ibc_login_helper")
-
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, ROOT)
-
+import pyautogui
+import pygetwindow as gw
 from dotenv import load_dotenv
-load_dotenv(os.path.join(ROOT, '.env'))
 
-IBKR_USER = os.getenv("IBKR_USER_NAME", "")
-IBKR_PASS = os.getenv("IBKR_PASSWORD", "")
-TRADING_MODE = os.getenv("IBKR_TRADING_MODE", "paper")  # paper or live
-
-BUTTON_TEXT = "Paper Log In" if TRADING_MODE == "paper" else "Log In"
-WAIT_SECS   = 60   # how long to wait for the window to appear
-
-
-def find_gateway_window():
-    """Return the IBKR Gateway window or None."""
+def main():
+    print("Ghost-Typist: Enhanced Auto-Login Recovery System")
+    
+    # Force load from .env, completely ignoring any garbage command-line arguments
+    load_dotenv()
+    
+    username = os.getenv('IBKR_USER_NAME')
+    password = os.getenv('IBKR_PASSWORD')
+    
+    if not username or not password:
+        print("ERROR: Could not find IBKR_USER_NAME or IBKR_PASSWORD in .env file!")
+        sys.exit(1)
+        
+    print(f"Loaded credentials. Username: {username}")
+    
+    # Configure PyAutoGUI for human-like behavior
+    pyautogui.PAUSE = 0.1  # 0.1s interval between keystrokes
+    pyautogui.FAILSAFE = True
+    
+    # Wait for the IB Gateway login window to open and settle
+    print("Waiting for IB Gateway window...")
+    time.sleep(8)  # Increased wait time for window stability
+    
     try:
-        import pygetwindow as gw
-        wins = gw.getWindowsWithTitle("IBKR Gateway")
-        if not wins:
-            wins = gw.getWindowsWithTitle("IB Gateway")
-        return wins[0] if wins else None
+        # 1. FIND & FOCUS: Locate IBKR Gateway window
+        print("Finding IBKR Gateway window...")
+        gateway_windows = gw.getWindowsWithTitle("IBKR Gateway")
+        
+        if not gateway_windows:
+            print("ERROR: IBKR Gateway window not found!")
+            print("Available windows:")
+            for window in gw.getAllWindows():
+                if "gateway" in window.title.lower() or "ibkr" in window.title.lower():
+                    print(f"  - {window.title}")
+            sys.exit(1)
+        
+        gateway_window = gateway_windows[0]
+        print(f"Found IBKR Gateway window: {gateway_window.title}")
+        
+        # Activate and maximize the window
+        try:
+            gateway_window.activate()
+            gateway_window.maximize()
+            time.sleep(1)  # Wait for window to stabilize
+        except Exception as e:
+            print(f"ERROR: Failed to activate/maximize window: {e}")
+            sys.exit(1)
+        
+        # Window is already focused, no mouse click needed
+        
+        # 2. FOCUSED INJECTION: Nuclear Clear + Type Username
+        print("FOCUSED INJECTION: Nuclear Clear Username field...")
+        pyautogui.hotkey('ctrl', 'a')
+        time.sleep(0.2)
+        pyautogui.press('backspace')
+        time.sleep(0.2)
+        
+        # 3. Type username from environment
+        print(f"Typing username {username}...")
+        pyautogui.PAUSE = 0.1  # Set 0.1s interval for slow typing
+        pyautogui.write(username)
+        time.sleep(0.2)
+        
+        # 4. Move to Password field
+        print("Moving to Password field...")
+        pyautogui.press('tab')
+        time.sleep(0.2)
+        
+        # 5. FOCUSED INJECTION: Nuclear Clear + Type Password
+        print("FOCUSED INJECTION: Nuclear Clear Password field...")
+        pyautogui.hotkey('ctrl', 'a')
+        time.sleep(0.2)
+        pyautogui.press('backspace')
+        time.sleep(0.2)
+        
+        # 6. Type password
+        print("Typing password...")
+        pyautogui.write(password)
+        time.sleep(0.2)
+        
+        # 7. Submit login
+        print("Submitting login...")
+        pyautogui.press('enter')
+        
+        print("Ghost-Typist: Credentials injected successfully. Mission complete.")
+        
     except Exception as e:
-        logger.error(f"Window search failed: {e}")
-        return None
-
-
-def fill_and_login():
-    import pyautogui
-    import pygetwindow as gw
-
-    pyautogui.FAILSAFE = False
-    pyautogui.PAUSE = 0.15
-
-    logger.info(f"Waiting up to {WAIT_SECS}s for IBKR Gateway window...")
-    win = None
-    for _ in range(WAIT_SECS):
-        win = find_gateway_window()
-        if win:
-            break
-        time.sleep(1)
-
-    if not win:
-        logger.error("IBKR Gateway window not found - exiting")
+        print(f"Ghost-Typist ERROR: {e}")
         sys.exit(1)
-
-    logger.info(f"Found window: {win.title} at ({win.left},{win.top})")
-
-    # Bring window to front
-    try:
-        win.activate()
-    except Exception:
-        pass
-    time.sleep(0.5)
-
-    # Click username field (center-left of the window, ~40% from top)
-    cx = win.left + win.width // 2
-    user_y = win.top + int(win.height * 0.42)
-    pass_y  = win.top + int(win.height * 0.54)
-
-    # Wait for IBC to finish its own attempts before we take over
-    time.sleep(4)
-
-    # Re-find window after wait
-    win = find_gateway_window()
-    if not win:
-        logger.error("Window disappeared before we could fill credentials")
-        sys.exit(1)
-
-    try:
-        win.activate()
-    except Exception:
-        pass
-    time.sleep(0.5)
-
-    cx     = win.left + win.width // 2
-    user_y = win.top + int(win.height * 0.43)
-
-    # Click username field directly, triple-click to select all, retype
-    logger.info("Filling username field...")
-    pyautogui.click(cx, user_y)
-    time.sleep(0.4)
-    pyautogui.hotkey('ctrl', 'a')
-    time.sleep(0.2)
-    pyautogui.press('delete')
-    time.sleep(0.2)
-    logger.info(f"Typing username: {IBKR_USER}")
-    pyautogui.typewrite(IBKR_USER, interval=0.07)
-    time.sleep(0.4)
-
-    # Tab to password field
-    logger.info("Tabbing to password field...")
-    pyautogui.press('tab')
-    time.sleep(0.4)
-    pyautogui.hotkey('ctrl', 'a')
-    time.sleep(0.2)
-    pyautogui.press('delete')
-    time.sleep(0.2)
-    logger.info("Typing password...")
-    pyautogui.typewrite(IBKR_PASS, interval=0.07)
-    time.sleep(0.4)
-
-    # Press Enter to submit (or Tab to button then Enter)
-    logger.info(f"Submitting login...")
-    pyautogui.press('enter')
-    time.sleep(0.5)
-
-    logger.info("Login submitted.")
-    return True
-
 
 if __name__ == "__main__":
-    if not IBKR_USER or not IBKR_PASS:
-        logger.error("IBKR_USER_NAME / IBKR_PASSWORD not in .env")
-        sys.exit(1)
-    try:
-        fill_and_login()
-    except Exception as e:
-        logger.error(f"Login helper failed: {e}")
-        logger.error(traceback.format_exc())
-        sys.exit(1)
+    main()

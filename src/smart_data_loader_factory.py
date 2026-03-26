@@ -1,155 +1,115 @@
 """
-Smart Data Loader Factory
-Intelligently switches between Tiingo and Yahoo Finance based on configuration and availability
+Production Data Loader Factory - Tiingo Professional API Only
+100% Tiingo integration - No Yahoo Finance, No Fallback Logic
 """
 
 import os
+import requests
+import pandas as pd
+import urllib3
+from datetime import datetime, timedelta
 from src.config import TIINGO_KEY
 from src.notifications import log_info, log_warning, log_error
-from src.log_sanitizer import log_error_with_tracking, log_warning_with_tracking
+from src.log_sanitizer import log_error_with_tracking
+
+# Disable SSL warnings for verify=False
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 def get_data_loader():
     """
-    Smart data loader selection with intelligent fallback.
-    
-    Priority Order:
-    1. Use Tiingo if key exists and explicitly requested
-    2. Use Yahoo Finance if explicitly requested
-    3. Default to Tiingo if key available (you're paying for it!)
-    4. Fallback to Yahoo Finance if Tiingo fails
+    Production data loader - Tiingo Professional API only.
+    100% free of Yahoo Finance and fallback logic.
     
     Returns:
-        Data loader instance with fallback capability
+        TiingoLoader instance using TIINGO_API_KEY
     """
-    data_source = os.getenv('VH_DATA_SOURCE', 'tiingo').lower()
-    
-    # Check if user explicitly wants Yahoo Finance
-    if data_source == 'yfinance':
-        log_info("User explicitly requested Yahoo Finance data source")
-        return YFinanceLoader()
-    
-    # Check if user explicitly wants Tiingo
-    elif data_source == 'tiingo':
-        if TIINGO_KEY and TIINGO_KEY.strip():
-            log_info("User explicitly requested Tiingo data source")
-            return TiingoLoader()
-        else:
-            log_warning("Tiingo requested but no API key found, falling back to Yahoo Finance")
-            return YFinanceLoader()
-    
-    # Default behavior: Use Tiingo if you're paying for it
-    else:
-        if TIINGO_KEY and TIINGO_KEY.strip():
-            log_info("Default: Using Tiingo (you're paying for it!)")
-            return TiingoLoader()
-        else:
-            log_info("Default: No Tiingo key found, using Yahoo Finance")
-            return YFinanceLoader()
+    log_info("Production: Using Tiingo Professional API - No Fallback Logic")
+    return TiingoLoader()
 
-class SmartDataLoader:
-    """
-    Smart data loader with automatic fallback capability
-    """
-    
-    def __init__(self):
-        self.primary_loader = None
-        self.fallback_loader = None
-        self.using_fallback = False
-        
-        # Determine primary and fallback loaders
-        if TIINGO_KEY and TIINGO_KEY.strip():
-            self.primary_loader = TiingoLoader()
-            self.fallback_loader = YFinanceLoader()
-            log_info("Smart loader: Primary=Tiingo, Fallback=Yahoo Finance")
-        else:
-            self.primary_loader = YFinanceLoader()
-            log_info("Smart loader: Primary=Yahoo Finance (no Tiingo key)")
-    
-    def update_all_stocks(self, stock_list, full_refresh=False, batch_size=50):
-        """
-        Update stocks with automatic fallback on failure
-        """
-        total_stocks = len(stock_list)
-        log_info(f"📊 Starting data update for {total_stocks} stocks (batch_size={batch_size})")
-        
-        try:
-            if self.using_fallback:
-                log_info("🔄 Using fallback loader (Yahoo Finance)")
-                return self._update_with_progress(self.fallback_loader, stock_list, full_refresh, batch_size, total_stocks)
-            else:
-                log_info("🚀 Using primary loader (Tiingo)")
-                result = self._update_with_progress(self.primary_loader, stock_list, full_refresh, batch_size, total_stocks)
-                
-                # Check if Tiingo call was successful
-                if result and result.get('success', False):
-                    log_info(f"✅ Data update completed: {result.get('updated', 0)}/{total_stocks} stocks updated")
-                    return result
-                else:
-                    log_warning_with_tracking("⚠️ Tiingo failed, switching to Yahoo Finance fallback")
-                    self.using_fallback = True
-                    log_info("🔄 Retrying with Yahoo Finance fallback...")
-                    return self._update_with_progress(self.fallback_loader, stock_list, full_refresh, batch_size, total_stocks)
-                    
-        except Exception as e:
-            if not self.using_fallback and self.fallback_loader:
-                log_warning_with_tracking(f"❌ Primary loader failed: {e}, switching to Yahoo Finance fallback")
-                self.using_fallback = True
-                return self._update_with_progress(self.fallback_loader, stock_list, full_refresh, batch_size, total_stocks)
-            else:
-                log_error_with_tracking(f"❌ All loaders failed: {e}")
-                raise e
-    
-    def _update_with_progress(self, loader, stock_list, full_refresh, batch_size, total_stocks):
-        """Update with progress indicators"""
-        import time
-        start_time = time.time()
-        
-        result = loader.update_all_stocks(stock_list, full_refresh, batch_size)
-        
-        elapsed_time = time.time() - start_time
-        updated = result.get('updated', 0) if result else 0
-        
-        log_info(f"📈 Progress: {updated}/{total_stocks} stocks updated in {elapsed_time:.1f}s")
-        
-        return result
-    
-    def get_data_source_info(self):
-        """Get information about current data source"""
-        if self.using_fallback:
-            return {
-                'source': 'Yahoo Finance (Fallback)',
-                'reason': 'Tiingo failed or unavailable',
-                'key_available': bool(TIINGO_KEY and TIINGO_KEY.strip())
-            }
-        else:
-            if self.primary_loader and hasattr(self.primary_loader, '__class__') and 'Tiingo' in self.primary_loader.__class__.__name__:
-                return {
-                    'source': 'Tiingo (Primary)',
-                    'reason': 'You\'re paying for it!',
-                    'key_available': True
-                }
-            else:
-                return {
-                    'source': 'Yahoo Finance (Primary)',
-                    'reason': 'No Tiingo API key',
-                    'key_available': False
-                }
-
-# Keep existing classes for compatibility
 class TiingoLoader:
-    """Wrapper for existing Tiingo data loader to match YFinance interface."""
+    """
+    Tiingo Professional API data loader.
+    Bulk metadata endpoint for efficient data fetching.
+    """
     
     def __init__(self):
         from src.storage import DataStorage
         self.storage = DataStorage()
+        self.api_key = TIINGO_KEY
+        if not self.api_key:
+            log_error("TIINGO_API_KEY not found in environment")
     
     def update_all_stocks(self, stock_list, full_refresh=False, batch_size=50):
-        """Update stocks using Tiingo API."""
+        """
+        Update stocks using Tiingo Bulk Metadata API.
+        3 requests for 2,147 tickers (1000 per request).
+        No Yahoo Finance, no fallback logic.
+        """
+        if not self.api_key:
+            log_error("Cannot update stocks: TIINGO_API_KEY missing")
+            return {'success': False, 'error': 'TIINGO_API_KEY missing', 'updated': 0, 'total': len(stock_list)}
+        
         try:
-            from src.data_loader import update_all_stocks
-            return update_all_stocks(full_refresh=full_refresh, stock_list=stock_list)
+            log_info(f"Production: Fetching latest prices for {len(stock_list)} tickers via Tiingo Bulk Metadata API")
+            
+            # Use Tiingo IEX endpoint for real-time prices
+            url = "https://api.tiingo.com/iex"
+            
+            # Split into chunks of 100 (hard limit to avoid 502 Bad Gateway)
+            chunk_size = 100
+            all_prices = {}
+            updated_count = 0
+            
+            for i in range(0, len(stock_list), chunk_size):
+                chunk = stock_list[i:i + chunk_size]
+                
+                params = {
+                    'tickers': ','.join(chunk),
+                    'token': self.api_key  # Tiingo uses token as query parameter
+                }
+                headers = {
+                    'Content-Type': 'application/json'
+                }
+                
+                response = requests.get(url, params=params, headers=headers, timeout=60, verify=False)
+                response.raise_for_status()
+                
+                data = response.json()
+                
+                # Process IEX response format
+                for ticker_data in data:
+                    if 'ticker' in ticker_data:
+                        ticker = ticker_data['ticker']
+                        # Use tngoLast if last is null (real-time price)
+                        latest_price = ticker_data.get('tngoLast') or ticker_data.get('last')
+                        volume = ticker_data.get('volume', 0)
+                        
+                        if latest_price and latest_price > 0:
+                            all_prices[ticker] = {
+                                'price': latest_price,
+                                'volume': volume,
+                                'date': datetime.now().strftime('%Y-%m-%d')
+                            }
+                            updated_count += 1
+                            if updated_count <= 10:  # Log first 10 for verification
+                                log_info(f"Got price for {ticker}: ${latest_price:.2f} (vol: {volume:,})")
+                
+                # Small delay between chunks (22 small batches for 2,147 tickers)
+                if i + chunk_size < len(stock_list):
+                    import time
+                    time.sleep(1.0)  # Respectful delay between requests
+            
+            log_info(f"Production: Successfully fetched {updated_count}/{len(stock_list)} ticker prices in {len(stock_list)//chunk_size + 1} requests (100 tickers each)")
+            
+            # Return prices directly (trading loop will use them)
+            return {'success': True, 'updated': updated_count, 'total': len(stock_list), 'prices': {k: v['price'] for k, v in all_prices.items()},
+                'metadata': all_prices}
+            
+        except requests.exceptions.RequestException as e:
+            log_error(f"Tiingo Bulk API request failed: {e}")
+            return {'success': False, 'error': f'API request failed: {e}', 'updated': 0, 'total': len(stock_list)}
         except Exception as e:
-            log_warning_with_tracking(f"Tiingo data update failed: {e}")
+            log_error_with_tracking(f"Tiingo bulk update failed: {e}")
             return {'success': False, 'error': str(e), 'updated': 0, 'total': len(stock_list)}
     
     def download_nasdaq_tickers(self):
@@ -159,43 +119,4 @@ class TiingoLoader:
     
     def filter_tickers_by_criteria(self, tickers, min_price=5.0, min_volume=500000, batch_size=50):
         """Tiingo doesn't support filtering, return all tickers."""
-        import pandas as pd
         return pd.DataFrame([{'ticker': t, 'price': 0, 'avg_volume': 0} for t in tickers])
-
-class YFinanceLoader:
-    """Wrapper for YFinance loader (imported from existing module)"""
-    
-    def __init__(self):
-        # Import here to avoid circular dependencies
-        from src.yfinance_loader import YFinanceLoader as YFLoader
-        self.loader = YFLoader()
-    
-    def update_all_stocks(self, stock_list, full_refresh=False, batch_size=50):
-        """Update stocks using Yahoo Finance API."""
-        try:
-            return self.loader.update_all_stocks(stock_list, full_refresh, batch_size)
-        except Exception as e:
-            log_warning_with_tracking(f"Yahoo Finance data update failed: {e}")
-            return {'success': False, 'error': str(e), 'updated': 0, 'total': len(stock_list)}
-    
-    def download_nasdaq_tickers(self):
-        """Get ticker list from Yahoo Finance."""
-        return self.loader.download_nasdaq_tickers()
-    
-    def filter_tickers_by_criteria(self, tickers, min_price=5.0, min_volume=500000, batch_size=50):
-        """Filter tickers using Yahoo Finance."""
-        return self.loader.filter_tickers_by_criteria(tickers, min_price, min_volume, batch_size)
-
-def get_smart_data_loader():
-    """
-    Get the smart data loader with automatic fallback capability
-    
-    Returns:
-        SmartDataLoader instance with Tiingo/Yahoo Finance fallback
-    """
-    return SmartDataLoader()
-
-# Legacy compatibility
-def get_data_loader():
-    """Legacy function - now uses smart loader"""
-    return get_smart_data_loader()

@@ -1,11 +1,7 @@
 #!/usr/bin/env python3
 """
-IB GATEWAY SHUTDOWN
-===================
-Gracefully shutdown IB Gateway after trading completes.
-Kills entire process tree (parent + children) for clean shutdown.
-
-Usage: python scripts/stop_gateway.py
+IB Gateway Stopper
+Gracefully shutdown IB Gateway with process tree kill
 """
 
 import os
@@ -14,130 +10,127 @@ import time
 import logging
 import psutil
 from pathlib import Path
+from datetime import datetime
 
-# ── Path setup ─────────────────────────────────────────────────────────────
-ROOT = Path(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Add project root to path
+ROOT = Path(__file__).parent.parent.absolute()
 sys.path.insert(0, str(ROOT))
 
-# ── Logging (ASCII only) ───────────────────────────────────────────────────
+from src.notifications import log_info, log_warning, log_error
+
+# Configure logging
 LOG_DIR = ROOT / "logs"
 LOG_DIR.mkdir(exist_ok=True)
+log_file = LOG_DIR / "gateway_stop.log"
 
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(str(LOG_DIR / "gateway_shutdown.log"), encoding='utf-8'),
+        logging.FileHandler(log_file),
         logging.StreamHandler(sys.stdout)
     ]
 )
-logger = logging.getLogger("stop_gateway")
+logger = logging.getLogger(__name__)
 
-# ── Config ─────────────────────────────────────────────────────────────────
-GRACE_PERIOD = 30  # seconds to wait for graceful shutdown
-
-
-def find_gateway_processes():
-    """Find all Gateway-related processes."""
-    gateway_procs = []
-    for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-        try:
-            name = proc.info['name'].lower()
-            cmdline = ' '.join(proc.info.get('cmdline') or []).lower()
-            
-            # Look for IB Gateway or IBC processes
-            if 'ibgateway' in name or 'ibgateway' in cmdline:
-                gateway_procs.append(proc)
-            elif name == 'javaw.exe' and ('ibgateway' in cmdline or 'ibc' in cmdline):
-                gateway_procs.append(proc)
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            continue
+class GatewayStopper:
+    """IB Gateway stopper with process tree kill"""
     
-    return gateway_procs
-
-
-def kill_process_tree(proc):
-    """Kill a process and all its children."""
-    try:
-        parent = psutil.Process(proc.pid)
-        children = parent.children(recursive=True)
+    def __init__(self):
+        self.gateway_processes = []
         
-        logger.info(f"Terminating process tree for PID {proc.pid} ({proc.info['name']})")
+    def find_gateway_processes(self):
+        """Find all Gateway-related processes"""
+        gateway_pids = []
         
-        # Terminate children first
-        for child in children:
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
             try:
-                child.terminate()
-                logger.info(f"  Terminated child PID {child.pid}")
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                pass
+                cmdline_list = proc.info.get('cmdline', []) or []
+                cmdline = ' '.join(cmdline_list).lower()
+                if ('ibgateway' in cmdline or 'ibc' in cmdline) and 'java' in cmdline:
+                    gateway_pids.append(proc.info['pid'])
+                    logger.info(f"Found Gateway process PID {proc.info['pid']}: {proc.info['name']}")
+            except (psutil.NoSuchProcess, psutil.AccessDenied, PermissionError):
+                continue
         
-        # Terminate parent
-        try:
-            parent.terminate()
-            logger.info(f"  Terminated parent PID {parent.pid}")
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            pass
+        self.gateway_processes = gateway_pids
+        return gateway_pids
+    
+    def stop_gateway(self):
+        """Stop Gateway with graceful then force kill"""
+        logger.info("Stopping IB Gateway...")
         
-        # Wait for graceful shutdown
-        gone, alive = psutil.wait_procs([parent] + children, timeout=GRACE_PERIOD)
+        # Find Gateway processes
+        gateway_pids = self.find_gateway_processes()
         
-        # Force kill any survivors
-        for p in alive:
+        if not gateway_pids:
+            logger.warning("No Gateway processes found (already stopped?)")
+            return 0
+        
+        # Kill each Gateway process tree
+        for pid in gateway_pids:
             try:
-                p.kill()
-                logger.warning(f"  Force killed PID {p.pid} (did not exit gracefully)")
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                pass
+                parent = psutil.Process(pid)
+                children = parent.children(recursive=True)
+                
+                logger.info(f"Stopping Gateway process {pid} with {len(children)} children")
+                
+                # Terminate children first
+                for child in children:
+                    try:
+                        child.terminate()
+                        logger.debug(f"Terminated child process {child.pid}")
+                    except psutil.NoSuchProcess:
+                        pass
+                
+                # Terminate parent
+                parent.terminate()
+                logger.debug(f"Terminated parent process {pid}")
+                
+                # Wait for graceful shutdown
+                all_procs = [parent] + children
+                gone, alive = psutil.wait_procs(all_procs, timeout=30)
+                
+                # Force kill any remaining processes
+                for p in alive:
+                    try:
+                        p.kill()
+                        logger.debug(f"Force killed process {p.pid}")
+                    except psutil.NoSuchProcess:
+                        pass
+                
+                logger.info(f"Gateway process {pid} stopped successfully")
+                
+            except psutil.NoSuchProcess:
+                logger.warning(f"Process {pid} already terminated")
+            except Exception as e:
+                logger.error(f"Error stopping process {pid}: {e}")
         
-        return True
-    except Exception as e:
-        logger.error(f"Error killing process tree: {e}")
-        return False
-
-
-def stop_gateway():
-    """Main entry point: stop all Gateway processes."""
-    logger.info("=" * 60)
-    logger.info("IB GATEWAY SHUTDOWN")
-    logger.info("=" * 60)
-    
-    # Find all Gateway processes
-    gateway_procs = find_gateway_processes()
-    
-    if not gateway_procs:
-        logger.info("No Gateway processes found (already stopped)")
-        return 0
-    
-    logger.info(f"Found {len(gateway_procs)} Gateway process(es)")
-    
-    # Kill each process tree
-    success = True
-    for proc in gateway_procs:
-        if not kill_process_tree(proc):
-            success = False
-    
-    # Verify all processes are gone
-    time.sleep(2)
-    remaining = find_gateway_processes()
-    
-    if remaining:
-        logger.warning(f"{len(remaining)} Gateway process(es) still running after shutdown")
-        for proc in remaining:
-            logger.warning(f"  PID {proc.pid}: {proc.info['name']}")
-        return 1
-    
-    logger.info("")
-    logger.info("=" * 60)
-    logger.info("SUCCESS: All Gateway processes stopped")
-    logger.info("=" * 60)
-    return 0
-
+        # Final verification
+        time.sleep(2)
+        remaining = self.find_gateway_processes()
+        
+        if remaining:
+            logger.error(f"Failed to stop all Gateway processes. Still running: {remaining}")
+            return 1
+        else:
+            logger.info("All Gateway processes stopped successfully")
+            return 0
 
 def main():
-    exit_code = stop_gateway()
-    sys.exit(exit_code)
-
+    """Main entry point"""
+    logger.info("=" * 60)
+    logger.info("IB Gateway Stopper")
+    logger.info(f"Started at: {datetime.now().isoformat()}")
+    logger.info("=" * 60)
+    
+    stopper = GatewayStopper()
+    exit_code = stopper.stop_gateway()
+    
+    logger.info(f"Gateway stop completed with exit code: {exit_code}")
+    logger.info("=" * 60)
+    
+    return exit_code
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

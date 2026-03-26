@@ -181,7 +181,7 @@ def check_ibkr_port() -> dict:
     try:
         sock = socket.create_connection(('127.0.0.1', 7497), timeout=2)
         sock.close()
-        return _result("IBKR port 7497", PASS, "Port open - IB Gateway is running")
+        return _result("IBKR port 7497", PASS, "Port open - IB Gateway/TWS is running")
     except Exception:
         return _result("IBKR port 7497", WARN,
                        "Port 7497 not reachable - will trade in PAPER mode. "

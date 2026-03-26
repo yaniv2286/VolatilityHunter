@@ -19,6 +19,10 @@ BATCH_SIZE = 50
 STOCK_UNIVERSE_MODE = "FULL"  # FULL or FILTERED
 TICKER_LIST_FILE = "tickers.txt"
 
+# IB Gateway Configuration
+IBC_PATH = os.getenv('IBC_PATH', r'C:\IBC')
+TWS_PATH = os.getenv('TWS_PATH', r'D:\TWS')
+
 # Data Source Configuration
 DATA_SOURCE = "TIINGO"
 
