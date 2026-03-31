@@ -24,34 +24,42 @@ def main():
     pyautogui.PAUSE = 0.1  # 0.1s interval between keystrokes
     pyautogui.FAILSAFE = True
     
-    # Wait for the IB Gateway login window to open and settle
-    print("Waiting for IB Gateway window...")
-    time.sleep(8)  # Increased wait time for window stability
+    print("Waiting for IB Gateway window (up to 60s)...")
     
     try:
         # 1. FIND & FOCUS: Locate IBKR Gateway window
-        print("Finding IBKR Gateway window...")
-        gateway_windows = gw.getWindowsWithTitle("IBKR Gateway")
-        
-        if not gateway_windows:
-            print("ERROR: IBKR Gateway window not found!")
+        gateway_window = None
+        for i in range(60):
+            windows = gw.getWindowsWithTitle("IBKR Gateway")
+            if windows:
+                gateway_window = windows[0]
+                print(f"Found IBKR Gateway window: {gateway_window.title} after {i} seconds.")
+                break
+            time.sleep(1)
+            
+        if not gateway_window:
+            print("ERROR: IBKR Gateway window not found after 60 seconds!")
             print("Available windows:")
             for window in gw.getAllWindows():
                 if "gateway" in window.title.lower() or "ibkr" in window.title.lower():
                     print(f"  - {window.title}")
             sys.exit(1)
         
-        gateway_window = gateway_windows[0]
-        print(f"Found IBKR Gateway window: {gateway_window.title}")
+        print("Waiting 4s for UI components to be fully interactable...")
+        time.sleep(4)
         
         # Activate and maximize the window
         try:
-            gateway_window.activate()
-            gateway_window.maximize()
+            if not gateway_window.isActive:
+                gateway_window.activate()
+            if not gateway_window.isMaximized:
+                gateway_window.maximize()
             time.sleep(1)  # Wait for window to stabilize
         except Exception as e:
-            print(f"ERROR: Failed to activate/maximize window: {e}")
-            sys.exit(1)
+            if "Error code from Windows: 0" in str(e):
+                print("Ignored Windows Error Code 0 (window likely already active)")
+            else:
+                print(f"WARNING: Failed to fully activate/maximize window, but continuing: {e}")
         
         # Window is already focused, no mouse click needed
         
