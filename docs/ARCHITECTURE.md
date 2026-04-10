@@ -1,6 +1,6 @@
 # VolatilityHunter Architecture - Single Source of Truth
 
-**Version**: Production v10.5 | **Updated**: 2026-03-26 | **Strategy**: v8.1 (Lean Pipeline)
+**Version**: Production v11.0 | **Updated**: 2026-04-10 | **Strategy**: v8.1 (Lean Pipeline)
 
 ---
 
@@ -8,7 +8,7 @@
 
 VolatilityHunter is a **deterministic quantitative trading fund** ($100k) using a **Lean Pipeline Architecture** with **100% autonomy**. The system executes one complete trading cycle per market day via Windows Task Scheduler, using **Tiingo Professional API** for data and **IBKR Paper Trading** for execution.
 
-**🔒 CURRENT STATUS**: Order execution crisis resolved - market orders filling successfully with delayed data protocol and SMART routing.
+**🔒 CURRENT STATUS**: Fully operational - Gateway auto-login via Ghost-Typist, market orders filling successfully with delayed data protocol and SMART routing.
 
 ### Core Philosophy
 - **No Silent Failures**: Every error is logged, reported, and visible in Command Center
@@ -73,10 +73,12 @@ VolatilityHunter is a **deterministic quantitative trading fund** ($100k) using 
 - **Exit Code 0 Required**: Any failure aborts trading
 - **No Silent Failures**: All errors visible in Command Center
 
-### auto_tws_manager.py (IBC Watchdog, 24/7)
-- **5-minute health loop**: Checks port 7497, restarts gateway if down
-- **Ghost-Typist Login**: `ibc_login_helper.py` with enhanced focus control
+### auto_tws_manager.py (Gateway Launcher)
+- **One-shot mode**: `--one-shot` flag launches Gateway and exits after API ready
+- **Ghost-Typist Login**: `ibc_login_helper.py` handles credential injection via GUI automation
+- **IBC Integration**: Launches Gateway via IBC, disables IBC native login to avoid conflicts
 - **Paper Mode Enforced**: Both `jts.ini` and `C:\IBC\config.ini`
+- **API Ready Check**: Waits up to 300s for port 7497 to become available
 
 ### brokerage_interface.py
 - **Port 7497 Standard**: Active connection to IBKR TWS/Gateway
@@ -146,26 +148,25 @@ if %dayofweek%==0 goto WEEKEND_SKIP
 cd /d "D:\GitHub\VolatilityHunter"
 call venv\Scripts\activate.bat
 
-:: 3. Ignition - Start IB Gateway Watchdog
-start "VH_Watchdog" /min python scripts\auto_tws_manager.py
-if %ERRORLEVEL% NEQ 0 goto :FAILED
+:: 3. Gateway Startup (One-Shot Mode)
+python scripts\auto_tws_manager.py --one-shot
+if %ERRORLEVEL% NEQ 0 (
+    python scripts\send_gateway_failure_email.py
+    goto :FAILED
+)
 
-:: 4. Ping Loop - Wait for Port 7497
-:PING_LOOP
-powershell -Command "try { $tcp = New-Object System.Net.Sockets.TcpClient; $tcp.Connect('127.0.0.1', 7497); $tcp.Close(); exit 0 } catch { exit 1 }" 2>nul
-if %ERRORLEVEL% EQU 0 goto :CONTINUE_EXECUTION
-goto :PING_LOOP
-
-:: 5. Health Check Gate
+:: 4. Health Check Gate
 python scripts\functional_health_check.py
 if %ERRORLEVEL% NEQ 0 goto :FAILED
 
-:: 6. Trading Loop Execution
+:: 5. Trading Loop Execution
 python scripts\daily_trading_loop.py
 if %ERRORLEVEL% NEQ 0 goto :FAILED
 
+:: 6. Gateway Shutdown
+python scripts\stop_gateway.py
+
 :: 7. Cleanup
-taskkill /F /FI "WINDOWTITLE eq VH_Watchdog*" /T >nul 2>&1
 taskkill /F /IM java.exe /T >nul 2>&1
 taskkill /F /IM javaw.exe /T >nul 2>&1
 
@@ -187,11 +188,12 @@ exit /b %ERRORLEVEL%
 
 ### No Silent Failures Protocol
 
-1. **All Console Output**: No log redirection, real-time Tiingo fetch visible
+1. **Log Redirection**: Task Scheduler redirects all output to `logs/task_scheduler.log`
 2. **Error Redirection**: Every `ERRORLEVEL` check redirects to `:FAILED`
 3. **Big Block Errors**: Failed section displays ERRORLEVEL and details
 4. **Permanent Pause**: `:END` section always triggers, success or failure
 5. **Window Persistence**: Command Center never closes silently
+6. **Live Monitoring**: Use `Get-Content logs/task_scheduler.log -Wait -Tail 50` to view real-time output
 
 ---
 
@@ -345,12 +347,15 @@ python scripts/simulate_monday.py
 
 ### Automated Execution (17:06 IST)
 1. **Windows Task Scheduler** triggers `run_trading.bat`
-2. **Command Center** opens with visible output
-3. **Ignition** starts IB Gateway Watchdog
-4. **Ping Loop** waits for port 7497 (3min timeout)
-5. **Health Check** validates all systems (Exit Code 0 required)
-6. **Trading Loop** executes full autonomous cycle
-7. **Cleanup** terminates Gateway processes
+2. **Command Center** opens (output redirected to `logs/task_scheduler.log`)
+3. **Gateway Startup** launches via `auto_tws_manager.py --one-shot`
+   - IBC launches Gateway UI
+   - Ghost-Typist injects credentials (focus → clear → type → submit)
+   - Waits for port 7497 API ready (8-10 seconds typical)
+4. **Health Check** validates all systems (Exit Code 0 required)
+5. **Trading Loop** executes full autonomous cycle
+6. **Gateway Shutdown** via `stop_gateway.py`
+7. **Cleanup** terminates Java processes
 8. **Dead Man's Switch** pauses for Architect review
 
 ### Manual Operations
@@ -412,4 +417,4 @@ python scripts/simulate_monday.py
 
 **This ARCHITECTURE.md serves as the Single Source of Truth for the VolatilityHunter production system. All technical decisions, port configurations, and execution flows are documented here. No other documentation should contain active technical specifications.**
 
-*Last Updated: 2026-03-23 - Tiingo Professional API Integration Complete*
+*Last Updated: 2026-04-10 - Ghost-Typist Gateway Auto-Login Implemented*

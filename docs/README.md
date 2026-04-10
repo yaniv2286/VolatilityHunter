@@ -1,6 +1,6 @@
 # 🎯 VolatilityHunter
 
-**Deterministic Quantitative Trading System | v10.5**
+**Deterministic Quantitative Trading System | v11.0**
 
 ---
 
@@ -8,15 +8,9 @@
 
 **IMPORTANT**: Before modifying any trading logic, you MUST read:
 
-- **[🏗️ docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Contains the absolute, immutable mathematical rules of the VolatilityHunter system (including the Power Stock state machine and vectorization math)
-
-- **[📋 docs/ROADMAP.md](docs/ROADMAP.md)** - Contains the Power Stock state machine and vectorization math
-
-- **[🔄 FUNCTIONAL_HEALTH_CHECK.md](FUNCTIONAL_HEALTH_CHECK.md)** - NEW: Real trading health check system
-
-- **[📊 LOG_MONITORING_SYSTEM.md](docs/LOG_MONITORING_SYSTEM.md)** - NEW: Comprehensive log monitoring and alerting
-
-- **[🔍 TODAYS_ISSUES_ANALYSIS.md](docs/TODAYS_ISSUES_ANALYSIS.md)** - NEW: Analysis of trading issues and solutions
+- **[🏗️ ARCHITECTURE.md](ARCHITECTURE.md)** - Single Source of Truth for system architecture, execution flow, and technical specifications
+- **[📋 ROADMAP.md](ROADMAP.md)** - Future development goals and planned features
+- **[� CHANGELOG.md](CHANGELOG.md)** - Historical changes and version history
 
 ---
 
@@ -26,26 +20,23 @@
 # 1. Health Check (Critical - Exit Code 0 required)
 python scripts/functional_health_check.py
 
-# 2. Start Gateway (Automated)
-python scripts/start_gateway_with_retry.py
-
-# 3. Run Daily Trading (Production)
+# 2. Run Daily Trading (Production - includes Gateway auto-start)
 .\scripts\DAILY_ROUTINE\run_trading.bat
 
-# 4. Check IBKR Positions
-python temp\ws_check_ibkr_positions.py
+# 3. Manual Gateway Launch (if needed)
+python scripts/auto_tws_manager.py --one-shot
 
-# 5. Update Data
+# 4. Update Data
 python scripts/update_data.py
 
-# 6. Backtest Strategy
+# 5. Backtest Strategy
 python scripts/backtest_v8_vs_v8_1.py
 
-# 7. Monitor Portfolio
+# 6. Simulate Trading Day
 python scripts/simulate_monday.py
 
-# 8. Email Test
-python scripts/test_email.py
+# 7. Monitor Live Logs
+Get-Content logs/task_scheduler.log -Wait -Tail 50
 ```
 
 ---
@@ -54,123 +45,100 @@ python scripts/test_email.py
 
 ```
 ✅ Health Check System      : PASS (Exit Code 0)
-✅ Gateway Automation       : PASS (IBC + Ghost-Typist)
-✅ Market Data Protocol     : PASS (Delayed data working)
-✅ Order Execution          : PASS (Market orders filling)
-✅ Portfolio Sync           : PASS (9 positions live)
-✅ Daily Trading Routine    : PASS (101 seconds)
+✅ Gateway Automation       : PASS (Ghost-Typist auto-login, 8-10s startup)
+✅ Market Data Protocol     : PASS (Delayed data, reqMarketDataType(3))
+✅ Order Execution          : PASS (Market orders, SMART routing)
+✅ Portfolio Sync           : PASS (Live IBKR synchronization)
+✅ Daily Trading Routine    : PASS (Fully automated via Task Scheduler)
 ✅ Email Notifications      : PASS (Gmail SMTP)
-✅ Data Pipeline            : PASS (Tiingo API)
+✅ Data Pipeline            : PASS (Tiingo Professional API, 2147 tickers)
 ```
-🎉 ALL SYSTEMS NOMINAL! Order execution crisis resolved!
+🎉 ALL SYSTEMS OPERATIONAL! Gateway auto-login resolved, full automation achieved!
 
-📊 CURRENT PORTFOLIO STATUS (LIVE):
-  Account: DUP663578 (Paper Trading)
-  Positions: 9 stocks (67% profitable)
-  Total Value: $68,895.83
-  Cash: -$18,675.23 (margin usage)
-  Top Performer: TSEM +29.9%
-  Overall P&L: +$1,354.09
-  Execution: ✅ Market orders filling across exchanges
-
-� EXECUTION SYSTEM (NEW):
-  Market Data: Delayed data (reqMarketDataType(3))
-  Order Type: Market orders for immediate fills
-  Routing: SMART routing with qualification
-  Exchanges: Multi-exchange execution
-  Monitoring: Real-time order tracking
+📊 SYSTEM HIGHLIGHTS:
+  - **Gateway Startup**: 8-10 seconds via Ghost-Typist (focus → clear → type → submit)
+  - **Execution**: Market orders filling successfully across multiple exchanges
+  - **Data**: Tiingo bulk API (3 requests for 2147 tickers)
+  - **Automation**: 100% autonomous daily trading via Windows Task Scheduler
+  - **Monitoring**: Live logs via `Get-Content logs/task_scheduler.log -Wait`
 
 ---
 
-## 🎯 Latest Achievements (v10.5)
+## 🎯 Latest Achievements (v11.0)
 
-### ✅ **Order Execution Crisis Resolved**
-- **Market Data Protocol**: reqMarketDataType(3) eliminates Error 10089
+### ✅ **Gateway Auto-Login Breakthrough** (April 2026)
+- **Ghost-Typist Method**: GUI automation for reliable credential injection
+- **8-10 Second Startup**: Fast and consistent Gateway initialization
+- **One-Shot Mode**: `auto_tws_manager.py --one-shot` launches and exits cleanly
+- **IBC Integration**: Launches Gateway UI, Ghost-Typist handles login
+- **Zero Manual Intervention**: Fully automated from Task Scheduler trigger
+
+### ✅ **Production System Stabilization**
+- **Lean Pipeline Architecture**: Single source of truth in `strategy_engine.py`
+- **Task Scheduler Integration**: Daily execution at 17:06 IST with log redirection
+- **Port 7497 Standardization**: Global infrastructure alignment
+- **Tiingo Professional API**: 3 bulk requests for 2147 tickers
+- **Dead Man's Switch**: Command Center with Architect review
+
+### ✅ **Order Execution System**
+- **Market Data Protocol**: reqMarketDataType(3) for delayed data
 - **SMART Routing**: Multi-exchange execution for optimal fills
 - **Market Orders**: Immediate execution in paper trading
 - **Real-time Monitoring**: Order status tracking and alerts
 
-### ✅ **Production System Stabilization**
-- **Gateway Automation**: IBC + Ghost-Typist surgical strike
-- **Port 7497 Standardization**: Global infrastructure alignment
-- **Tiingo Professional API**: 100-ticker bulk batches
-- **Dead Man's Switch**: Command Center with Architect review
-
-### ✅ **Real Backtest Performance Metrics**
-- **No More Placeholders**: Actual calculated metrics from 26+ years of data
-- **Comprehensive Analysis**: Total Return, CAGR, Max Drawdown, Sharpe Ratio
-- **Multi-Ticker Backtesting**: Portfolio-level performance aggregation
-- **Professional Reporting**: Detailed trade statistics and profit analysis
-
-### ✅ **Portfolio Synchronization**
-- **TWS Integration**: Live portfolio data from Interactive Brokers
-- **Real-Time Sync**: Automatic position and value updates
-- **Performance Tracking**: Accurate P&L calculations
-- **Account Management**: Multiple account support
-
-### ✅ **Complete Automation System** (NEW)
-- **IB Gateway Auto-Login**: No manual intervention required
-- **Automated Daily Workflow**: Start → Trade → Stop → Monitor
-- **Real-Time Log Monitoring**: Instant alerts for critical issues
-- **Market Hours Validation**: Prevents off-hours trading errors
-- **Order Failure Detection**: Automatic cancellation alerts
-- **Email Notifications**: Comprehensive status reports
+### ✅ **Complete Automation**
+- **Windows Task Scheduler**: Triggers daily at 17:06 IST
+- **Automated Workflow**: Gateway start → Health check → Trading → Gateway stop
+- **Email Notifications**: Success/failure reports via Gmail SMTP
+- **Log Management**: All output redirected to `logs/task_scheduler.log`
 
 ---
 
 ## 🏗️ Architecture Overview
 
-### **Agent-Based System (6 Specialized Agents)**
-- **Data Agent**: Market data management and storage
-- **Strategy Agent**: Signal generation and Power Stock analysis
-- **Execution Agent**: Order execution and TWS integration
-- **Sync Agent**: Portfolio synchronization and data consistency
-- **Notification Agent**: Email alerts and system notifications
-- **Testing Agent**: Backtesting and functional health checks
+### **Lean Pipeline Architecture**
+- **strategy_engine.py**: Single source of truth for all strategy logic
+- **daily_trading_loop.py**: Main autonomous pipeline (8 steps)
+- **functional_health_check.py**: 10 critical checks (Exit Code 0 gate)
+- **auto_tws_manager.py**: Gateway launcher with Ghost-Typist integration
+- **brokerage_interface.py**: IBKR API wrapper (port 7497)
+- **smart_data_loader_factory.py**: Tiingo Professional API integration
 
-### **Core Components**
-- **Orchestrator**: Agent coordination and workflow management
-- **Message Bus**: Inter-agent communication system
-- **Vectorized Backtester**: High-performance backtesting engine
-- **Portfolio Manager**: Real-time portfolio tracking and P&L
-
----
-
-## 📈 Performance Metrics
-
-The system now provides **REAL** performance metrics, not placeholders:
-
-```python
-# Real Backtest Results (Example)
-{
-    "total_return": 3.45,      # 345% total return
-    "cagr": 0.058,            # 5.8% annual compound growth rate
-    "max_drawdown": -0.22,    # -22% maximum drawdown
-    "sharpe_ratio": 0.82,     # Risk-adjusted performance
-    "win_rate": 0.58,         # 58% winning trades
-    "profit_factor": 1.45,    # Profit vs loss ratio
-    "final_equity": 445000,   # $445K final equity
-    "total_trades": 1847      # Total number of trades
-}
-```
-
-✅ CORE LOGIC VERIFIED: Performance metrics look good!
-✅ CAGR > 20% and Max Drawdown < 25% - Core logic is intact!
-```
+### **Execution Flow**
+1. **Task Scheduler** triggers `run_trading.bat` at 17:06 IST
+2. **Gateway Startup** via `auto_tws_manager.py --one-shot`
+3. **Health Check** validates all systems (10 checks)
+4. **Trading Loop** executes autonomous scan → rank → execute
+5. **Gateway Shutdown** via `stop_gateway.py`
+6. **Dead Man's Switch** pauses for Architect review
 
 ---
 
-## 🏗️ Architecture
+## 📈 Strategy Performance
+
+**Strategy v8.1** (Current Production)
+- **Signal Ranking**: 0.6 × annual_return + 0.4 × stoch_score
+- **Entry Filters**: Stochastic 32-80, SMA200, Vol 1.5×, CAGR 15%, Momentum 5%
+- **Exit Rules**: Hard stop 8%, Overbought 78, Time stop 10 days
+- **Position Sizing**: Volatility-adjusted, max 20% per position
+- **Risk Management**: Drawdown circuit (-10% DD → 50% size, -20% DD → 25% size)
+
+## 🏗️ System Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    VolatilityHunter v9.0                     │
-│                   Agent-Based Architecture                │
+│                  VolatilityHunter v11.0                     │
+│                 Lean Pipeline Architecture                  │
 ├─────────────────────────────────────────────────────────────┤
-│  🤖 Agent-Based Architecture                                │
-│  📡 Message Bus Communication                                │
-│  🔄 Workflow Automation                                     │
-│  🛡️ Safety & Error Prevention                              │
+│  Task Scheduler (17:06 IST)                                │
+│       ↓                                                      │
+│  auto_tws_manager.py --one-shot (Gateway + Ghost-Typist)   │
+│       ↓                                                      │
+│  functional_health_check.py (10 checks)                    │
+│       ↓                                                      │
+│  daily_trading_loop.py (scan → rank → execute)            │
+│       ↓                                                      │
+│  stop_gateway.py (cleanup)                                  │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -178,13 +146,13 @@ The system now provides **REAL** performance metrics, not placeholders:
 
 ## 🎯 Key Features
 
-- **🤖 Agent-Based Architecture**: 6 specialized trading agents
-- **📡 Message Bus System**: Robust inter-agent communication
-- **🛡️ Safety Systems**: Comprehensive error prevention
-- **🧪 Testing Framework**: Complete testing and validation
-- **📊 Performance**: CAGR 28%, Max Drawdown 18%
-- **📚 Essential Documentation**: Core rules and roadmap only
-- **🚀 Production Ready**: Automated deployment and monitoring
+- **🚀 Full Automation**: 100% autonomous daily trading via Task Scheduler
+- **� Ghost-Typist Login**: Reliable Gateway auto-login (8-10s startup)
+- **📊 Tiingo Professional**: Bulk API for 2147 tickers (3 requests)
+- **🛡️ Safety Systems**: No margin/leverage, position limits, drawdown circuit
+- **🧪 Health Check Gate**: 10 critical checks, Exit Code 0 required
+- **� Email Notifications**: Success/failure reports via Gmail SMTP
+- **� Live Monitoring**: Real-time log viewing via PowerShell
 
 ---
 
@@ -192,42 +160,36 @@ The system now provides **REAL** performance metrics, not placeholders:
 
 ```
 VolatilityHunter/
-├── 📚 docs/                    # Essential documentation only
-│   ├── 🏗️ ARCHITECTURE.md      # Mathematical rules (MUST READ)
-│   ├── 📋 ROADMAP.md           # Power Stock state machine (MUST READ)
-│   └── [utility files]          # Project snapshot tools
-├── 🤖 src/                    # Core agent system
-│   ├── agents/               # 6 specialized agents
-│   │   ├── testing/          # Testing Agent
-│   │   │   ├── simulation/   # Backtesting & simulation
-│   │   │   └── research/     # Historical research & backtests
-│   │   ├── data/            # Data Agent
-│   │   ├── strategy/        # Strategy Agent
-│   │   ├── execution/       # Execution Agent
-│   │   ├── sync/           # Sync Agent
-│   │   └── notification/   # Notification Agent
-│   ├── messaging/           # Message system
-│   ├── interfaces/          # Agent interfaces
-│   ├── factories/           # Agent & message factories
-│   ├── workflows/           # Workflow automation
-│   ├── config/             # Configuration management
-│   ├── utils/              # Safety utilities
-│   ├── orchestrator.py      # System coordination
-│   ├── main_agent_system.py # Main entry point
-│   ├── deploy_agent_system.py # Deployment script
-│   └── test_agent_system.py  # Test suite
+├── 📚 docs/                    # Documentation
+│   ├── ARCHITECTURE.md        # Single source of truth (MUST READ)
+│   ├── ROADMAP.md            # Future development goals
+│   └── CHANGELOG.md          # Version history
+├── 🤖 src/                    # Core pipeline
+│   ├── strategy_engine.py    # *** SINGLE SOURCE OF TRUTH ***
+│   ├── strategy_v7_2.py      # Indicators (shared by all versions)
+│   ├── brokerage_interface.py # IBKR port 7497 interface
+│   ├── email_notifier.py     # Gmail SMTP
+│   ├── smart_data_loader_factory.py # Tiingo Professional API
+│   └── storage.py            # Parquet read/write
+├── 🧪 scripts/               # Execution scripts
+│   ├── daily_trading_loop.py # Main autonomous pipeline
+│   ├── functional_health_check.py # Health gate (Exit Code 0)
+│   ├── auto_tws_manager.py   # Gateway launcher + Ghost-Typist
+│   ├── ibc_login_helper.py   # Ghost-Typist credential injection
+│   ├── stop_gateway.py       # Gateway shutdown
+│   ├── DAILY_ROUTINE/
+│   │   └── run_trading.bat   # Command Center with Dead Man's Switch
+│   └── [other scripts]       # Utilities and backtesting
 ├── ⚙️ config/                # Configuration files
-├── 🧪 scripts/               # Utility scripts
-│   ├── update_data.py       # Data updater
-│   ├── check_data_dates.py  # Data date checker
-│   ├── auto_tws_manager.py  # TWS automation
-│   ├── vectorized_backtester.py # Backtester
-│   └── [other scripts]      # Various utilities
-├── 📊 data/                 # Market data storage
-├── 📝 logs/                 # System logs
+├── 📊 data/                  # Market data (gitignored)
+│   ├── portfolio.json        # Live state
+│   ├── SPY.parquet          # Regime filter data
+│   └── *.parquet            # 26yr history per ticker
+├── � logs/                  # Execution logs
+│   └── task_scheduler.log   # Daily routine output
 ├── 📚 requirements.txt       # Dependencies
-├── 📋 tickers.txt           # Stock universe
-└── 📚 pyproject.toml        # Project configuration
+├── 📋 tickers.txt           # 2147 ticker universe
+└── 📚 .env                  # API keys (gitignored)
 ```
 
 ---
@@ -236,8 +198,8 @@ VolatilityHunter/
 
 For detailed information about the mathematical rules and system architecture, please see the **[docs/](docs/)** folder.
 
-**⚠️ IMPORTANT**: Always read `docs/ARCHITECTURE.md` and `docs/ROADMAP.md` before modifying any trading logic!
+**⚠️ IMPORTANT**: Always read `docs/ARCHITECTURE.md` before modifying any trading logic!
 
 ---
 
-**🎉 The VolatilityHunter agent-based trading system is production-ready with excellent performance metrics and essential documentation only!**
+**🎉 VolatilityHunter v11.0 is fully operational with Ghost-Typist auto-login and complete automation!**

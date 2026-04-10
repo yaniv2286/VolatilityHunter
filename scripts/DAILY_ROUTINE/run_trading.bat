@@ -5,6 +5,14 @@
 :: Purpose: Port Realignment + Unbreakable Batch Flow
 :: =============================================================================
 
+:: Display banner in console (even when redirected to log)
+echo.
+echo ========================================================================
+echo    VOLATILITYHUNTER V11.0 - SURGICAL STRIKE EDITION
+echo    Starting Daily Trading Routine at %DATE% %TIME%
+echo ========================================================================
+echo.
+
 :: 1. TIME & DAY CHECK
 echo [VH] Current Time: %DATE% %TIME%
 for /f "tokens=1 delims= " %%D in ('powershell -NoProfile -Command "(Get-Date).DayOfWeek"') do set DOW=%%D
@@ -23,11 +31,11 @@ cd /d "D:\GitHub\VolatilityHunter"
 set TOKENIZERS_PARALLELISM=false
 call venv\Scripts\activate.bat
 
-:: PILLAR 0: START IB GATEWAY WITH RETRIES
-echo [VH] Starting IB Gateway (IBC method, 120s timeout, 3 retries)...
-python scripts\start_gateway_with_retry.py
+:: PILLAR 0: START IB GATEWAY WITH AUTO_TWS_MANAGER (Ghost-Typist Method)
+echo [VH] Starting IB Gateway (auto_tws_manager.py --one-shot)...
+python scripts\auto_tws_manager.py --one-shot
 if %ERRORLEVEL% NEQ 0 (
-    echo [CRITICAL ERROR] IB Gateway failed after 3 retries
+    echo [CRITICAL ERROR] IB Gateway failed to start
     echo [VH] Sending failure notification email...
     python scripts\send_gateway_failure_email.py
     echo [VH] Trading SKIPPED - check email for details

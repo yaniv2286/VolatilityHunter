@@ -10,6 +10,10 @@ Fully headless, unattended IB Gateway auto-login using IBC.
 - Starts keep-alive heartbeat after connection confirmed
 - ASCII output only (Task Scheduler compatible)
 
+Modes:
+  - Watchdog mode (default): Runs indefinitely, monitoring Gateway health
+  - One-shot mode (--one-shot): Launches Gateway, waits for API ready, then exits
+
 First-time setup: python scripts/setup_ibc.py
 """
 
@@ -21,6 +25,7 @@ import logging
 import subprocess
 import traceback
 import psutil
+import argparse
 from datetime import datetime
 from pathlib import Path
 
@@ -377,13 +382,13 @@ class AutoTWSManager:
                     cmd, stdout=lf, stderr=lf, cwd=str(self.gateway_dir)
                 )
             logger.info(f"IBC classpath process started (PID {self.ibc_process.pid})")
-            # Spawn login helper to fill credentials via GUI automation
-            # (IBC 3.23 misidentifies field index in IB Gateway 10.37 new UI)
+            # Spawn Ghost-Typist to handle login via GUI automation
+            # IBC will launch Gateway but NOT handle login
             helper = Path(__file__).parent / "ibc_login_helper.py"
             if helper.exists():
                 subprocess.Popen([sys.executable, str(helper)],
                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                logger.info("Login helper spawned (will fill credentials in Gateway window)")
+                logger.info("Ghost-Typist spawned (will handle login via GUI automation)")
             return True
         except Exception as e:
             logger.error(f"Classpath launch failed: {e}")
@@ -595,9 +600,42 @@ class AutoTWSManager:
 
 
 def main():
+    parser = argparse.ArgumentParser(description='Automated TWS Manager')
+    parser.add_argument('--one-shot', action='store_true',
+                        help='Launch Gateway, wait for API ready, then exit (for batch scripts)')
+    args = parser.parse_args()
+    
     manager = AutoTWSManager()
-    manager.run()
-    return 0
+    
+    if args.one_shot:
+        # One-shot mode: Launch Gateway and exit after API is ready
+        logger.info("Running in ONE-SHOT mode (launch and exit)")
+        
+        # Check if already running
+        if manager.is_gateway_running() and manager.is_api_ready():
+            logger.info("Gateway already running and API ready - exiting")
+            return 0
+        
+        # Launch Gateway
+        if not manager.is_gateway_running():
+            logger.info("Launching Gateway via IBC...")
+            if not manager.start_gateway_via_ibc():
+                logger.error("Failed to launch Gateway")
+                return 1
+        
+        # Wait for API
+        logger.info("Waiting for API to be ready...")
+        if not manager.wait_for_api():
+            logger.error("API did not become ready in time")
+            return 1
+        
+        logger.info("Gateway API ready - ONE-SHOT mode complete")
+        return 0
+    else:
+        # Watchdog mode: Run indefinitely
+        logger.info("Running in WATCHDOG mode (continuous monitoring)")
+        manager.run()
+        return 0
 
 
 if __name__ == "__main__":
