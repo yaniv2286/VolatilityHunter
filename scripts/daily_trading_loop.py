@@ -677,12 +677,19 @@ def send_summary(portfolio: dict, exits: List[dict], entries: List[dict],
         notifier = EmailNotifier()
         subject = f"{status} VolatilityHunter IBKR_PAPER completed - {today_str} {datetime.now().strftime('%H:%M:%S')}"
         
-        # Send email without log attachment (too slow)
-        # Log file path is included in email body for reference
-        if notifier.send_email(subject, body):
-            logger.info("Summary email sent successfully.")
+        # Attach log file to email (ALWAYS - per user requirement)
+        log_file = LOG_DIR / f"trading_{today_str}.log"
+        if log_file.exists():
+            if notifier.send_email(subject, body, str(log_file)):
+                logger.info("Summary email sent successfully with log attachment.")
+            else:
+                logger.warning("Email send failed - check EmailNotifier config.")
         else:
-            logger.warning("Email send failed - check EmailNotifier config.")
+            # No log file yet, send without attachment
+            if notifier.send_email(subject, body):
+                logger.info("Summary email sent successfully (no log file found).")
+            else:
+                logger.warning("Email send failed - check EmailNotifier config.")
 
     except Exception as e:
         logger.error(f"send_summary error: {e}")
@@ -694,6 +701,69 @@ def send_summary(portfolio: dict, exits: List[dict], entries: List[dict],
 latest_prices_ref: Dict[str, float] = {}   # module-level ref for execute_entries closure
 
 
+def send_failure_email(error_message, step_failed, traceback_str=""):
+    """
+    Send failure notification email when system encounters critical error.
+    ALWAYS includes log file attachment.
+    """
+    try:
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        body_lines = [
+            f"VolatilityHunter — CRITICAL FAILURE",
+            f"{timestamp} IST  |  Status: [FAILED]",
+            f"",
+            f"Execution Summary",
+            f"Mode\tIBKR_PAPER",
+            f"Result\tFAILURE",
+            f"Failed Step\t{step_failed}",
+            f"Timestamp\t{timestamp}",
+            f"",
+            f"🚨 Error Details",
+            f"Error Message:\t{error_message}",
+            f"",
+        ]
+        
+        if traceback_str:
+            body_lines.extend([
+                f"Traceback:",
+                f"{traceback_str}",
+                f""
+            ])
+        
+        body_lines.extend([
+            f"⚙️ Action Required",
+            f"1. Check IBKR Gateway is running on port 7497",
+            f"2. Verify Tiingo API key is valid",
+            f"3. Review attached log file for details",
+            f"4. Check network connectivity",
+            f"5. Restart system if necessary",
+        ])
+        
+        body = "\n".join(body_lines)
+        subject = f"[FAILED] VolatilityHunter IBKR_PAPER - {step_failed} - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        
+        notifier = EmailNotifier()
+        
+        # ALWAYS attach log file for failure emails
+        log_file = LOG_DIR / f"trading_{today_str}.log"
+        if log_file.exists():
+            if notifier.send_email(subject, body, str(log_file)):
+                logger.info("Failure notification email sent with log attachment.")
+            else:
+                logger.error("Failed to send failure notification email.")
+        else:
+            # Send without attachment if log doesn't exist yet
+            if notifier.send_email(subject, body):
+                logger.info("Failure notification email sent (no log file).")
+            else:
+                logger.error("Failed to send failure notification email.")
+    
+    except Exception as e:
+        logger.error(f"Failed to send failure email: {e}")
+
+
 def main():
     global latest_prices_ref
 
@@ -702,100 +772,135 @@ def main():
     logger.info("VOLATILITYHUNTER DAILY TRADING LOOP")
     logger.info(f"Date: {today_str}  |  Capital: ${INITIAL_CAPITAL:,.0f}")
     logger.info("=" * 68)
-
-    # ── Load tickers ──────────────────────────────────────────────────────
-    all_tickers = [t.strip().upper() for t in
-                   TICKERS_FILE.read_text().splitlines() if t.strip()]
-    logger.info(f"Universe: {len(all_tickers)} tickers")
-
-    # ── Step 1: Portfolio + IBKR reconciliation ───────────────────────────
-    portfolio = load_portfolio()
-    portfolio, ibkr = reconcile_with_ibkr(portfolio)
-    logger.info("Connected to IBKR Paper account - ready for trading")
-
-    # ── Step 2: Fetch today's prices (batch via Yahoo Finance) ───────────
-    logger.info("--- Step 2: Fetching latest prices ---")
-    open_tickers = list(portfolio.get('positions', {}).keys())
-    fetch_tickers = list(set(all_tickers) | set(open_tickers))
-    latest_prices = fetch_latest_prices(fetch_tickers)
-    latest_prices_ref = latest_prices   # make available to execute_entries
-
-    if not latest_prices:
-        logger.error("No prices fetched - aborting. Check Tiingo API connectivity.")
-        sys.exit(1)
-
-    # ── Step 2b: Update highest_price + high-water mark (Bug 2 + 3 fix) ──
-    update_highest_prices(portfolio, latest_prices)
-    update_high_water_mark(portfolio, latest_prices)
-
-    # ── Step 3: Check exits ───────────────────────────────────────────────
-    logger.info("--- Step 3: Checking exits ---")
-    exit_decisions = check_exits(portfolio, latest_prices)
-    logger.info(f"Exit signals: {len(exit_decisions)}")
-
-    executed_exits = execute_exits(exit_decisions, portfolio, ibkr)
-
-    # ── Step 3b: Power stock promotion (Bug 1 fix) ────────────────────────
-    logger.info("--- Step 3b: Power stock promotion check ---")
-    def _load_for_promotion(ticker):
-        return load_ticker_with_latest(ticker, latest_prices)
-    promoted = promote_power_stocks(portfolio, latest_prices, _load_for_promotion)
-    if promoted:
-        logger.info(f"Power promoted: {promoted}")
-
-    # ── Step 4: Scan universe for new entries ─────────────────────────────
-    logger.info("--- Step 4: Scanning universe ---")
-    open_set  = set(portfolio.get('positions', {}).keys())
-    slots_available = MAX_POSITIONS - len(open_set)
-
-    if slots_available > 0:
-        candidates = scan_universe(all_tickers, open_set, latest_prices)
-        logger.info(f"Available slots: {slots_available} | Candidates: {len(candidates)}")
-    else:
-        candidates = []
-        logger.info(f"No slots available ({len(open_set)}/{MAX_POSITIONS} positions full)")
-
-    # ── Step 5: Execute entries ───────────────────────────────────────────
-    logger.info("--- Step 5: Market hours validation ---")
     
-    # Check market hours before placing orders
+    ibkr = None  # Initialize for cleanup in except block
+    
     try:
-        from src.market_hours import validate_before_trading
-        if not validate_before_trading():
-            logger.error("🚨 MARKET CLOSED - Skipping order execution")
-            executed_entries = []
+        # ── Load tickers ──────────────────────────────────────────────────────
+        all_tickers = [t.strip().upper() for t in
+                       TICKERS_FILE.read_text().splitlines() if t.strip()]
+        logger.info(f"Universe: {len(all_tickers)} tickers")
+
+        # ── Step 1: Portfolio + IBKR reconciliation ───────────────────────────
+        portfolio = load_portfolio()
+        portfolio, ibkr = reconcile_with_ibkr(portfolio)
+        logger.info("Connected to IBKR Paper account - ready for trading")
+
+        # ── Step 2: Fetch today's prices ───────────────────────────────────────
+        logger.info("--- Step 2: Fetching latest prices ---")
+        open_tickers = list(portfolio.get('positions', {}).keys())
+        fetch_tickers = list(set(all_tickers) | set(open_tickers))
+        latest_prices = fetch_latest_prices(fetch_tickers)
+        latest_prices_ref = latest_prices   # make available to execute_entries
+
+        if not latest_prices:
+            error_msg = "No prices fetched - Tiingo API connectivity issue"
+            logger.error(error_msg)
+            send_failure_email(error_msg, "Price Fetching")
+            sys.exit(1)
+
+        # ── Step 2b: Update highest_price + high-water mark (Bug 2 + 3 fix) ──
+        update_highest_prices(portfolio, latest_prices)
+        update_high_water_mark(portfolio, latest_prices)
+
+        # ── Step 3: Check exits ───────────────────────────────────────────────
+        logger.info("--- Step 3: Checking exits ---")
+        exit_decisions = check_exits(portfolio, latest_prices)
+        logger.info(f"Exit signals: {len(exit_decisions)}")
+
+        executed_exits = execute_exits(exit_decisions, portfolio, ibkr)
+
+        # ── Step 3b: Power stock promotion (Bug 1 fix) ────────────────────────
+        logger.info("--- Step 3b: Power stock promotion check ---")
+        def _load_for_promotion(ticker):
+            return load_ticker_with_latest(ticker, latest_prices)
+        promoted = promote_power_stocks(portfolio, latest_prices, _load_for_promotion)
+        if promoted:
+            logger.info(f"Power promoted: {promoted}")
+
+        # ── Step 4: Scan universe for new entries ─────────────────────────────
+        logger.info("--- Step 4: Scanning universe ---")
+        open_set  = set(portfolio.get('positions', {}).keys())
+        slots_available = MAX_POSITIONS - len(open_set)
+
+        if slots_available > 0:
+            candidates = scan_universe(all_tickers, open_set, latest_prices)
+            logger.info(f"Available slots: {slots_available} | Candidates: {len(candidates)}")
         else:
-            logger.info("--- Step 5: Executing entries ---")
-            executed_entries = execute_entries(candidates[:MAX_POSITIONS], portfolio, ibkr)
-    except Exception as e:
-        logger.error(f"Market hours check failed: {e}")
-        logger.info("--- Step 5: Executing entries (fallback) ---")
-        executed_entries = execute_entries(candidates[:MAX_POSITIONS], portfolio, ibkr)
+            candidates = []
+            logger.info(f"No slots available ({len(open_set)}/{MAX_POSITIONS} positions full)")
 
-    # ── Step 6: Verify fills (OrderMonitor R5) ───────────────────────────
-    logger.info("--- Step 6: OrderMonitor: verifying fills ---")
-    failed_orders = verify_fills(ibkr, executed_entries, executed_exits, portfolio)
-    if failed_orders:
-        logger.error(f"Orders failed/cancelled: {failed_orders}")
-
-    # ── Save portfolio ────────────────────────────────────────────────────
-    total_value = portfolio.get('cash', 0) + sum(
-        p.get('shares', 0) * latest_prices.get(t, p.get('entry_price', 0))
-        for t, p in portfolio.get('positions', {}).items()
-    )
-    portfolio['total_value'] = total_value
-    save_portfolio(portfolio)
-
-    # ── Step 7: Email summary ─────────────────────────────────────────────
-    logger.info("--- Step 7: Sending summary email ---")
-    send_summary(portfolio, executed_exits, executed_entries, len(all_tickers))
-
-    # ── Disconnect IBKR ───────────────────────────────────────────────────
-    if ibkr:
+        # ── Step 5: Execute entries ───────────────────────────────────────────
+        logger.info("--- Step 5: Market hours validation ---")
+        
+        # Check market hours before placing orders
         try:
-            ibkr.disconnect()
-        except Exception:
-            pass
+            from src.market_hours import validate_before_trading
+            if not validate_before_trading():
+                logger.error("🚨 MARKET CLOSED - Skipping order execution")
+                executed_entries = []
+            else:
+                logger.info("--- Step 5: Executing entries ---")
+                executed_entries = execute_entries(candidates[:MAX_POSITIONS], portfolio, ibkr)
+        except Exception as e:
+            logger.error(f"Market hours check failed: {e}")
+            logger.info("--- Step 5: Executing entries (fallback) ---")
+            executed_entries = execute_entries(candidates[:MAX_POSITIONS], portfolio, ibkr)
+
+        # ── Step 6: Verify fills (OrderMonitor R5) ───────────────────────────
+        logger.info("--- Step 6: OrderMonitor: verifying fills ---")
+        failed_orders = verify_fills(ibkr, executed_entries, executed_exits, portfolio)
+        if failed_orders:
+            logger.error(f"Orders failed/cancelled: {failed_orders}")
+
+        # ── Save portfolio ────────────────────────────────────────────────────
+        total_value = portfolio.get('cash', 0) + sum(
+            p.get('shares', 0) * latest_prices.get(t, p.get('entry_price', 0))
+            for t, p in portfolio.get('positions', {}).items()
+        )
+        portfolio['total_value'] = total_value
+        save_portfolio(portfolio)
+
+        # ── Step 7: Email summary ─────────────────────────────────────────────
+        logger.info("--- Step 7: Sending summary email ---")
+        send_summary(portfolio, executed_exits, executed_entries, len(all_tickers))
+
+        # ── Disconnect IBKR ───────────────────────────────────────────────────
+        if ibkr:
+            try:
+                ibkr.disconnect()
+            except Exception:
+                pass
+    
+    except Exception as e:
+        # CRITICAL ERROR - Send failure notification email
+        error_msg = str(e)
+        tb_str = traceback.format_exc()
+        logger.error(f"CRITICAL ERROR in main trading loop: {error_msg}")
+        logger.error(tb_str)
+        
+        # Determine which step failed based on error context
+        step_failed = "Unknown Step"
+        if "IBKR" in error_msg or "connect" in error_msg.lower():
+            step_failed = "IBKR Connection"
+        elif "price" in error_msg.lower() or "tiingo" in error_msg.lower():
+            step_failed = "Price Fetching"
+        elif "order" in error_msg.lower():
+            step_failed = "Order Execution"
+        elif "portfolio" in error_msg.lower():
+            step_failed = "Portfolio Management"
+        
+        send_failure_email(error_msg, step_failed, tb_str)
+        
+        # Cleanup IBKR connection
+        if ibkr:
+            try:
+                ibkr.disconnect()
+            except Exception:
+                pass
+        
+        # Re-raise to ensure exit code is non-zero
+        raise
 
     elapsed = time.time() - t_start
     logger.info("=" * 68)
