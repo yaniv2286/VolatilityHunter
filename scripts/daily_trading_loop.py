@@ -567,12 +567,14 @@ def send_summary(portfolio: dict, exits: List[dict], entries: List[dict],
     """
     Send email summary of daily trading activity.
     System always runs on IBKR Paper account - no simulation mode.
+    Uses HTML format for proper Gmail display.
     """
     try:
         from datetime import datetime
         
         # Status based on activity
-        status = "[OK]" if len(exits) + len(entries) == 0 else "[ACTIVE]"
+        status = "OK" if len(exits) + len(entries) == 0 else "ACTIVE"
+        status_color = "#28a745" if status == "OK" else "#ffc107"
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
         # Calculate portfolio metrics
@@ -583,30 +585,101 @@ def send_summary(portfolio: dict, exits: List[dict], entries: List[dict],
             for ticker, p in positions.items()
         )
         pnl_total = total_value - INITIAL_CAPITAL
+        pnl_color = "#28a745" if pnl_total >= 0 else "#dc3545"
         
-        # Build email body
-        lines = [
-            f"VolatilityHunter — IBKR Paper Account Report",
-            f"{timestamp} IST  |  Status: {status}",
-            f"",
-            f"Execution Summary",
-            f"Mode\tIBKR_PAPER",
-            f"Result\tSUCCESS",
-            f"Paper Trading\tYES (IBKR Paper Account - Real orders, fake money)",
-            f"Log File\t{LOG_DIR / f'trading_{today_str}.log'}",
-            f"Timestamp\t{timestamp}",
-            f"",
-            f"💰 Portfolio Summary",
-            f"Portfolio Value\t${total_value:,.2f}",
-            f"Available Cash\t${cash:,.2f}",
-            f"Total P&L\t${pnl_total:+,.2f} ({(pnl_total/INITIAL_CAPITAL)*100:+.2f}%)",
-            f"Active Positions\t{len(positions)}",
-            f"",
-        ]
+        # Build HTML email body
+        html_body = f"""
+        <html>
+        <head>
+            <style>
+                body {{ font-family: Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }}
+                .container {{ max-width: 800px; margin: 0 auto; background-color: white; padding: 20px; border-radius: 8px; }}
+                .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; }}
+                .status-badge {{ display: inline-block; padding: 5px 15px; background-color: {status_color}; color: white; border-radius: 20px; font-weight: bold; }}
+                .section {{ margin-bottom: 25px; }}
+                .section-title {{ color: #333; border-bottom: 2px solid #667eea; padding-bottom: 5px; margin-bottom: 15px; }}
+                .metric-grid {{ display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin: 15px 0; }}
+                .metric {{ background-color: #f8f9fa; padding: 15px; border-radius: 5px; border-left: 4px solid #667eea; }}
+                .metric-label {{ font-size: 12px; color: #666; text-transform: uppercase; }}
+                .metric-value {{ font-size: 24px; font-weight: bold; color: #333; margin-top: 5px; }}
+                table {{ border-collapse: collapse; width: 100%; margin: 10px 0; }}
+                th {{ background-color: #667eea; color: white; padding: 12px; text-align: left; }}
+                td {{ border: 1px solid #ddd; padding: 10px; }}
+                tr:nth-child(even) {{ background-color: #f8f9fa; }}
+                .positive {{ color: #28a745; font-weight: bold; }}
+                .negative {{ color: #dc3545; font-weight: bold; }}
+                .info-row {{ display: flex; justify-content: space-between; margin: 8px 0; }}
+                .info-label {{ color: #666; }}
+                .info-value {{ font-weight: bold; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h2 style="margin: 0;">VolatilityHunter — IBKR Paper Account</h2>
+                    <p style="margin: 10px 0 0 0;">{timestamp} IST | <span class="status-badge">{status}</span></p>
+                </div>
+                
+                <div class="section">
+                    <h3 class="section-title">Execution Summary</h3>
+                    <div class="info-row">
+                        <span class="info-label">Mode:</span>
+                        <span class="info-value">IBKR_PAPER</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Result:</span>
+                        <span class="info-value" style="color: {status_color};">SUCCESS</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Paper Trading:</span>
+                        <span class="info-value">YES (Real orders, fake money)</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Log File:</span>
+                        <span class="info-value" style="font-size: 11px;">{LOG_DIR / f'trading_{today_str}.log'}</span>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h3 class="section-title">💰 Portfolio Summary</h3>
+                    <div class="metric-grid">
+                        <div class="metric">
+                            <div class="metric-label">Portfolio Value</div>
+                            <div class="metric-value">${total_value:,.2f}</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">Available Cash</div>
+                            <div class="metric-value">${cash:,.2f}</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">Total P&L</div>
+                            <div class="metric-value" style="color: {pnl_color};">${pnl_total:+,.2f} ({(pnl_total/INITIAL_CAPITAL)*100:+.2f}%)</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">Active Positions</div>
+                            <div class="metric-value">{len(positions)}</div>
+                        </div>
+                    </div>
+                </div>
+        """
 
         # Current positions with P&L
         if positions:
-            lines.append("📊 Current Positions")
+            html_body += """
+                <div class="section">
+                    <h3 class="section-title">📊 Current Positions</h3>
+                    <table>
+                        <tr>
+                            <th>Ticker</th>
+                            <th>Quantity</th>
+                            <th>Entry Price</th>
+                            <th>Current Price</th>
+                            <th>P&L</th>
+                            <th>Stop Loss</th>
+                            <th>Days Held</th>
+                        </tr>
+            """
+            
             for ticker, pos in sorted(positions.items()):
                 shares = pos.get('shares', 0)
                 entry_price = pos.get('entry_price', 0)
@@ -616,63 +689,126 @@ def send_summary(portfolio: dict, exits: List[dict], entries: List[dict],
                 entry_date = pos.get('entry_date', '')
                 days_held = (datetime.now() - datetime.fromisoformat(entry_date)).days if entry_date else 0
                 stop_loss = pos.get('stop_loss_price', 0)
+                pnl_class = "positive" if pnl >= 0 else "negative"
                 
-                lines.extend([
-                    f"{ticker}",
-                    f"Quantity:\t{shares}",
-                    f"Entry Price:\t${entry_price:.2f}",
-                    f"Current Price:\t${current_price:.2f}",
-                    f"P&L:\t${pnl:+,.2f} ({pnl_pct:+.2f}%)",
-                    f"Stop Loss:\t${stop_loss:.2f}",
-                    f"Days Held:\t{days_held}",
-                    f""
-                ])
+                html_body += f"""
+                        <tr>
+                            <td><strong>{ticker}</strong></td>
+                            <td>{shares}</td>
+                            <td>${entry_price:.2f}</td>
+                            <td>${current_price:.2f}</td>
+                            <td class="{pnl_class}">${pnl:+,.2f} ({pnl_pct:+.2f}%)</td>
+                            <td>${stop_loss:.2f}</td>
+                            <td>{days_held}</td>
+                        </tr>
+                """
+            
+            html_body += """
+                    </table>
+                </div>
+            """
         else:
-            lines.append("📊 Current Positions")
-            lines.append("No open positions")
-            lines.append("")
+            html_body += """
+                <div class="section">
+                    <h3 class="section-title">📊 Current Positions</h3>
+                    <p><em>No open positions</em></p>
+                </div>
+            """
 
         # Exit signals executed today
-        lines.append("🔴 Exit Signals Today")
+        html_body += """
+                <div class="section">
+                    <h3 class="section-title">🔴 Exit Signals Today</h3>
+        """
+        
         if exits:
+            html_body += "<table><tr><th>Ticker</th><th>Price</th><th>P&L</th><th>Reason</th></tr>"
             for e in exits:
                 ticker = e.get('ticker', '')
                 price = e.get('price', 0)
                 pnl_pct = e.get('pnl_pct', 0)
                 reason = e.get('reason', '')
-                lines.append(f"{ticker} @ ${price:.2f} — P&L: {pnl_pct:+.2f}%")
-                lines.append(f"Reason: {reason}")
+                pnl_class = "positive" if pnl_pct >= 0 else "negative"
+                html_body += f"""
+                    <tr>
+                        <td><strong>{ticker}</strong></td>
+                        <td>${price:.2f}</td>
+                        <td class="{pnl_class}">{pnl_pct:+.2f}%</td>
+                        <td>{reason}</td>
+                    </tr>
+                """
+            html_body += "</table>"
         else:
-            lines.append("No exit signals today")
-        lines.append("")
+            html_body += "<p><em>No exit signals today</em></p>"
+        
+        html_body += "</div>"
 
         # Entry signals executed today
-        lines.append("🔵 Entry Signals Today")
+        html_body += """
+                <div class="section">
+                    <h3 class="section-title">🔵 Entry Signals Today</h3>
+        """
+        
         if entries:
+            html_body += "<table><tr><th>Ticker</th><th>Price</th><th>Score</th><th>Reason</th></tr>"
             for e in entries:
                 ticker = e.get('ticker', '')
                 price = e.get('price', 0)
                 score = e.get('quality_score', 0)
                 reason = e.get('reason', '')
-                lines.append(f"{ticker} @ ${price:.2f} — Score: {score:.3f}")
-                lines.append(f"Reason: {reason}")
+                html_body += f"""
+                    <tr>
+                        <td><strong>{ticker}</strong></td>
+                        <td>${price:.2f}</td>
+                        <td>{score:.3f}</td>
+                        <td>{reason}</td>
+                    </tr>
+                """
+            html_body += "</table>"
         else:
-            lines.append("No entry signals today")
-        lines.append("")
+            html_body += "<p><em>No entry signals today</em></p>"
+        
+        html_body += "</div>"
 
         # System status
-        lines.extend([
-            "⚙️ System Status",
-            f"Strategy Version\tv8.1 (Lean Pipeline)",
-            f"Universe Scanned\t{scan_count} tickers",
-            f"Max Positions\t{MAX_POSITIONS} concurrent",
-            f"Position Size\t{POSITION_SIZE_PCT*100:.0f}% per position",
-            f"Hard Stop\t8% maximum loss",
-            f"SPY Regime Filter\tACTIVE (200-day SMA)",
-            f"Sector Cap\t3 positions per sector",
-        ])
+        html_body += f"""
+                <div class="section">
+                    <h3 class="section-title">⚙️ System Status</h3>
+                    <div class="info-row">
+                        <span class="info-label">Strategy Version:</span>
+                        <span class="info-value">v8.1 (Lean Pipeline)</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Universe Scanned:</span>
+                        <span class="info-value">{scan_count} tickers</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Max Positions:</span>
+                        <span class="info-value">{MAX_POSITIONS} concurrent</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Position Size:</span>
+                        <span class="info-value">{POSITION_SIZE_PCT*100:.0f}% per position</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Hard Stop:</span>
+                        <span class="info-value">8% maximum loss</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">SPY Regime Filter:</span>
+                        <span class="info-value">ACTIVE (200-day SMA)</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Sector Cap:</span>
+                        <span class="info-value">3 positions per sector</span>
+                    </div>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
 
-        body = "\n".join(lines)
+        body = html_body
 
         notifier = EmailNotifier()
         subject = f"{status} VolatilityHunter IBKR_PAPER completed - {today_str} {datetime.now().strftime('%H:%M:%S')}"
@@ -681,13 +817,13 @@ def send_summary(portfolio: dict, exits: List[dict], entries: List[dict],
         log_file = LOG_DIR / f"trading_{today_str}.log"
         if log_file.exists():
             if notifier.send_email(subject, body, str(log_file)):
-                logger.info("Summary email sent successfully with log attachment.")
+                logger.info("Summary email sent successfully with log attachment (HTML format).")
             else:
                 logger.warning("Email send failed - check EmailNotifier config.")
         else:
             # No log file yet, send without attachment
             if notifier.send_email(subject, body):
-                logger.info("Summary email sent successfully (no log file found).")
+                logger.info("Summary email sent successfully (HTML format, no log file found).")
             else:
                 logger.warning("Email send failed - check EmailNotifier config.")
 
