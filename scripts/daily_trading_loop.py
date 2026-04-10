@@ -126,23 +126,21 @@ def save_portfolio(portfolio: dict):
 
 # ── Step 1: IBKR reconciliation ───────────────────────────────────────────────
 
-def reconcile_with_ibkr(portfolio: dict) -> Tuple[dict, Optional[object]]:
+def reconcile_with_ibkr(portfolio: dict) -> Tuple[dict, object]:
     """
     Connect to IBKR, sync local portfolio with actual positions.
     IBKR-FIRST: IBKR is the golden reference - always overwrites local data.
     Returns (updated_portfolio, ibkr_interface).
-    ibkr_interface=None means IBKR unavailable — run in PAPER mode.
+    CRITICAL: IBKR connection is MANDATORY - system fails if unavailable.
     """
     logger.info("--- Step 1: Reconciling with IBKR ---")
     try:
         ibkr = get_brokerage_interface(IBKR_CONFIG)
         if not ibkr.connect():
-            logger.warning("IBKR not available - running in PAPER mode")
-            logger.warning("Using local portfolio.json from last successful IBKR sync")
-            last_sync = portfolio.get('last_ibkr_sync', 'NEVER')
-            logger.warning(f"Last IBKR sync: {last_sync}")
-            portfolio['ibkr_available'] = False
-            return portfolio, None
+            logger.error("CRITICAL: IBKR connection FAILED - cannot proceed")
+            logger.error("System requires IBKR Paper account connection for all trades")
+            logger.error("Check: 1) IB Gateway running, 2) Port 7497 open, 3) Network connectivity")
+            sys.exit(1)
 
         account = ibkr.get_account_info()
         ibkr_positions = ibkr.get_positions()
@@ -196,10 +194,10 @@ def reconcile_with_ibkr(portfolio: dict) -> Tuple[dict, Optional[object]]:
         return portfolio, ibkr
 
     except Exception as e:
-        logger.error(f"Reconciliation error: {e}")
+        logger.error(f"CRITICAL: IBKR connection error: {e}")
         logger.error(traceback.format_exc())
-        portfolio['ibkr_available'] = False
-        return portfolio, None
+        logger.error("System cannot proceed without IBKR connection")
+        sys.exit(1)
 
 
 # ── Step 2: Fetch today's data ────────────────────────────────────────────────
@@ -322,40 +320,37 @@ def scan_universe(all_tickers: List[str],
                                 _load, version=DEFAULT_VERSION)
 
 
-
-
 # ── Step 5: Execute orders ────────────────────────────────────────────────────
 
-def execute_exits(exits: List[dict], portfolio: dict,
-                  ibkr, paper_mode: bool) -> List[dict]:
+def execute_exits(exits: List[dict], portfolio: dict, ibkr) -> List[dict]:
+    """
+    Execute exit orders on IBKR Paper account.
+    All orders are real market orders placed via IBKR API.
+    """
     executed = []
     for ex in exits:
         ticker = ex['ticker']
-        price  = ex['price']
-        pos    = portfolio['positions'].get(ticker)
-        if not pos:
+        if ticker not in portfolio.get('positions', {}):
+            logger.warning(f"EXIT {ticker}: not in portfolio - skipping")
             continue
 
-        shares = pos.get('shares', 0)
-        if shares <= 0:
-            continue
+        pos      = portfolio['positions'][ticker]
+        shares   = pos.get('shares', 0)
+        price    = ex.get('price', 0)
+        entry_px = pos.get('entry_price', 0)
+        pnl      = (price - entry_px) * shares
+        pnl_pct  = ((price - entry_px) / entry_px * 100) if entry_px > 0 else 0
 
         logger.info(f"EXIT {ticker}: {shares} shares @ ${price:.2f} | {ex['reason']}")
 
-        success = True
-        if not paper_mode and ibkr:
-            # Use market order for guaranteed fills (swing trading strategy)
-            result = ibkr.place_market_order(ticker, shares, 'sell', price)
-            success = result.get('success', False)
-            if not success:
-                logger.error(f"IBKR sell order FAILED for {ticker}: {result.get('reason')}")
+        # Place real market order on IBKR Paper account
+        result = ibkr.place_market_order(ticker, shares, 'sell', price)
+        success = result.get('success', False)
+        if not success:
+            logger.error(f"IBKR sell order FAILED for {ticker}: {result.get('reason')}")
 
         if success:
             proceeds = shares * price
-            entry    = pos.get('entry_price', price)
-            pnl      = proceeds - (shares * entry)
-            pnl_pct  = pnl / (shares * entry) * 100 if entry > 0 else 0
-
             portfolio['cash'] = portfolio.get('cash', 0) + proceeds
             del portfolio['positions'][ticker]
 
@@ -368,7 +363,7 @@ def execute_exits(exits: List[dict], portfolio: dict,
                 'pnl':      pnl,
                 'pnl_pct':  pnl_pct,
                 'timestamp': datetime.now().isoformat(),
-                'execution_mode': 'PAPER' if paper_mode else 'LIVE',
+                'execution_mode': 'IBKR_PAPER',
                 'reason':   ex['reason']
             }
             portfolio.setdefault('trade_history', []).append(trade_record)
@@ -378,8 +373,11 @@ def execute_exits(exits: List[dict], portfolio: dict,
     return executed
 
 
-def execute_entries(candidates: List[dict], portfolio: dict,
-                    ibkr, paper_mode: bool) -> List[dict]:
+def execute_entries(candidates: List[dict], portfolio: dict, ibkr) -> List[dict]:
+    """
+    Execute entry orders on IBKR Paper account.
+    All orders are real market orders placed via IBKR API.
+    """
     executed = []
     is_bull  = get_spy_regime(SPY_PARQUET)
     if not is_bull:
@@ -415,13 +413,11 @@ def execute_entries(candidates: List[dict], portfolio: dict,
         logger.info(f"ENTRY {ticker}: {shares} shares @ ${price:.2f} "
                     f"(cost=${cost:,.2f}, score={cand['score']:.3f})")
 
-        success = True
-        if not paper_mode and ibkr:
-            # Use market order for guaranteed fills (swing trading strategy)
-            result = ibkr.place_market_order(ticker, shares, 'buy', price)
-            success = result.get('success', False)
-            if not success:
-                logger.error(f"IBKR buy order FAILED for {ticker}: {result.get('reason')}")
+        # Place real market order on IBKR Paper account
+        result = ibkr.place_market_order(ticker, shares, 'buy', price)
+        success = result.get('success', False)
+        if not success:
+            logger.error(f"IBKR buy order FAILED for {ticker}: {result.get('reason')}")
 
         if success:
             stop_loss = price * (1 - p['HARD_STOP_PCT'])
@@ -432,7 +428,7 @@ def execute_entries(candidates: List[dict], portfolio: dict,
                 'stop_loss_price': stop_loss,
                 'entry_date':      today_str,
                 'quality_score':   cand['score'],
-                'execution_mode':  'PAPER' if paper_mode else 'LIVE',
+                'execution_mode':  'IBKR_PAPER',
                 'is_power_stock':  False,
                 'highest_price':   price,
                 'ticker':          ticker,
@@ -444,7 +440,7 @@ def execute_entries(candidates: List[dict], portfolio: dict,
                 'price':           price,
                 'cost':            cost,
                 'timestamp':       datetime.now().isoformat(),
-                'execution_mode':  'PAPER' if paper_mode else 'LIVE',
+                'execution_mode':  'IBKR_PAPER',
                 'quality_score':   cand['score'],
                 'reason':          cand['reason'],
                 'stop_loss_price': stop_loss,
@@ -468,19 +464,16 @@ class OrderMonitor:
     FILL_TIMEOUT   = 90    # alert after this many seconds unfilled
     CANCEL_TIMEOUT = 300   # cancel order after this many seconds unfilled (5 minutes - limit orders should fill faster)
 
-    def __init__(self, ibkr, paper_mode: bool):
-        self.ibkr       = ibkr
-        self.paper_mode = paper_mode
+    def __init__(self, ibkr):
+        self.ibkr = ibkr
 
     def monitor(self, executed_entries: List[dict], executed_exits: List[dict],
                 portfolio: dict) -> List[str]:
         """
         Poll IBKR open trades until all fill or timeout.
         Returns list of tickers where orders failed (for portfolio cleanup).
+        All orders are real trades on IBKR Paper account.
         """
-        if self.paper_mode or not self.ibkr:
-            logger.info("OrderMonitor: PAPER mode - skipping fill verification")
-            return []
         if not executed_entries and not executed_exits:
             return []
 
@@ -561,78 +554,135 @@ class OrderMonitor:
 
 
 def verify_fills(ibkr, executed_entries: List[dict], executed_exits: List[dict],
-                 portfolio: dict, paper_mode: bool) -> List[str]:
+                 portfolio: dict) -> List[str]:
     """Wrapper — uses OrderMonitor to poll fills and handle failures."""
-    monitor = OrderMonitor(ibkr, paper_mode)
+    monitor = OrderMonitor(ibkr)
     return monitor.monitor(executed_entries, executed_exits, portfolio)
 
 
 # ── Step 7: Email summary ─────────────────────────────────────────────────────
 
 def send_summary(portfolio: dict, exits: List[dict], entries: List[dict],
-                 scan_count: int, paper_mode: bool):
+                 scan_count: int):
+    """
+    Send email summary of daily trading activity.
+    System always runs on IBKR Paper account - no simulation mode.
+    """
     try:
-        mode = "PAPER" if paper_mode else "LIVE"
-        total_value = portfolio.get('cash', 0) + sum(
-            p.get('shares', 0) * p.get('entry_price', 0)
-            for p in portfolio.get('positions', {}).values()
+        from datetime import datetime
+        
+        # Status based on activity
+        status = "[OK]" if len(exits) + len(entries) == 0 else "[ACTIVE]"
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Calculate portfolio metrics
+        cash = portfolio.get('cash', 0)
+        positions = portfolio.get('positions', {})
+        total_value = cash + sum(
+            p.get('shares', 0) * latest_prices_ref.get(ticker, p.get('entry_price', 0))
+            for ticker, p in positions.items()
         )
         pnl_total = total_value - INITIAL_CAPITAL
-
+        
+        # Build email body
         lines = [
-            f"VolatilityHunter Daily Trading Report - {today_str}",
-            f"Mode: {mode}",
+            f"VolatilityHunter — IBKR Paper Account Report",
+            f"{timestamp} IST  |  Status: {status}",
             f"",
-            f"ACCOUNT SUMMARY",
-            f"  Cash          : ${portfolio.get('cash', 0):>12,.2f}",
-            f"  Open positions: {len(portfolio.get('positions', {})):>12}",
-            f"  Total equity  : ${total_value:>12,.2f}",
-            f"  vs $100k base : ${pnl_total:>+12,.2f}",
+            f"Execution Summary",
+            f"Mode\tIBKR_PAPER",
+            f"Result\tSUCCESS",
+            f"Paper Trading\tYES (IBKR Paper Account - Real orders, fake money)",
+            f"Log File\t{LOG_DIR / f'trading_{today_str}.log'}",
+            f"Timestamp\t{timestamp}",
             f"",
-            f"TODAY'S ACTIVITY",
-            f"  Universe scanned: {scan_count} tickers",
-            f"  Exits executed  : {len(exits)}",
-            f"  Entries executed: {len(entries)}",
+            f"💰 Portfolio Summary",
+            f"Portfolio Value\t${total_value:,.2f}",
+            f"Available Cash\t${cash:,.2f}",
+            f"Total P&L\t${pnl_total:+,.2f} ({(pnl_total/INITIAL_CAPITAL)*100:+.2f}%)",
+            f"Active Positions\t{len(positions)}",
             f"",
         ]
 
+        # Current positions with P&L
+        if positions:
+            lines.append("📊 Current Positions")
+            for ticker, pos in sorted(positions.items()):
+                shares = pos.get('shares', 0)
+                entry_price = pos.get('entry_price', 0)
+                current_price = latest_prices_ref.get(ticker, entry_price)
+                pnl = (current_price - entry_price) * shares
+                pnl_pct = ((current_price - entry_price) / entry_price * 100) if entry_price > 0 else 0
+                entry_date = pos.get('entry_date', '')
+                days_held = (datetime.now() - datetime.fromisoformat(entry_date)).days if entry_date else 0
+                stop_loss = pos.get('stop_loss_price', 0)
+                
+                lines.extend([
+                    f"{ticker}",
+                    f"Quantity:\t{shares}",
+                    f"Entry Price:\t${entry_price:.2f}",
+                    f"Current Price:\t${current_price:.2f}",
+                    f"P&L:\t${pnl:+,.2f} ({pnl_pct:+.2f}%)",
+                    f"Stop Loss:\t${stop_loss:.2f}",
+                    f"Days Held:\t{days_held}",
+                    f""
+                ])
+        else:
+            lines.append("📊 Current Positions")
+            lines.append("No open positions")
+            lines.append("")
+
+        # Exit signals executed today
+        lines.append("🔴 Exit Signals Today")
         if exits:
-            lines.append("EXITS:")
             for e in exits:
-                lines.append(f"  SELL {e['ticker']:8s} {e.get('shares',0):4d} @ ${e.get('price',0):.2f} "
-                              f"P&L={e.get('pnl_pct',0):+.1f}% | {e.get('reason','')}")
-            lines.append("")
+                ticker = e.get('ticker', '')
+                price = e.get('price', 0)
+                pnl_pct = e.get('pnl_pct', 0)
+                reason = e.get('reason', '')
+                lines.append(f"{ticker} @ ${price:.2f} — P&L: {pnl_pct:+.2f}%")
+                lines.append(f"Reason: {reason}")
+        else:
+            lines.append("No exit signals today")
+        lines.append("")
 
+        # Entry signals executed today
+        lines.append("🔵 Entry Signals Today")
         if entries:
-            lines.append("ENTRIES:")
             for e in entries:
-                lines.append(f"  BUY  {e['ticker']:8s} {e.get('shares',0):4d} @ ${e.get('price',0):.2f} "
-                              f"score={e.get('quality_score',0):.3f} | {e.get('reason','')[:60]}")
-            lines.append("")
+                ticker = e.get('ticker', '')
+                price = e.get('price', 0)
+                score = e.get('quality_score', 0)
+                reason = e.get('reason', '')
+                lines.append(f"{ticker} @ ${price:.2f} — Score: {score:.3f}")
+                lines.append(f"Reason: {reason}")
+        else:
+            lines.append("No entry signals today")
+        lines.append("")
 
-        lines.append("OPEN POSITIONS:")
-        for ticker, pos in portfolio.get('positions', {}).items():
-            lines.append(f"  {ticker:8s} {pos.get('shares',0):4d} shares  "
-                         f"entry=${pos.get('entry_price',0):.2f}  "
-                         f"stop=${pos.get('stop_loss_price',0):.2f}")
+        # System status
+        lines.extend([
+            "⚙️ System Status",
+            f"Strategy Version\tv8.1 (Lean Pipeline)",
+            f"Universe Scanned\t{scan_count} tickers",
+            f"Max Positions\t{MAX_POSITIONS} concurrent",
+            f"Position Size\t{POSITION_SIZE_PCT*100:.0f}% per position",
+            f"Hard Stop\t8% maximum loss",
+            f"SPY Regime Filter\tACTIVE (200-day SMA)",
+            f"Sector Cap\t3 positions per sector",
+        ])
 
         body = "\n".join(lines)
 
         notifier = EmailNotifier()
-        subject = f"VH {mode} | {len(exits)} exits {len(entries)} entries | ${total_value:,.0f}"
+        subject = f"{status} VolatilityHunter IBKR_PAPER completed - {today_str} {datetime.now().strftime('%H:%M:%S')}"
         
-        # Attach daily log file
-        log_file = LOG_DIR / f"trading_{today_str}.log"
-        if log_file.exists():
-            if notifier.send_email(subject, body, str(log_file)):
-                logger.info("Summary email sent with log attachment.")
-            else:
-                logger.warning("Email send failed - check EmailNotifier config.")
+        # Send email without log attachment (too slow)
+        # Log file path is included in email body for reference
+        if notifier.send_email(subject, body):
+            logger.info("Summary email sent successfully.")
         else:
-            if notifier.send_email(subject, body):
-                logger.info("Summary email sent (no log file found).")
-            else:
-                logger.warning("Email send failed - check EmailNotifier config.")
+            logger.warning("Email send failed - check EmailNotifier config.")
 
     except Exception as e:
         logger.error(f"send_summary error: {e}")
@@ -661,9 +711,7 @@ def main():
     # ── Step 1: Portfolio + IBKR reconciliation ───────────────────────────
     portfolio = load_portfolio()
     portfolio, ibkr = reconcile_with_ibkr(portfolio)
-    paper_mode = (ibkr is None)
-    if paper_mode:
-        logger.warning("Running in PAPER mode (IBKR not connected)")
+    logger.info("Connected to IBKR Paper account - ready for trading")
 
     # ── Step 2: Fetch today's prices (batch via Yahoo Finance) ───────────
     logger.info("--- Step 2: Fetching latest prices ---")
@@ -685,7 +733,7 @@ def main():
     exit_decisions = check_exits(portfolio, latest_prices)
     logger.info(f"Exit signals: {len(exit_decisions)}")
 
-    executed_exits = execute_exits(exit_decisions, portfolio, ibkr, paper_mode)
+    executed_exits = execute_exits(exit_decisions, portfolio, ibkr)
 
     # ── Step 3b: Power stock promotion (Bug 1 fix) ────────────────────────
     logger.info("--- Step 3b: Power stock promotion check ---")
@@ -718,15 +766,15 @@ def main():
             executed_entries = []
         else:
             logger.info("--- Step 5: Executing entries ---")
-            executed_entries = execute_entries(candidates[:MAX_POSITIONS], portfolio, ibkr, paper_mode)
+            executed_entries = execute_entries(candidates[:MAX_POSITIONS], portfolio, ibkr)
     except Exception as e:
         logger.error(f"Market hours check failed: {e}")
         logger.info("--- Step 5: Executing entries (fallback) ---")
-        executed_entries = execute_entries(candidates[:MAX_POSITIONS], portfolio, ibkr, paper_mode)
+        executed_entries = execute_entries(candidates[:MAX_POSITIONS], portfolio, ibkr)
 
     # ── Step 6: Verify fills (OrderMonitor R5) ───────────────────────────
     logger.info("--- Step 6: OrderMonitor: verifying fills ---")
-    failed_orders = verify_fills(ibkr, executed_entries, executed_exits, portfolio, paper_mode)
+    failed_orders = verify_fills(ibkr, executed_entries, executed_exits, portfolio)
     if failed_orders:
         logger.error(f"Orders failed/cancelled: {failed_orders}")
 
@@ -739,9 +787,8 @@ def main():
     save_portfolio(portfolio)
 
     # ── Step 7: Email summary ─────────────────────────────────────────────
-    logger.info("--- Step 7: Sending summary ---")
-    send_summary(portfolio, executed_exits, executed_entries,
-                 len(all_tickers), paper_mode)
+    logger.info("--- Step 7: Sending summary email ---")
+    send_summary(portfolio, executed_exits, executed_entries, len(all_tickers))
 
     # ── Disconnect IBKR ───────────────────────────────────────────────────
     if ibkr:
