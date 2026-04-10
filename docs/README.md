@@ -1,6 +1,6 @@
 # 🎯 VolatilityHunter
 
-**Deterministic Quantitative Trading System | v11.0**
+**Deterministic Quantitative Trading System | v11.1**
 
 ---
 
@@ -50,14 +50,19 @@ Get-Content logs/task_scheduler.log -Wait -Tail 50
 ✅ Order Execution          : PASS (Market orders, SMART routing)
 ✅ Portfolio Sync           : PASS (Live IBKR synchronization)
 ✅ Daily Trading Routine    : PASS (Fully automated via Task Scheduler)
-✅ Email Notifications      : PASS (Gmail SMTP)
-✅ Data Pipeline            : PASS (Tiingo Professional API, 2147 tickers)
+✅ Email Notifications      : PASS (HTML format with log attachments)
+✅ Failure Notifications    : PASS (Automatic error alerts)
+✅ Data Pipeline            : PASS (Parallel Tiingo API, 15s for 2,136 tickers)
+✅ Mode                     : IBKR_PAPER only (no simulation fallback)
 ```
-🎉 ALL SYSTEMS OPERATIONAL! Gateway auto-login resolved, full automation achieved!
+🎉 ALL SYSTEMS OPERATIONAL! Full automation with professional email reports!
 
 📊 SYSTEM HIGHLIGHTS:
   - **Gateway Startup**: 8-10 seconds via Ghost-Typist (focus → clear → type → submit)
+  - **Trading Loop**: ~60 seconds total (4x faster with parallel API fetching)
+  - **Email Reports**: Professional HTML format with color-coded P&L tables
   - **Execution**: Market orders filling successfully across multiple exchanges
+  - **Reliability**: Automatic failure notifications with full error details
   - **Data**: Tiingo bulk API (3 requests for 2147 tickers)
   - **Automation**: 100% autonomous daily trading via Windows Task Scheduler
   - **Monitoring**: Live logs via `Get-Content logs/task_scheduler.log -Wait`

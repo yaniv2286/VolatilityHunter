@@ -1,14 +1,14 @@
 # VolatilityHunter Architecture - Single Source of Truth
 
-**Version**: Production v11.0 | **Updated**: 2026-04-10 | **Strategy**: v8.1 (Lean Pipeline)
+**Version**: Production v11.1 | **Updated**: 2026-04-10 | **Strategy**: v8.1 (Lean Pipeline)
 
 ---
 
 ## 🎯 Executive Summary
 
-VolatilityHunter is a **deterministic quantitative trading fund** ($100k) using a **Lean Pipeline Architecture** with **100% autonomy**. The system executes one complete trading cycle per market day via Windows Task Scheduler, using **Tiingo Professional API** for data and **IBKR Paper Trading** for execution.
+VolatilityHunter is a **deterministic quantitative trading fund** ($100k) using a **Lean Pipeline Architecture** with **100% autonomy**. The system executes one complete trading cycle per market day via Windows Task Scheduler, using **Tiingo Professional API** (parallel fetching) for data and **IBKR Paper Trading** for execution.
 
-**🔒 CURRENT STATUS**: Fully operational - Gateway auto-login via Ghost-Typist, market orders filling successfully with delayed data protocol and SMART routing.
+**🔒 CURRENT STATUS**: Fully operational - Gateway auto-login via Ghost-Typist (8-10s), parallel API fetching (15s for 2,136 tickers), HTML email reports, automatic failure notifications. Trading loop completes in ~60 seconds.
 
 ### Core Philosophy
 - **No Silent Failures**: Every error is logged, reported, and visible in Command Center
