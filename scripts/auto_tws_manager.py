@@ -144,7 +144,7 @@ class AutoTWSManager:
             "DismissNSEComplianceNotice=yes\n"
             "AcceptBidAskLastSizeDisplayUpdateNotification=accept\n"
             "LogComponents=never\n"
-            "LoginDialogDisplayTimeout=90\n"
+            "LoginDialogDisplayTimeout=180\n"
             "TradingMode=paper\n"
         )
         # Add LOGON section with credentials
