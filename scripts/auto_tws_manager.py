@@ -386,8 +386,10 @@ class AutoTWSManager:
             # IBC will launch Gateway but NOT handle login
             helper = Path(__file__).parent / "ibc_login_helper.py"
             if helper.exists():
-                subprocess.Popen([sys.executable, str(helper)],
-                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                ghost_log = LOG_DIR / "ghost_typist.log"
+                with open(ghost_log, 'a', encoding='utf-8') as gf:
+                    subprocess.Popen([sys.executable, str(helper)],
+                                     stdout=gf, stderr=gf)
                 logger.info("Ghost-Typist spawned (will handle login via GUI automation)")
             return True
         except Exception as e:
