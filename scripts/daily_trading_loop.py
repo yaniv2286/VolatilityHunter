@@ -151,11 +151,31 @@ def reconcile_with_ibkr(portfolio: dict) -> Tuple[dict, object]:
             ibkr_equity = account.get('equity', 0)
             logger.info(f"IBKR account: cash=${ibkr_cash:,.2f}, equity=${ibkr_equity:,.2f}")
             
-            # ALWAYS use IBKR cash (discard local value)
+            # CRITICAL SANITY CHECK: Prevent margin bug from inflated IBKR cash
+            # IBKR Paper account can accumulate liquidation proceeds, causing
+            # cash balance to be 5-6x larger than it should be. This leads to
+            # massive position sizes and margin usage.
             old_cash = portfolio.get('cash', 0)
-            portfolio['cash'] = ibkr_cash
-            if abs(ibkr_cash - old_cash) > 100:
-                logger.warning(f"Cash reset: local=${old_cash:,.2f} -> IBKR=${ibkr_cash:,.2f}")
+            
+            # If IBKR cash is more than 2x portfolio.json cash, reject it
+            if ibkr_cash > old_cash * 2.0 and old_cash > 10000:
+                logger.error("=" * 68)
+                logger.error("🚨 CRITICAL: IBKR CASH SANITY CHECK FAILED")
+                logger.error(f"IBKR reports: ${ibkr_cash:,.2f}")
+                logger.error(f"Portfolio.json: ${old_cash:,.2f}")
+                logger.error(f"Ratio: {ibkr_cash/old_cash:.1f}x (exceeds 2x threshold)")
+                logger.error("")
+                logger.error("This indicates IBKR Paper account has accumulated")
+                logger.error("liquidation proceeds and is reporting inflated cash.")
+                logger.error("Using portfolio.json cash to prevent margin usage.")
+                logger.error("=" * 68)
+                # Keep portfolio.json cash, don't overwrite with IBKR
+                logger.warning(f"Cash NOT reset: keeping local=${old_cash:,.2f} (rejecting IBKR=${ibkr_cash:,.2f})")
+            else:
+                # IBKR cash is reasonable, use it
+                portfolio['cash'] = ibkr_cash
+                if abs(ibkr_cash - old_cash) > 100:
+                    logger.warning(f"Cash reset: local=${old_cash:,.2f} -> IBKR=${ibkr_cash:,.2f}")
 
         # IBKR-FIRST: Replace all positions with IBKR positions
         old_positions = portfolio.get('positions', {})
