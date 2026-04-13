@@ -377,6 +377,10 @@ def execute_entries(candidates: List[dict], portfolio: dict, ibkr) -> List[dict]
     """
     Execute entry orders on IBKR Paper account.
     All orders are real market orders placed via IBKR API.
+    
+    CRITICAL FIX: Track available cash separately to prevent margin usage.
+    Portfolio cash is updated in memory after each order to ensure subsequent
+    position size calculations use the correct remaining cash balance.
     """
     executed = []
     is_bull  = get_spy_regime(SPY_PARQUET)
@@ -400,6 +404,9 @@ def execute_entries(candidates: List[dict], portfolio: dict, ibkr) -> List[dict]
             logger.info(f"Skipping {ticker}: {reason}")
             continue
 
+        # CRITICAL: Use current portfolio cash (updated after each order)
+        # This prevents margin usage by ensuring each position size calculation
+        # uses the remaining cash after previous orders
         shares, cost = calc_position_size(portfolio, price, latest_prices_ref,
                                           ticker=ticker, load_fn=_load,
                                           version=DEFAULT_VERSION)
@@ -908,6 +915,24 @@ def main():
     logger.info("VOLATILITYHUNTER DAILY TRADING LOOP")
     logger.info(f"Date: {today_str}  |  Capital: ${INITIAL_CAPITAL:,.0f}")
     logger.info("=" * 68)
+    
+    # CRITICAL: Prevent multiple executions on same day (causes margin usage bug)
+    lock_file = DATA_DIR / f"trading_lock_{today_str}.lock"
+    if lock_file.exists():
+        logger.error("=" * 68)
+        logger.error("🚨 EXECUTION LOCK DETECTED")
+        logger.error(f"Trading loop already ran today ({today_str})")
+        logger.error("Multiple executions cause IBKR reconciliation to reset cash,")
+        logger.error("leading to margin usage bugs. Aborting to prevent margin trades.")
+        logger.error("=" * 68)
+        logger.error(f"Lock file: {lock_file}")
+        logger.error("To override: Delete the lock file and re-run")
+        logger.error("=" * 68)
+        sys.exit(1)
+    
+    # Create lock file
+    lock_file.write_text(f"Locked at {datetime.now().isoformat()}")
+    logger.info(f"✅ Execution lock created: {lock_file}")
     
     ibkr = None  # Initialize for cleanup in except block
     
