@@ -1,0 +1,30 @@
+Subject: Change Paper Trading Account Base Currency from ILS to USD
+
+Dear IBKR Support,
+
+I am writing to request a base currency change for my Paper Trading account.
+
+Account Number: DUP663578
+Account Type: Paper Trading (Demo)
+Current Base Currency: ILS (Israeli Shekel)
+Requested Base Currency: USD (US Dollar)
+
+Reason for Request:
+I am developing and testing an automated trading system that trades US equities. Having ILS as the base currency creates unnecessary currency conversion complexity and makes it difficult to accurately test position sizing and risk management.
+
+Since I am trading exclusively in US stocks, having USD as the base currency would:
+1. Eliminate currency conversion errors
+2. Provide accurate position sizing in USD
+3. Match standard US equity trading practices
+4. Simplify reconciliation and reporting
+
+Additional Request (Optional):
+If possible, please also reset the account to $100,000 USD starting capital and clear any accumulated liquidation proceeds from previous test trades.
+
+I understand this is a Paper Trading account used solely for testing purposes.
+
+Thank you for your assistance.
+
+Best regards,
+Yaniv Lugassy
+Account: DUP663578
