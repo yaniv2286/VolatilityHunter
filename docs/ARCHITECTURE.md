@@ -1,6 +1,6 @@
 # VolatilityHunter Architecture - Single Source of Truth
 
-**Version**: Production v11.1 | **Updated**: 2026-04-10 | **Strategy**: v8.1 (Lean Pipeline)
+**Version**: Production v11.2 | **Updated**: 2026-04-15 | **Strategy**: v8.1 (Lean Pipeline)
 
 ---
 
@@ -8,7 +8,7 @@
 
 VolatilityHunter is a **deterministic quantitative trading fund** ($100k) using a **Lean Pipeline Architecture** with **100% autonomy**. The system executes one complete trading cycle per market day via Windows Task Scheduler, using **Tiingo Professional API** (parallel fetching) for data and **IBKR Paper Trading** for execution.
 
-**🔒 CURRENT STATUS**: Fully operational - Gateway auto-login via Ghost-Typist (8-10s), parallel API fetching (15s for 2,136 tickers), HTML email reports, automatic failure notifications. Trading loop completes in ~60 seconds.
+**🔒 CURRENT STATUS**: Production-hardened with Deterministic Guardrails - Gateway auto-login via Ghost-Typist (8-10s), parallel API fetching (15s for 2,136 tickers), HTML email reports, automatic failure notifications, ILS to USD conversion, zero margin usage verified. Trading loop completes in ~60 seconds.
 
 ### Core Philosophy
 - **No Silent Failures**: Every error is logged, reported, and visible in Command Center
@@ -92,7 +92,66 @@ VolatilityHunter is a **deterministic quantitative trading fund** ($100k) using 
 
 ---
 
-## 📊 Data Flow & Execution
+## �️ Deterministic Guardrails (v11.2)
+
+**Zero Margin Tolerance**: 9-layer protection system to eliminate IBKR Gateway failures and margin debt bugs.
+
+### Layer 1: Nuclear Clear Protocol (ibc_login_helper.py)
+- Window center click before credential entry
+- Prevents IBKR UI focus bugs during Ghost-Typist login
+- Eliminates credential injection failures
+
+### Layer 2: JTS Configuration Guard (auto_tws_manager.py)
+- `clean_jts_ini()` overwrites jts.ini on every startup
+- Enforces `Logon.API=IB` and `LastUser=yanivl228`
+- Prevents Gateway auto-switching to FIX CTCI mode
+
+### Layer 3: Port 7497 Enforcement
+- Hardcoded port 7497 with 180s timeout
+- Exit code 1 on connection failure (no silent failures)
+- Prevents port mismatch issues
+
+### Layer 4: ILS to USD Currency Conversion (brokerage_interface.py)
+- Auto-detects account currency from IBKR accountValues
+- Converts ILS to USD using 0.27 exchange rate
+- Logs: "Converting ILS to USD: 250,000 ILS → 67,500 USD"
+- Enables correct position sizing for non-USD accounts
+
+### Layer 5: Margin Abort Check (daily_trading_loop.py)
+- **Absolute threshold**: Exit if IBKR cash > $150k
+- **Relative threshold**: Exit if IBKR cash > 2× portfolio.json
+- Detects Paper account liquidation proceeds accumulation
+- Exit code 1 with detailed error message
+
+### Layer 6: Synthetic Capital Ceiling (strategy_engine.py)
+- `get_safe_buying_power()` returns min(IBKR cash, portfolio cash, $100k)
+- Position sizing uses safe buying power instead of raw IBKR balance
+- Prevents over-leveraging from inflated balances
+
+### Layer 7: Anti-Shorting Logic (brokerage_interface.py)
+- Validates IBKR position before placing SELL orders
+- Aborts if position ≤ 0 or selling more than owned
+- Prevents accidental short positions
+
+### Layer 8: UTF-8 Force (run_trading.bat)
+- `chcp 65001` and `PYTHONIOENCODING=utf-8`
+- Prevents Unicode errors in Windows Task Scheduler
+- Maintains Dead Man's Switch pause
+
+### Layer 9: Portfolio Sanity Check (functional_health_check.py)
+- Port 7497 reachability test
+- Portfolio cash range validation (0-$150k)
+- 11 critical checks (was 10)
+
+**Testing Results (2026-04-15):**
+- ✅ 8 positions opened successfully (~$50,881 invested)
+- ✅ Zero margin usage (critical success!)
+- ✅ All 9 guardrails verified working in production
+- ✅ Position sizing correct (~$6,360 average per position)
+
+---
+
+## �📊 Data Flow & Execution
 
 ```
 Tiingo Professional API (Bulk Metadata)

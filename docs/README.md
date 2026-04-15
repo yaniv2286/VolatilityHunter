@@ -1,6 +1,6 @@
 # 🎯 VolatilityHunter
 
-**Deterministic Quantitative Trading System | v11.1**
+**Deterministic Quantitative Trading System | v11.2 - Production Hardened**
 
 ---
 
@@ -44,8 +44,11 @@ Get-Content logs/task_scheduler.log -Wait -Tail 50
 ## 📊 System Status
 
 ```
-✅ Health Check System      : PASS (Exit Code 0)
+✅ Health Check System      : PASS (Exit Code 0, 11 checks)
 ✅ Gateway Automation       : PASS (Ghost-Typist auto-login, 8-10s startup)
+✅ Deterministic Guardrails : PASS (9 protection layers active)
+✅ ILS to USD Conversion    : PASS (Auto-detect and convert)
+✅ Margin Protection        : PASS (Zero margin usage verified)
 ✅ Market Data Protocol     : PASS (Delayed data, reqMarketDataType(3))
 ✅ Order Execution          : PASS (Market orders, SMART routing)
 ✅ Portfolio Sync           : PASS (Live IBKR synchronization)
@@ -55,7 +58,7 @@ Get-Content logs/task_scheduler.log -Wait -Tail 50
 ✅ Data Pipeline            : PASS (Parallel Tiingo API, 15s for 2,136 tickers)
 ✅ Mode                     : IBKR_PAPER only (no simulation fallback)
 ```
-🎉 ALL SYSTEMS OPERATIONAL! Full automation with professional email reports!
+🎉 ALL SYSTEMS OPERATIONAL! Production-hardened with Deterministic Guardrails!
 
 📊 SYSTEM HIGHLIGHTS:
   - **Gateway Startup**: 8-10 seconds via Ghost-Typist (focus → clear → type → submit)
@@ -69,7 +72,24 @@ Get-Content logs/task_scheduler.log -Wait -Tail 50
 
 ---
 
-## 🎯 Latest Achievements (v11.0)
+## 🎯 Latest Achievements (v11.2)
+
+### ✅ **Deterministic Guardrails Implementation** (April 15, 2026)
+- **Nuclear Clear Protocol**: Window center click before credential entry (IBC login)
+- **JTS Configuration Guard**: Auto-enforce API=IB mode and LastUser settings
+- **Port 7497 Enforcement**: Hardcoded port with 180s timeout and exit code 1
+- **ILS to USD Conversion**: Auto-detect currency and convert (250k ILS → $67.5k USD)
+- **Margin Abort Check**: Exit if IBKR cash > $150k (prevents inflated balance bugs)
+- **Triple-Lock Cash Guard**: Uses min(IBKR cash, portfolio cash, $100k ceiling)
+- **Anti-Shorting Logic**: Validates position before sell orders (prevents accidental shorts)
+- **UTF-8 Force**: Environment variables for Task Scheduler compatibility
+- **Portfolio Sanity Check**: Cash range validation (0-$150k) in health check
+
+**Testing Results:**
+- ✅ 8 positions opened successfully (~$50,881 invested)
+- ✅ Zero margin usage (critical success!)
+- ✅ All guardrails verified working in production
+- ✅ Position sizing correct (~$6,360 average per position)
 
 ### ✅ **Gateway Auto-Login Breakthrough** (April 2026)
 - **Ghost-Typist Method**: GUI automation for reliable credential injection

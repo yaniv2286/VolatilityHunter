@@ -1,10 +1,115 @@
 # VolatilityHunter Changelog
 
-**Version**: Production v11.1 | **Updated**: 2026-04-10
+**Version**: Production v11.2 | **Updated**: 2026-04-15
 
 ---
 
 ## 🎯 Recent Changes (2026)
+
+### 2026-04-15 - v11.2: Deterministic Guardrails Implementation
+
+#### 🛡️ Production Hardening - Zero Margin Tolerance
+- **Problem**: Recurring IBKR Gateway startup failures and margin debt bugs from inflated Paper account balances
+- **Solution**: Implemented 9-layer "Deterministic Guardrails" system to eliminate failure modes
+- **Result**: ✅ Zero margin usage verified in production, 8 positions opened successfully
+
+#### 🔒 IBKR Gateway & Ghost-Typist Hardening
+**Nuclear Clear Protocol** (`scripts/ibc_login_helper.py`)
+- Window center click before clearing login fields (prevents IBKR UI focus bugs)
+- Enhanced field clearing with explicit focus control
+- Eliminates credential injection failures
+
+**JTS Configuration Guard** (`scripts/auto_tws_manager.py`)
+- `clean_jts_ini()` function overwrites jts.ini on every startup
+- Enforces `Logon.API=IB` and `LastUser=yanivl228`
+- Prevents Gateway from auto-switching to FIX CTCI mode
+
+**Port 7497 Enforcement**
+- Hardcoded port 7497 with 180s timeout
+- Exit code 1 on connection failure (no silent failures)
+- Prevents port mismatch issues
+
+#### 💰 Triple-Lock Cash Guard (Margin Protection)
+**Synthetic Capital Ceiling** (`src/strategy_engine.py`)
+- `get_safe_buying_power()` returns min(IBKR cash, portfolio cash, $100k ceiling)
+- Position sizing uses safe buying power instead of raw IBKR balance
+- Prevents over-leveraging from inflated balances
+
+**Margin Abort Check** (`scripts/daily_trading_loop.py`)
+- Absolute threshold: Exit if IBKR cash > $150k
+- Relative threshold: Exit if IBKR cash > 2× portfolio.json
+- Detects Paper account liquidation proceeds accumulation
+- Exit code 1 with detailed error message
+
+**Anti-Shorting Logic** (`src/brokerage_interface.py`)
+- Validates IBKR position before placing SELL orders
+- Aborts if position ≤ 0 or selling more than owned
+- Prevents accidental short positions
+
+#### 💱 ILS to USD Currency Conversion
+**Auto-Detection and Conversion** (`src/brokerage_interface.py`)
+- Detects account currency (ILS, USD, etc.) from IBKR accountValues
+- Converts ILS to USD using 0.27 exchange rate (1 ILS ≈ 0.27 USD)
+- Logs conversion: "Converting ILS to USD: 250,000 ILS → 67,500 USD"
+- Enables correct position sizing for non-USD accounts
+
+**IBKR Support Request**
+- Submitted request to change Paper account base currency from ILS to USD
+- Requested $100,000 USD starting capital reset
+- Awaiting IBKR response (1-3 business days)
+
+#### 🔧 Environment & Logging
+**UTF-8 Force** (`scripts/DAILY_ROUTINE/run_trading.bat`)
+- Added `chcp 65001` and `PYTHONIOENCODING=utf-8`
+- Prevents Unicode errors in Windows Task Scheduler environment
+- Maintains Dead Man's Switch pause
+
+**Portfolio Sanity Check** (`scripts/functional_health_check.py`)
+- Added Port 7497 reachability test
+- Added Portfolio cash range validation (0-$150k)
+- Health check now runs 11 checks (was 10)
+
+#### 📊 Testing Results (April 15, 2026)
+**Production Trading Run:**
+- ✅ 8 positions opened successfully
+- ✅ Total invested: $50,881 USD (from $67,500 available)
+- ✅ Position sizing: ~$6,360 average per position (correct)
+- ✅ **Zero margin usage** (critical success!)
+- ✅ All Deterministic Guardrails verified working
+- ✅ ILS to USD conversion working (250k ILS → $67.5k USD)
+
+**Positions Opened:**
+- WDC: 10 shares @ $363.11
+- VALE: 429 shares @ $17.745
+- TSEM: 24 shares @ $215.172
+- HSBC: 130 shares @ $90.958
+- HCSG: 327 shares @ $19.13
+- EGO: 97 shares @ $34.541
+- BCH: 185 shares @ $40.06
+- AEHR: 78 shares @ $72.313
+
+**System Status:**
+- Health Check: 11/11 PASS
+- Margin Usage: $0 (verified)
+- Guardrails: All 9 layers active
+- Exit Code: 0 (success)
+
+#### 🎯 Impact Assessment
+**Reliability:** Critical improvement - eliminates two major failure modes
+- Gateway startup failures: Fixed with Nuclear Clear + JTS Guard
+- Margin debt bugs: Fixed with Triple-Lock Cash Guard + ILS conversion
+
+**Safety:** Production-hardened with zero-tolerance for margin usage
+- Absolute ceiling prevents inflated balance bugs
+- Anti-shorting prevents accidental short positions
+- Multi-layer validation ensures safe operation
+
+**Maintainability:** Deterministic behavior eliminates debugging cycles
+- No more "why did Gateway fail?" investigations
+- No more "where did this margin come from?" mysteries
+- Clear error messages with exit code 1
+
+---
 
 ### 2026-04-10 - v11.1: Performance & UX Improvements
 
