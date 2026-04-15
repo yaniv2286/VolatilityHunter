@@ -90,6 +90,82 @@ class AutoTWSManager:
         logger.warning("IB Gateway not found in common paths")
         return GATEWAY_PATHS[0]
 
+    # ── JTS Configuration Guard ─────────────────────────────────────────
+
+    def clean_jts_ini(self):
+        """
+        JTS Configuration Guard: Enforce critical settings in jts.ini
+        to prevent UI from defaulting to FIX CTCI mode.
+        
+        Forces:
+        - Logon.API=IB (not FIX)
+        - LastUser=yanivl228 (pre-fill username)
+        
+        This runs BEFORE Gateway launch to eliminate startup failures.
+        """
+        jts_paths = [
+            Path(r"C:\Jts\jts.ini"),
+            Path(self.gateway_dir) / "jts.ini",
+        ]
+        
+        for jts_path in jts_paths:
+            if not jts_path.exists():
+                continue
+                
+            try:
+                logger.info(f"JTS Configuration Guard: Cleaning {jts_path}")
+                content = jts_path.read_text(encoding='utf-8')
+                lines = content.splitlines()
+                
+                # Parse and enforce settings
+                in_logon = False
+                api_set = False
+                user_set = False
+                cleaned = []
+                
+                for line in lines:
+                    stripped = line.strip()
+                    
+                    # Track section
+                    if stripped.startswith('['):
+                        # Inject missing keys before leaving Logon section
+                        if in_logon:
+                            if not api_set:
+                                cleaned.append('API=IB')
+                            if not user_set:
+                                cleaned.append(f'LastUser={IBKR_USER}')
+                        in_logon = stripped.lower() == '[logon]'
+                        cleaned.append(line)
+                        continue
+                    
+                    # Update or skip keys in Logon section
+                    if in_logon:
+                        key = line.split('=')[0].strip()
+                        if key == 'API':
+                            cleaned.append('API=IB')
+                            api_set = True
+                        elif key == 'LastUser':
+                            cleaned.append(f'LastUser={IBKR_USER}')
+                            user_set = True
+                        else:
+                            cleaned.append(line)
+                    else:
+                        cleaned.append(line)
+                
+                # Handle end-of-file Logon section
+                if in_logon:
+                    if not api_set:
+                        cleaned.append('API=IB')
+                    if not user_set:
+                        cleaned.append(f'LastUser={IBKR_USER}')
+                
+                # Write back
+                jts_path.write_text('\n'.join(cleaned) + '\n', encoding='utf-8')
+                logger.info(f"JTS Configuration Guard: Enforced API=IB and LastUser in {jts_path}")
+                
+            except Exception as e:
+                logger.warning(f"JTS Configuration Guard failed for {jts_path}: {e}")
+
     # ── Process checks ───────────────────────────────────────────────────
 
     def is_gateway_running(self):
@@ -106,12 +182,13 @@ class AutoTWSManager:
                 continue
         return False
 
-    def is_api_ready(self):
-        """Check if port 7497 accepts connections."""
+    def is_api_ready(self, timeout=5):
+        """Check if TWS API is accepting connections on port 7497 ONLY."""
         try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            result = s.connect_ex(('127.0.0.1', TWS_PORT))
-            s.close()
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(timeout)
+            result = sock.connect_ex(('127.0.0.1', 7497))  # Hardcoded port enforcement
+            sock.close()
             return result == 0
         except Exception:
             return False
@@ -316,6 +393,8 @@ class AutoTWSManager:
         if not self.ensure_ibc_config():
             return False
 
+        # JTS Configuration Guard: Run BEFORE Gateway launch
+        self.clean_jts_ini()
         self._ensure_clean_jts_ini()
 
         # IBC works by intercepting ibgateway.exe's Swing login dialog.
@@ -419,9 +498,12 @@ class AutoTWSManager:
 
     def wait_for_api(self):
         """Wait up to API_WAIT_SECS for port 7497 to open."""
-        logger.info(f"Waiting up to {API_WAIT_SECS}s for IB Gateway API on port {TWS_PORT}...")
+        logger.info(f"Waiting up to {API_WAIT_SECS}s for IB Gateway API on port 7497...")
         start_time = time.time()
-        for i in range(API_WAIT_SECS):
+        PORT_TIMEOUT = 180
+        logger.info(f"Waiting up to {PORT_TIMEOUT}s for IB Gateway API on port 7497...")
+        start = time.time()
+        while time.time() - start < PORT_TIMEOUT:
             # Check if we've been waiting too long and process is stuck
             if time.time() - start_time > API_WAIT_SECS - 60:  # Give 60s buffer
                 logger.error(f"Gateway process stuck - forcing restart")
@@ -434,13 +516,16 @@ class AutoTWSManager:
                 return False
                 
             if self.is_api_ready():
-                logger.info(f"IB Gateway API ready after {i}s")
+                logger.info(f"IB Gateway API ready after {int(time.time() - start)}s")
                 return True
-            if i % 15 == 0 and i > 0:
-                logger.info(f"  Still waiting... ({i}s)")
-            time.sleep(1)
-        logger.error(f"IB Gateway API did not open after {API_WAIT_SECS}s")
-        return False
+            if int(time.time() - start) > 15 and int(time.time() - start) % 15 == 0:
+                logger.info(f"  Still waiting... ({int(time.time() - start)}s)")
+            time.sleep(3)
+        
+        # PORT 7497 ENFORCEMENT: If API not ready within 180s, EXIT CODE 1
+        logger.error(f"Port 7497 not reachable within {PORT_TIMEOUT}s - ABORTING")
+        logger.error("Gateway startup FAILED - exiting with code 1")
+        sys.exit(1)
 
     # ── Keep-alive ───────────────────────────────────────────────────────
 

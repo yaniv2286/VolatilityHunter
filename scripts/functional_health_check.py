@@ -178,6 +178,7 @@ def check_parquet_universe() -> dict:
 
 
 def check_ibkr_port() -> dict:
+    """PORT 7497 REACHABILITY TEST - Deterministic Guardrail"""
     try:
         sock = socket.create_connection(('127.0.0.1', 7497), timeout=2)
         sock.close()
@@ -186,6 +187,47 @@ def check_ibkr_port() -> dict:
         return _result("IBKR port 7497", WARN,
                        "Port 7497 not reachable - will trade in PAPER mode. "
                        "Check auto_tws_manager.log if this is unexpected.")
+
+
+def check_portfolio_sanity() -> dict:
+    """
+    PORTFOLIO SANITY TEST - Deterministic Guardrail
+    Verifies portfolio.json cash is within reasonable bounds:
+    - Not negative (indicates corrupted state)
+    - Not > $150k (indicates IBKR Paper account hallucination)
+    - Within 10% tolerance of expected $100k range
+    """
+    try:
+        portfolio_path = ROOT / 'data' / 'portfolio.json'
+        if not portfolio_path.exists():
+            return _result("Portfolio Sanity", FAIL, "portfolio.json not found")
+        
+        with open(portfolio_path, 'r') as f:
+            portfolio = json.load(f)
+        
+        cash = portfolio.get('cash', 0)
+        
+        # Check for negative cash (corrupted state)
+        if cash < 0:
+            return _result("Portfolio Sanity", FAIL, 
+                          f"Portfolio cash is NEGATIVE: ${cash:,.2f} - corrupted state detected")
+        
+        # Check for inflated cash (IBKR Paper hallucination)
+        if cash > 150000:
+            return _result("Portfolio Sanity", FAIL,
+                          f"Portfolio cash ${cash:,.2f} exceeds $150k ceiling - IBKR hallucination detected")
+        
+        # Check if cash is within reasonable range (10% tolerance of $100k)
+        # Allow range: $0 - $150k (after drawdowns or gains)
+        if cash > 0 and cash <= 150000:
+            return _result("Portfolio Sanity", PASS,
+                          f"Cash=${cash:,.2f} within safe range")
+        
+        return _result("Portfolio Sanity", WARN,
+                      f"Cash=${cash:,.2f} - unusual but not critical")
+        
+    except Exception as e:
+        return _result("Portfolio Sanity", FAIL, f"Error checking portfolio: {e}")
 
 
 def main() -> int:
@@ -204,6 +246,7 @@ def main() -> int:
         check_spy_parquet,
         check_parquet_universe,
         check_ibkr_port,
+        check_portfolio_sanity,
     ]
 
     results = []

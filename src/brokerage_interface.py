@@ -469,6 +469,33 @@ class IBKRInterface(BrokerageInterface):
         if not validation['valid']:
             return {'success': False, 'reason': validation['reason']}
         
+        # ANTI-SHORTING LOGIC: Prevent accidental short positions
+        if side.upper() == 'SELL':
+            try:
+                positions = self.ib.positions()
+                current_position = 0
+                for pos in positions:
+                    if pos.contract.symbol == symbol:
+                        current_position = pos.position
+                        break
+                
+                if current_position <= 0:
+                    log_error(f"ANTI-SHORTING ABORT: Cannot SELL {symbol} - current position is {current_position}")
+                    return {
+                        'success': False, 
+                        'reason': f'Anti-shorting protection: position={current_position}, cannot sell'
+                    }
+                
+                if quantity > current_position:
+                    log_error(f"ANTI-SHORTING ABORT: Cannot SELL {quantity} shares of {symbol} - only have {current_position}")
+                    return {
+                        'success': False,
+                        'reason': f'Anti-shorting protection: trying to sell {quantity} but only have {current_position}'
+                    }
+            except Exception as e:
+                log_error(f"Anti-shorting check failed for {symbol}: {e}")
+                return {'success': False, 'reason': f'Anti-shorting check failed: {e}'}
+        
         try:
             from ib_insync import Stock
             

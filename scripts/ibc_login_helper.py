@@ -27,18 +27,22 @@ def main():
     print("Waiting for IB Gateway window (up to 60s)...")
     
     try:
-        # 1. FIND & FOCUS: Locate IBKR Gateway window
+        # 1. FIND & FOCUS: Locate IBKR Gateway window (handles both "IBKR Gateway" and "ibgateway" titles)
         gateway_window = None
         for i in range(60):
-            windows = gw.getWindowsWithTitle("IBKR Gateway")
-            if windows:
-                gateway_window = windows[0]
-                print(f"Found IBKR Gateway window: {gateway_window.title} after {i} seconds.")
+            # Try multiple possible window titles
+            for title_pattern in ["IBKR Gateway", "ibgateway", "IB Gateway"]:
+                windows = gw.getWindowsWithTitle(title_pattern)
+                if windows:
+                    gateway_window = windows[0]
+                    print(f"Found Gateway window: {gateway_window.title} after {i} seconds.")
+                    break
+            if gateway_window:
                 break
             time.sleep(1)
             
         if not gateway_window:
-            print("ERROR: IBKR Gateway window not found after 60 seconds!")
+            print("ERROR: Gateway window not found after 60 seconds!")
             print("Available windows:")
             for window in gw.getAllWindows():
                 if "gateway" in window.title.lower() or "ibkr" in window.title.lower():
@@ -61,7 +65,13 @@ def main():
             else:
                 print(f"WARNING: Failed to fully activate/maximize window, but continuing: {e}")
         
-        # Window is already focused, no mouse click needed
+        # NUCLEAR CLEAR PROTOCOL: Click window center to ensure proper focus
+        # This eliminates pre-filled paths like 'D:\TWS' that cause field offsets
+        print("NUCLEAR CLEAR: Clicking window center for absolute focus...")
+        window_center_x = gateway_window.left + gateway_window.width // 2
+        window_center_y = gateway_window.top + gateway_window.height // 2
+        pyautogui.click(window_center_x, window_center_y)
+        time.sleep(0.5)
         
         # 2. FOCUSED INJECTION: Nuclear Clear + Type Username
         print("FOCUSED INJECTION: Nuclear Clear Username field...")

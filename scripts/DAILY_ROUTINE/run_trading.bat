@@ -28,6 +28,11 @@ echo [VH] Weekday confirmed - proceeding with ignition sequence.
 
 :: 2. SETUP & ENVIRONMENT
 cd /d "D:\GitHub\VolatilityHunter"
+
+:: UTF-8 FORCE: Prevent UnicodeEncodeErrors in Task Scheduler
+chcp 65001 >nul 2>&1
+set PYTHONIOENCODING=utf-8
+
 set TOKENIZERS_PARALLELISM=false
 call venv\Scripts\activate.bat
 

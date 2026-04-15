@@ -27,6 +27,34 @@ from src.strategy_v7_2 import add_indicators_v7_2
 
 logger = logging.getLogger('strategy_engine')
 
+# ── TRIPLE-LOCK CASH GUARD ────────────────────────────────────────────────────
+ABSOLUTE_CAPITAL_CEILING = 100000  # Hard limit for $100k account
+
+def get_safe_buying_power(portfolio: dict, ibkr_cash: float = None) -> float:
+    """
+    Synthetic Capital Ceiling: Returns the MINIMUM of:
+    (a) Live IBKR Cash (if provided)
+    (b) portfolio.json cash
+    (c) Absolute ceiling of $100,000
+    
+    This prevents margin usage from inflated IBKR Paper account balances.
+    """
+    local_cash = portfolio.get('cash', 0)
+    
+    # Start with local cash
+    safe_cash = local_cash
+    
+    # If IBKR cash provided, use minimum
+    if ibkr_cash is not None:
+        safe_cash = min(safe_cash, ibkr_cash)
+    
+    # Apply absolute ceiling
+    safe_cash = min(safe_cash, ABSOLUTE_CAPITAL_CEILING)
+    
+    logger.debug(f"Safe buying power: ${safe_cash:,.2f} (local=${local_cash:,.2f}, ibkr=${ibkr_cash or 'N/A'}, ceiling=${ABSOLUTE_CAPITAL_CEILING:,.2f})")
+    
+    return safe_cash
+
 # ── Shared constants (both versions) ──────────────────────────────────────────
 MAX_POSITIONS     = 10
 POSITION_SIZE_PCT = 0.20
@@ -551,10 +579,13 @@ def calc_position_size(portfolio: dict,
     shares = int(alloc / price)
     cost   = shares * price
 
+    # TRIPLE-LOCK CASH GUARD: Use safe buying power (minimum of all sources)
+    # This prevents margin usage from inflated IBKR balances
+    safe_cash = get_safe_buying_power(portfolio)
+    
     # NO MARGIN/LEVERAGE: Only trade with available cash
-    # Check cost against actual cash balance, not just allocation
-    available_cash = portfolio.get('cash', 0)
-    if shares <= 0 or cost > available_cash or cost > alloc:
+    # Check cost against safe cash AND allocation
+    if shares <= 0 or cost > safe_cash or cost > alloc:
         return 0, 0.0
     return shares, cost
 
