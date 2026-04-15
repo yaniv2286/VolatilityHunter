@@ -157,20 +157,36 @@ def reconcile_with_ibkr(portfolio: dict) -> Tuple[dict, object]:
             # massive position sizes and margin usage.
             old_cash = portfolio.get('cash', 0)
             
-            # If IBKR cash is more than 2x portfolio.json cash, reject it
-            if ibkr_cash > old_cash * 2.0 and old_cash > 10000:
+            # ABSOLUTE THRESHOLD: Reject IBKR cash if it's suspiciously high
+            # For a $100k account, anything >$150k is clearly wrong
+            ABSOLUTE_MAX_CASH = 150000
+            
+            # RELATIVE THRESHOLD: Reject if IBKR is >2x portfolio (when portfolio is positive)
+            reject_ibkr = False
+            reason = ""
+            
+            if ibkr_cash > ABSOLUTE_MAX_CASH:
+                reject_ibkr = True
+                reason = f"IBKR cash ${ibkr_cash:,.2f} exceeds absolute max ${ABSOLUTE_MAX_CASH:,.2f}"
+            elif old_cash > 0 and ibkr_cash > old_cash * 2.0:
+                reject_ibkr = True
+                reason = f"IBKR cash ${ibkr_cash:,.2f} is {ibkr_cash/old_cash:.1f}x portfolio ${old_cash:,.2f}"
+            
+            if reject_ibkr:
                 logger.error("=" * 68)
-                logger.error("🚨 CRITICAL: IBKR CASH SANITY CHECK FAILED")
+                logger.error("CRITICAL: IBKR CASH SANITY CHECK FAILED")
+                logger.error(f"Reason: {reason}")
                 logger.error(f"IBKR reports: ${ibkr_cash:,.2f}")
                 logger.error(f"Portfolio.json: ${old_cash:,.2f}")
-                logger.error(f"Ratio: {ibkr_cash/old_cash:.1f}x (exceeds 2x threshold)")
                 logger.error("")
                 logger.error("This indicates IBKR Paper account has accumulated")
                 logger.error("liquidation proceeds and is reporting inflated cash.")
-                logger.error("Using portfolio.json cash to prevent margin usage.")
+                logger.error("ABORTING TRADING - Portfolio cash is unreliable.")
+                logger.error("Manual intervention required to reset account.")
                 logger.error("=" * 68)
-                # Keep portfolio.json cash, don't overwrite with IBKR
-                logger.warning(f"Cash NOT reset: keeping local=${old_cash:,.2f} (rejecting IBKR=${ibkr_cash:,.2f})")
+                # ABORT - don't trade with corrupted data
+                logger.error("TRADING ABORTED - Portfolio state corrupted")
+                sys.exit(1)
             else:
                 # IBKR cash is reasonable, use it
                 portfolio['cash'] = ibkr_cash
