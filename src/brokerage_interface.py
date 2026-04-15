@@ -392,6 +392,7 @@ class IBKRInterface(BrokerageInterface):
             cash = 0.0
             equity = 0.0
             available_funds = 0.0
+            detected_currency = None
             
             for value in account_values:
                 # TotalCashValue in base currency (includes all currencies converted)
@@ -399,16 +400,21 @@ class IBKRInterface(BrokerageInterface):
                     # Use the first non-BASE currency (account's actual currency)
                     if cash == 0.0:
                         cash = float(value.value)
+                        detected_currency = value.currency
                 
                 # NetLiquidation = total account value (cash + positions)
                 if value.tag == 'NetLiquidation' and value.currency != 'BASE':
                     if equity == 0.0:
                         equity = float(value.value)
+                        if not detected_currency:
+                            detected_currency = value.currency
                 
                 # AvailableFunds = cash available for trading
                 if value.tag == 'AvailableFunds' and value.currency != 'BASE':
                     if available_funds == 0.0:
                         available_funds = float(value.value)
+                        if not detected_currency:
+                            detected_currency = value.currency
             
             # Fallback: if still zero, try BASE currency
             if cash == 0.0 or equity == 0.0:
@@ -417,6 +423,16 @@ class IBKRInterface(BrokerageInterface):
                         cash = float(value.value)
                     if value.tag == 'NetLiquidation' and value.currency == 'BASE':
                         equity = float(value.value)
+            
+            # CURRENCY CONVERSION: Convert ILS to USD
+            # ILS (Israeli Shekel) to USD conversion rate (approximate)
+            ILS_TO_USD = 0.27  # 1 ILS ≈ 0.27 USD
+            
+            if detected_currency == 'ILS':
+                log_info(f"Converting ILS to USD: {cash:,.2f} ILS → {cash * ILS_TO_USD:,.2f} USD")
+                cash = cash * ILS_TO_USD
+                equity = equity * ILS_TO_USD
+                available_funds = available_funds * ILS_TO_USD if available_funds > 0 else 0.0
             
             # Calculate portfolio value
             portfolio_value = equity - cash if equity > 0 else 0.0
