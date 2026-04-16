@@ -461,15 +461,25 @@ class AutoTWSManager:
                     cmd, stdout=lf, stderr=lf, cwd=str(self.gateway_dir)
                 )
             logger.info(f"IBC classpath process started (PID {self.ibc_process.pid})")
-            # Spawn Ghost-Typist to handle login via GUI automation
-            # IBC will launch Gateway but NOT handle login
-            helper = Path(__file__).parent / "ibc_login_helper.py"
-            if helper.exists():
-                ghost_log = LOG_DIR / "ghost_typist.log"
-                with open(ghost_log, 'a', encoding='utf-8') as gf:
-                    subprocess.Popen([sys.executable, str(helper)],
-                                     stdout=gf, stderr=gf)
-                logger.info("Ghost-Typist spawned (will handle login via GUI automation)")
+            
+            # Ghost-Typist only works in interactive sessions (not Task Scheduler Session 0)
+            # Check if we're running in an interactive session
+            is_interactive = os.environ.get('SESSIONNAME', '') != ''
+            
+            if is_interactive:
+                # Spawn Ghost-Typist to handle login via GUI automation
+                helper = Path(__file__).parent / "ibc_login_helper.py"
+                if helper.exists():
+                    ghost_log = LOG_DIR / "ghost_typist.log"
+                    with open(ghost_log, 'a', encoding='utf-8') as gf:
+                        subprocess.Popen([sys.executable, str(helper)],
+                                         stdout=gf, stderr=gf)
+                    logger.info("Ghost-Typist spawned (interactive session - GUI automation enabled)")
+            else:
+                # Task Scheduler Session 0 - use IBC native login
+                logger.info("Task Scheduler detected (Session 0) - using IBC native login (no Ghost-Typist)")
+                logger.info("IBC will handle login automatically using credentials from config.ini")
+            
             return True
         except Exception as e:
             logger.error(f"Classpath launch failed: {e}")
