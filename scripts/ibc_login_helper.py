@@ -73,31 +73,30 @@ def main():
         pyautogui.click(window_center_x, window_center_y)
         time.sleep(0.5)
         
-        # CRITICAL FIX: Switch to "IB API" tab using keyboard navigation
-        # The login window opens on "FIX CTCI" tab by default
-        # We need to switch to "IB API" tab using Ctrl+Tab or Right Arrow
-        print("Switching to 'IB API' tab using keyboard...")
+        # CRITICAL FIX: Click directly on "IB API" tab
+        # The login window has two tabs: "FIX CTCI" (left) and "IB API" (right)
+        # We need to click on the "IB API" tab which is on the RIGHT side
+        print("Clicking 'IB API' tab on the right side...")
         
-        # Try multiple methods to switch tabs
-        # Method 1: Ctrl+Tab (standard tab switching)
-        pyautogui.hotkey('ctrl', 'tab')
-        time.sleep(0.3)
+        # The IB API tab is on the RIGHT side of the window
+        # Based on the screenshot, it's approximately 70-80% from the left
+        # and about 180px from the top (below the title bar)
+        ib_api_tab_x = gateway_window.left + int(gateway_window.width * 0.75)  # 75% from left (right tab)
+        ib_api_tab_y = gateway_window.top + 180  # 180px from top (tab area)
         
-        # Method 2: If that didn't work, try Right Arrow (some UIs use this)
-        pyautogui.press('right')
-        time.sleep(0.3)
+        print(f"Clicking at coordinates: x={ib_api_tab_x}, y={ib_api_tab_y}")
+        pyautogui.click(ib_api_tab_x, ib_api_tab_y)
+        time.sleep(1.0)  # Give it time to switch tabs
         
-        # Method 3: Click on the right side of the window where IB API tab should be
-        print("Clicking 'IB API' tab location...")
-        ib_api_tab_x = gateway_window.left + int(gateway_window.width * 0.65)  # Adjusted to 65%
-        ib_api_tab_y = gateway_window.top + 80  # Adjusted to 80px from top
+        # Verify by clicking again to make sure
+        print("Clicking 'IB API' tab again to ensure it's selected...")
         pyautogui.click(ib_api_tab_x, ib_api_tab_y)
         time.sleep(0.5)
         
-        # Now click in the username field area
-        print("Clicking username field area...")
-        username_field_x = gateway_window.left + gateway_window.width // 2
-        username_field_y = gateway_window.top + int(gateway_window.height * 0.45)  # Adjusted to 45%
+        # Now click in the username field area (should be in the center-right area)
+        print("Clicking username field area in IB API tab...")
+        username_field_x = gateway_window.left + int(gateway_window.width * 0.55)  # Slightly right of center
+        username_field_y = gateway_window.top + 300  # Below the tab area
         pyautogui.click(username_field_x, username_field_y)
         time.sleep(0.5)
         
