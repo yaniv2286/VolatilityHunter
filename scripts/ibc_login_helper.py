@@ -73,19 +73,31 @@ def main():
         pyautogui.click(window_center_x, window_center_y)
         time.sleep(0.5)
         
-        # CRITICAL FIX: Click "IB API" tab (not "FIX CTCI")
-        # The login window has two tabs at the top. We need to click "IB API" tab
-        print("Clicking 'IB API' tab...")
-        # Tab is typically in the upper portion of the window, right side
-        ib_api_tab_x = gateway_window.left + int(gateway_window.width * 0.75)  # 75% from left (right tab)
-        ib_api_tab_y = gateway_window.top + 50  # 50px from top
+        # CRITICAL FIX: Switch to "IB API" tab using keyboard navigation
+        # The login window opens on "FIX CTCI" tab by default
+        # We need to switch to "IB API" tab using Ctrl+Tab or Right Arrow
+        print("Switching to 'IB API' tab using keyboard...")
+        
+        # Try multiple methods to switch tabs
+        # Method 1: Ctrl+Tab (standard tab switching)
+        pyautogui.hotkey('ctrl', 'tab')
+        time.sleep(0.3)
+        
+        # Method 2: If that didn't work, try Right Arrow (some UIs use this)
+        pyautogui.press('right')
+        time.sleep(0.3)
+        
+        # Method 3: Click on the right side of the window where IB API tab should be
+        print("Clicking 'IB API' tab location...")
+        ib_api_tab_x = gateway_window.left + int(gateway_window.width * 0.65)  # Adjusted to 65%
+        ib_api_tab_y = gateway_window.top + 80  # Adjusted to 80px from top
         pyautogui.click(ib_api_tab_x, ib_api_tab_y)
         time.sleep(0.5)
         
-        # Click in the username field area to ensure focus
+        # Now click in the username field area
         print("Clicking username field area...")
         username_field_x = gateway_window.left + gateway_window.width // 2
-        username_field_y = gateway_window.top + int(gateway_window.height * 0.4)  # 40% down
+        username_field_y = gateway_window.top + int(gateway_window.height * 0.45)  # Adjusted to 45%
         pyautogui.click(username_field_x, username_field_y)
         time.sleep(0.5)
         
