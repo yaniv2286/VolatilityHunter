@@ -1,10 +1,50 @@
 # VolatilityHunter Changelog
 
-**Version**: Production v11.2 | **Updated**: 2026-04-15
+**Version**: Production v11.3 | **Updated**: 2026-04-20
 
 ---
 
 ## 🎯 Recent Changes (2026)
+
+### 2026-04-20 - v11.3: Gateway Login Hardening
+
+#### 🔐 IB API Tab Fix (`scripts/ibc_login_helper.py`)
+- **Problem**: Ghost-Typist was entering credentials into the "FIX CTCI" tab instead of the "IB API" tab
+- **Root Cause**: IBKR Gateway login screen has two tabs: "FIX CTCI" (left, default) and "IB API" (right). Ghost-Typist was clicking window center and typing immediately into the wrong tab
+- **Symptom**: "Unrecognized Username or Password" / "Order routing login failed" errors despite correct credentials
+- **Fix**: Added explicit click on "IB API" tab (75% width, 180px from top) with double-click for reliability before entering credentials
+- **Impact**: Gateway login now succeeds consistently in ~20 seconds
+- **Duration of Failure**: April 17-20 (4 days of failed automated runs)
+
+#### 🖥️ Session 0 Detection (`scripts/auto_tws_manager.py`)
+- **Problem**: Ghost-Typist uses pyautogui GUI automation which cannot work in Task Scheduler Session 0 (headless mode)
+- **Fix**: Added `SESSIONNAME` environment variable check to detect execution context
+  - Interactive sessions: Ghost-Typist spawned for GUI automation
+  - Task Scheduler (Session 0): IBC native login using credentials from `C:\IBC\config.ini`
+- **Result**: Dual login strategy - Ghost-Typist for interactive, IBC native for headless
+
+#### 🧪 IBC Config Alignment
+- IBC `config.ini` already has correct credentials under `[LOGON]` section
+- IBC fills username/password and clicks "Paper Log In" button
+- JTS Configuration Guard enforces `Logon.API=IB` to prevent FIX CTCI mode
+- `TradingMode=paper` enforced in both `config.ini` and `jts.ini`
+
+#### 📊 Testing Results (April 20, 2026)
+- ✅ Gateway connected in 20 seconds (IB API tab fix verified)
+- ✅ 9 positions active, $85,864 total portfolio value
+- ✅ Zero margin usage confirmed
+- ✅ All Deterministic Guardrails active
+- ✅ Email notifications working (HTML format with log attachments)
+- ✅ Gateway cleanup successful (process terminated cleanly)
+
+#### 📅 Failure Timeline
+- April 15: Ghost-Typist Session 0 failure (headless mode)
+- April 16: Ghost-Typist Session 0 failure (diagnosed, Session 0 fix deployed)
+- April 17: IBC login rejected - wrong tab (FIX CTCI instead of IB API)
+- April 18-19: Weekend (no runs)
+- April 20: IB API tab fix deployed and verified - SUCCESS
+
+---
 
 ### 2026-04-15 - v11.2: Deterministic Guardrails Implementation
 

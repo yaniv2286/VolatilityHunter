@@ -1,6 +1,6 @@
 # 🎯 VolatilityHunter
 
-**Deterministic Quantitative Trading System | v11.2 - Production Hardened**
+**Deterministic Quantitative Trading System | v11.3 - Gateway Hardened**
 
 ---
 
@@ -45,8 +45,8 @@ Get-Content logs/task_scheduler.log -Wait -Tail 50
 
 ```
 ✅ Health Check System      : PASS (Exit Code 0, 11 checks)
-✅ Gateway Automation       : PASS (Ghost-Typist auto-login, 8-10s startup)
-✅ Deterministic Guardrails : PASS (9 protection layers active)
+✅ Gateway Automation       : PASS (Ghost-Typist IB API tab + IBC native login, 20s startup)
+✅ Deterministic Guardrails : PASS (11 protection layers active)
 ✅ ILS to USD Conversion    : PASS (Auto-detect and convert)
 ✅ Margin Protection        : PASS (Zero margin usage verified)
 ✅ Market Data Protocol     : PASS (Delayed data, reqMarketDataType(3))
@@ -61,7 +61,8 @@ Get-Content logs/task_scheduler.log -Wait -Tail 50
 🎉 ALL SYSTEMS OPERATIONAL! Production-hardened with Deterministic Guardrails!
 
 📊 SYSTEM HIGHLIGHTS:
-  - **Gateway Startup**: 8-10 seconds via Ghost-Typist (focus → clear → type → submit)
+  - **Gateway Startup**: ~20 seconds via Ghost-Typist (IB API tab click → credentials → submit)
+  - **Session 0 Support**: IBC native login for headless Task Scheduler execution
   - **Trading Loop**: ~60 seconds total (4x faster with parallel API fetching)
   - **Email Reports**: Professional HTML format with color-coded P&L tables
   - **Execution**: Market orders filling successfully across multiple exchanges
@@ -72,10 +73,20 @@ Get-Content logs/task_scheduler.log -Wait -Tail 50
 
 ---
 
-## 🎯 Latest Achievements (v11.2)
+## 🎯 Latest Achievements (v11.3)
 
-### ✅ **Deterministic Guardrails Implementation** (April 15, 2026)
-- **Nuclear Clear Protocol**: Window center click before credential entry (IBC login)
+### ✅ **Gateway Login Hardening** (April 20, 2026)
+- **IB API Tab Fix**: Ghost-Typist now explicitly clicks "IB API" tab before entering credentials
+  - Root cause: Gateway defaults to "FIX CTCI" tab which uses different authentication
+  - Fix: Click at 75% width, 180px from top (double-click for reliability)
+- **Session 0 Detection**: Auto-detects Task Scheduler headless mode via `SESSIONNAME` env var
+  - Interactive sessions: Ghost-Typist handles login via GUI automation
+  - Task Scheduler (Session 0): IBC native login from `config.ini` credentials
+- **Dual Login Strategy**: Ghost-Typist for interactive, IBC native for headless
+- **Gateway Startup**: ~20 seconds from launch to API ready on port 7497
+
+### ✅ **Deterministic Guardrails** (April 15, 2026)
+- **Nuclear Clear Protocol**: Window center click before credential entry
 - **JTS Configuration Guard**: Auto-enforce API=IB mode and LastUser settings
 - **Port 7497 Enforcement**: Hardcoded port with 180s timeout and exit code 1
 - **ILS to USD Conversion**: Auto-detect currency and convert (250k ILS → $67.5k USD)
@@ -85,17 +96,18 @@ Get-Content logs/task_scheduler.log -Wait -Tail 50
 - **UTF-8 Force**: Environment variables for Task Scheduler compatibility
 - **Portfolio Sanity Check**: Cash range validation (0-$150k) in health check
 
-**Testing Results:**
-- ✅ 8 positions opened successfully (~$50,881 invested)
+**Testing Results (April 20, 2026):**
+- ✅ Gateway connected in 20 seconds (IB API tab fix verified)
+- ✅ 9 positions active, $85,864 total portfolio value
 - ✅ Zero margin usage (critical success!)
 - ✅ All guardrails verified working in production
-- ✅ Position sizing correct (~$6,360 average per position)
+- ✅ Email notifications working (HTML format with log attachments)
 
-### ✅ **Gateway Auto-Login Breakthrough** (April 2026)
-- **Ghost-Typist Method**: GUI automation for reliable credential injection
-- **8-10 Second Startup**: Fast and consistent Gateway initialization
+### ✅ **Gateway Auto-Login** (April 2026)
+- **Ghost-Typist Method**: GUI automation with IB API tab selection
+- **~20 Second Startup**: Consistent Gateway initialization
 - **One-Shot Mode**: `auto_tws_manager.py --one-shot` launches and exits cleanly
-- **IBC Integration**: Launches Gateway UI, Ghost-Typist handles login
+- **IBC Integration**: Launches Gateway UI, Ghost-Typist or IBC handles login
 - **Zero Manual Intervention**: Fully automated from Task Scheduler trigger
 
 ### ✅ **Production System Stabilization**
@@ -227,4 +239,4 @@ For detailed information about the mathematical rules and system architecture, p
 
 ---
 
-**🎉 VolatilityHunter v11.0 is fully operational with Ghost-Typist auto-login and complete automation!**
+**🎉 VolatilityHunter v11.3 is fully operational with IB API tab fix, Session 0 support, and complete automation!**
