@@ -73,6 +73,22 @@ def main():
         pyautogui.click(window_center_x, window_center_y)
         time.sleep(0.5)
         
+        # CRITICAL FIX: Click "IB API" tab (not "FIX CTCI")
+        # The login window has two tabs at the top. We need to click "IB API" tab
+        print("Clicking 'IB API' tab...")
+        # Tab is typically in the upper portion of the window, right side
+        ib_api_tab_x = gateway_window.left + int(gateway_window.width * 0.75)  # 75% from left (right tab)
+        ib_api_tab_y = gateway_window.top + 50  # 50px from top
+        pyautogui.click(ib_api_tab_x, ib_api_tab_y)
+        time.sleep(0.5)
+        
+        # Click in the username field area to ensure focus
+        print("Clicking username field area...")
+        username_field_x = gateway_window.left + gateway_window.width // 2
+        username_field_y = gateway_window.top + int(gateway_window.height * 0.4)  # 40% down
+        pyautogui.click(username_field_x, username_field_y)
+        time.sleep(0.5)
+        
         # 2. FOCUSED INJECTION: Nuclear Clear + Type Username
         print("FOCUSED INJECTION: Nuclear Clear Username field...")
         pyautogui.hotkey('ctrl', 'a')
