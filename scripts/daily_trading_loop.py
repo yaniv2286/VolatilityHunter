@@ -720,6 +720,7 @@ def send_summary(portfolio: dict, exits: List[dict], entries: List[dict],
                             <th>Current Price</th>
                             <th>P&L</th>
                             <th>Stop Loss</th>
+                            <th>Purchase Date</th>
                             <th>Days Held</th>
                         </tr>
             """
@@ -743,6 +744,7 @@ def send_summary(portfolio: dict, exits: List[dict], entries: List[dict],
                             <td>${current_price:.2f}</td>
                             <td class="{pnl_class}">${pnl:+,.2f} ({pnl_pct:+.2f}%)</td>
                             <td>${stop_loss:.2f}</td>
+                            <td>{entry_date}</td>
                             <td>{days_held}</td>
                         </tr>
                 """
