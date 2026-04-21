@@ -1,10 +1,48 @@
 # VolatilityHunter Changelog
 
-**Version**: Production v11.3 | **Updated**: 2026-04-20
+**Version**: Production v11.4 | **Updated**: 2026-04-21
 
 ---
 
 ## 🎯 Recent Changes (2026)
+
+### 2026-04-21 - v11.4: Portfolio Sync & Email Hardening
+
+#### 🔧 IBKR Sync Fix (`scripts/daily_trading_loop.py`)
+- **Problem**: IBKR portfolio sync was overwriting `entry_date`, `entry_price`, `stop_loss_price`, `highest_price`, and `is_power_stock` with fresh values on every run, causing all positions to show "Days Held: 0"
+- **Root Cause**: Line 208 rebuilt all positions from scratch using `today_str` for entry_date
+- **Fix**: Now preserves existing position fields from `old_positions` via `.get()` fallback; only genuinely new positions get today's date
+- **Impact**: Days Held, stop losses, and highest prices now persist correctly across runs
+
+#### 📧 Purchase Date Column (`scripts/daily_trading_loop.py`)
+- Added "Purchase Date" column to HTML email positions table
+- Shows alongside existing "Days Held" column for full visibility
+
+#### 🔄 Always-Spawn Ghost-Typist (`scripts/auto_tws_manager.py`)
+- **Problem**: `SESSIONNAME` env var is NOT inherited by Task Scheduler even when running in user's interactive session ("Run only when user is logged on"), causing Ghost-Typist to be skipped
+- **Fix**: Removed `SESSIONNAME` check entirely; Ghost-Typist always spawns
+- Ghost-Typist exits gracefully if no Gateway window found within 60s
+- **Lesson**: Never use `SESSIONNAME` for Task Scheduler session detection
+
+#### 📈 Ticker Universe Cleanup
+- Removed RAPT from `tickers.txt` (acquired by GSK for $58/share, delisted from Nasdaq March 3, 2026)
+- Universe: 2,135 tickers (was 2,136)
+
+#### 🖥️ Windows Unattended Operation
+- Configured `netplwiz` auto-login (no password prompt on boot)
+- Disabled sleep mode for 24/7 operation
+- Disabled Dynamic Lock
+- Ensures Task Scheduler always runs in interactive desktop session
+
+#### 📊 Testing Results (April 21, 2026)
+- ✅ Gateway connected in 25 seconds
+- ✅ 10 positions active, $85,626 total portfolio value
+- ✅ Zero margin usage confirmed
+- ✅ Purchase Date and Days Held showing correctly in email
+- ✅ IBKR sync preserving all position fields
+- ✅ Windows auto-login configured for unattended operation
+
+---
 
 ### 2026-04-20 - v11.3: Gateway Login Hardening
 
@@ -16,12 +54,10 @@
 - **Impact**: Gateway login now succeeds consistently in ~20 seconds
 - **Duration of Failure**: April 17-20 (4 days of failed automated runs)
 
-#### 🖥️ Session 0 Detection (`scripts/auto_tws_manager.py`)
+#### 🖥️ Session 0 Detection (`scripts/auto_tws_manager.py`) [SUPERSEDED by v11.4]
 - **Problem**: Ghost-Typist uses pyautogui GUI automation which cannot work in Task Scheduler Session 0 (headless mode)
 - **Fix**: Added `SESSIONNAME` environment variable check to detect execution context
-  - Interactive sessions: Ghost-Typist spawned for GUI automation
-  - Task Scheduler (Session 0): IBC native login using credentials from `C:\IBC\config.ini`
-- **Result**: Dual login strategy - Ghost-Typist for interactive, IBC native for headless
+- **Note**: This fix was superseded in v11.4 - `SESSIONNAME` proved unreliable; Ghost-Typist now always spawns
 
 #### 🧪 IBC Config Alignment
 - IBC `config.ini` already has correct credentials under `[LOGON]` section

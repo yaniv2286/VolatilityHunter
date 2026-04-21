@@ -1,6 +1,6 @@
 # VolatilityHunter Architecture - Single Source of Truth
 
-**Version**: Production v11.3 | **Updated**: 2026-04-20 | **Strategy**: v8.1 (Lean Pipeline)
+**Version**: Production v11.4 | **Updated**: 2026-04-21 | **Strategy**: v8.1 (Lean Pipeline)
 
 ---
 
@@ -8,7 +8,7 @@
 
 VolatilityHunter is a **deterministic quantitative trading fund** ($100k) using a **Lean Pipeline Architecture** with **100% autonomy**. The system executes one complete trading cycle per market day via Windows Task Scheduler, using **Tiingo Professional API** (parallel fetching) for data and **IBKR Paper Trading** for execution.
 
-**🔒 CURRENT STATUS**: Production-hardened with 11-layer Deterministic Guardrails - Gateway auto-login via Ghost-Typist IB API tab selection (~20s) or IBC native login (Session 0), parallel API fetching (15s for 2,136 tickers), HTML email reports, automatic failure notifications, ILS to USD conversion, zero margin usage verified. Trading loop completes in ~60 seconds.
+**🔒 CURRENT STATUS**: Production-hardened with 11-layer Deterministic Guardrails - Gateway auto-login via Ghost-Typist IB API tab selection (~25s, always-spawned), parallel API fetching (15s for 2,135 tickers), HTML email reports with Purchase Date column, automatic failure notifications, ILS to USD conversion, IBKR sync preserves position history, zero margin usage verified. 10 positions, $85,626 total value.
 
 ### Core Philosophy
 - **No Silent Failures**: Every error is logged, reported, and visible in Command Center
@@ -75,9 +75,8 @@ VolatilityHunter is a **deterministic quantitative trading fund** ($100k) using 
 
 ### auto_tws_manager.py (Gateway Launcher)
 - **One-shot mode**: `--one-shot` flag launches Gateway and exits after API ready
-- **Dual Login Strategy**: Detects execution context via `SESSIONNAME` env var
-  - Interactive sessions: Ghost-Typist (`ibc_login_helper.py`) handles login via GUI automation
-  - Task Scheduler Session 0: IBC native login from `C:\IBC\config.ini` credentials
+- **Always-Spawn Ghost-Typist**: Ghost-Typist always spawned for login (exits gracefully if no window)
+  - `SESSIONNAME` env var detection removed (unreliable for Task Scheduler)
 - **IBC Integration**: Launches Gateway via IBC with classpath method
 - **Paper Mode Enforced**: Both `jts.ini` and `C:\IBC\config.ini`
 - **API Ready Check**: Waits up to 180s for port 7497 to become available
@@ -94,7 +93,7 @@ VolatilityHunter is a **deterministic quantitative trading fund** ($100k) using 
 
 ---
 
-## 🋏️ Deterministic Guardrails (v11.3)
+## 🋏️ Deterministic Guardrails (v11.4)
 
 **Zero Margin Tolerance**: 11-layer protection system to eliminate IBKR Gateway failures and margin debt bugs.
 
@@ -104,11 +103,11 @@ VolatilityHunter is a **deterministic quantitative trading fund** ($100k) using 
 - Prevents credentials being entered into "FIX CTCI" tab (which uses different auth)
 - Root cause of April 17-20 login failures
 
-### Layer 2: Session 0 Detection (auto_tws_manager.py)
-- Detects Task Scheduler headless mode via `SESSIONNAME` env var
-- Interactive sessions: Ghost-Typist spawned for GUI automation
-- Session 0 (headless): IBC native login from `config.ini` credentials
-- Prevents Ghost-Typist failures in headless environments
+### Layer 2: Always-Spawn Ghost-Typist (auto_tws_manager.py)
+- Ghost-Typist always spawned regardless of execution context
+- Exits gracefully if no Gateway window found within 60s
+- `SESSIONNAME` env var check removed (unreliable for Task Scheduler)
+- Windows auto-login via `netplwiz` ensures desktop session is always available
 
 ### Layer 3: Nuclear Clear Protocol (ibc_login_helper.py)
 - Window center click before credential entry
@@ -157,12 +156,13 @@ VolatilityHunter is a **deterministic quantitative trading fund** ($100k) using 
 - Portfolio cash range validation (0-$150k)
 - 11 critical checks (was 10)
 
-**Testing Results (2026-04-20):**
-- ✅ Gateway connected in 20 seconds (IB API tab fix verified)
-- ✅ 9 positions active, $85,864 total portfolio value
+**Testing Results (2026-04-21):**
+- ✅ Gateway connected in 25 seconds (IB API tab fix verified)
+- ✅ 10 positions active, $85,626 total portfolio value
 - ✅ Zero margin usage (critical success!)
 - ✅ All 11 guardrails verified working in production
-- ✅ Session 0 detection working for Task Scheduler
+- ✅ IBKR sync preserves entry_date, stop_loss, highest_price across runs
+- ✅ Email report includes Purchase Date column
 
 ---
 
