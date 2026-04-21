@@ -462,23 +462,17 @@ class AutoTWSManager:
                 )
             logger.info(f"IBC classpath process started (PID {self.ibc_process.pid})")
             
-            # Ghost-Typist only works in interactive sessions (not Task Scheduler Session 0)
-            # Check if we're running in an interactive session
-            is_interactive = os.environ.get('SESSIONNAME', '') != ''
-            
-            if is_interactive:
-                # Spawn Ghost-Typist to handle login via GUI automation
-                helper = Path(__file__).parent / "ibc_login_helper.py"
-                if helper.exists():
-                    ghost_log = LOG_DIR / "ghost_typist.log"
-                    with open(ghost_log, 'a', encoding='utf-8') as gf:
-                        subprocess.Popen([sys.executable, str(helper)],
-                                         stdout=gf, stderr=gf)
-                    logger.info("Ghost-Typist spawned (interactive session - GUI automation enabled)")
-            else:
-                # Task Scheduler Session 0 - use IBC native login
-                logger.info("Task Scheduler detected (Session 0) - using IBC native login (no Ghost-Typist)")
-                logger.info("IBC will handle login automatically using credentials from config.ini")
+            # Always spawn Ghost-Typist to handle login via GUI automation
+            # Ghost-Typist exits gracefully if no Gateway window is found within 60s
+            # Note: SESSIONNAME env var is NOT reliable for detecting Task Scheduler
+            # context - it may be empty even when running in user's interactive session
+            helper = Path(__file__).parent / "ibc_login_helper.py"
+            if helper.exists():
+                ghost_log = LOG_DIR / "ghost_typist.log"
+                with open(ghost_log, 'a', encoding='utf-8') as gf:
+                    subprocess.Popen([sys.executable, str(helper)],
+                                     stdout=gf, stderr=gf)
+                logger.info("Ghost-Typist spawned for Gateway login (IB API tab + credential injection)")
             
             return True
         except Exception as e:
