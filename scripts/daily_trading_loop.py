@@ -202,16 +202,17 @@ def reconcile_with_ibkr(portfolio: dict) -> Tuple[dict, object]:
         
         for pos in ibkr_positions:
             sym = pos['symbol']
+            old_pos = old_positions.get(sym, {})
             portfolio['positions'][sym] = {
                 'shares':      int(pos['quantity']),
-                'entry_price': pos.get('entry_price', pos.get('current_price', 0)),
-                'entry_date':  today_str,
+                'entry_price': old_pos.get('entry_price', pos.get('entry_price', pos.get('current_price', 0))),
+                'entry_date':  old_pos.get('entry_date', today_str),
                 'ticker':      sym,
                 'execution_mode': 'LIVE',
-                'is_power_stock': False,
-                'highest_price':  pos.get('current_price', 0),
-                'quality_score':  0,
-                'stop_loss_price': pos.get('entry_price', 0) * (1 - hard_stop_pct)
+                'is_power_stock': old_pos.get('is_power_stock', False),
+                'highest_price':  max(pos.get('current_price', 0), old_pos.get('highest_price', 0)),
+                'quality_score':  old_pos.get('quality_score', 0),
+                'stop_loss_price': old_pos.get('stop_loss_price', pos.get('entry_price', 0) * (1 - hard_stop_pct))
             }
         
         # Log discarded PAPER positions (if any)
