@@ -44,8 +44,8 @@ Get-Content logs/task_scheduler.log -Wait -Tail 50
 ## 📊 System Status
 
 ```
-✅ Health Check System      : PASS (Exit Code 0, 11 checks)
-✅ Gateway Automation       : PASS (Ghost-Typist sole login, no-maximize, ~21s startup)
+✅ Health Check System      : PASS (Exit Code 0, 10 checks)
+✅ Gateway Automation       : PASS (Ghost-Typist sole login, ~60s startup)
 ✅ Deterministic Guardrails : PASS (11 protection layers active)
 ✅ ILS to USD Conversion    : PASS (Auto-detect and convert)
 ✅ Margin Protection        : PASS (Zero margin usage verified)
@@ -58,16 +58,16 @@ Get-Content logs/task_scheduler.log -Wait -Tail 50
 ✅ Data Pipeline            : PASS (Parallel Tiingo API, 15s for 2,136 tickers)
 ✅ Mode                     : IBKR_PAPER only (no simulation fallback)
 ```
-🎉 ALL SYSTEMS OPERATIONAL! Production-hardened with Deterministic Guardrails!
+ALL SYSTEMS OPERATIONAL - Production-hardened with Deterministic Guardrails
 
-📊 SYSTEM HIGHLIGHTS:
-  - **Gateway Startup**: ~21 seconds via Ghost-Typist (sole login handler, IBC LOGON disabled)
-  - **No-Maximize**: Ghost-Typist uses natural window size (790x610) for correct coordinates
-  - **Trading Loop**: ~60 seconds total (4x faster with parallel API fetching)
+SYSTEM HIGHLIGHTS:
+  - **Gateway Startup**: ~60 seconds (15s IBC wait + Ghost-Typist login)
+  - **Ghost-Typist**: Aggressive field clear, no-maximize, 790x610 natural window
+  - **Trading Loop**: ~8 seconds (parallel API fetching)
   - **Email Reports**: Professional HTML format with color-coded P&L tables
   - **Execution**: Market orders filling successfully across multiple exchanges
   - **Reliability**: Automatic failure notifications with full error details
-  - **Data**: Tiingo bulk API (3 requests for 2147 tickers)
+  - **Data**: Tiingo bulk API (22 parallel requests for 2135 tickers)
   - **Automation**: 100% autonomous daily trading via Windows Task Scheduler
   - **Monitoring**: Live logs via `Get-Content logs/task_scheduler.log -Wait`
 
@@ -78,8 +78,11 @@ Get-Content logs/task_scheduler.log -Wait -Tail 50
 ### ✅ **Gateway Login Resilience** (April 23, 2026)
 - **IBC Native Login Disabled**: IBC puts directory path in username field with Gateway 10.37+; removed `[LOGON]` section from config.ini
 - **No-Maximize Fix**: Login form is fixed-size (~790x610); maximize broke percentage-based coordinates
-- **Ghost-Typist Hardening**: Disabled FAILSAFE, added safe_click() with screen clamping, retry logic, diagnostics
-- **Gateway Startup**: 21 seconds (Ghost-Typist sole login handler)
+- **Aggressive Field Clear**: Triple-click + Home/Shift+End/Delete wipes IBC garbage from Java Swing fields
+- **15s IBC Wait**: Ghost-Typist waits for IBC broken login cycle to complete before clearing and retyping (prevents keystroke interleaving)
+- **Task Scheduler Fix**: Removed `pause` from bat file that hung forever (exit code 267014)
+- **Ghost-Typist Hardening**: Disabled FAILSAFE, safe_click(), port check, retry logic
+- **Gateway Startup**: ~60 seconds (15s IBC wait + login + auth)
 
 ### ✅ **Portfolio Sync & Email Hardening** (April 21, 2026)
 - **IBKR Sync Fix**: Positions preserve `entry_date`, `entry_price`, `stop_loss_price` during sync
@@ -100,11 +103,11 @@ Get-Content logs/task_scheduler.log -Wait -Tail 50
 - **Portfolio Sanity Check**: Cash range validation (0-$150k) in health check
 
 **Testing Results (April 23, 2026):**
-- ✅ Gateway connected in 21 seconds (Ghost-Typist sole login handler)
-- ✅ 10 positions active, $85,134 total portfolio value
-- ✅ Zero margin usage (critical success!)
-- ✅ All guardrails verified working in production
-- ✅ Email notifications working (HTML format with Purchase Date column)
+- Gateway connected in 60 seconds (15s IBC wait + Ghost-Typist login)
+- Daily loop: 8.0s, 10 positions, $85,259 total equity
+- Health check: 10 PASS, 0 FAIL, Exit Code 0
+- Email sent successfully (HTML format with Purchase Date column)
+- Task Scheduler: next run today 17:06, pause bug fixed
 
 ### ✅ **Gateway Auto-Login** (April 2026)
 - **Ghost-Typist Method**: GUI automation with IB API tab selection (always spawned)

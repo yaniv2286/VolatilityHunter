@@ -8,29 +8,40 @@
 
 ### 2026-04-23 - v11.5: Gateway Login Resilience
 
-#### 🔧 IBC Native Login Disabled (`scripts/auto_tws_manager.py`)
-- **Problem**: IBC native login broken with Gateway 10.37+ — puts `IbDir` directory path (`D:\TWS\ibgateway\`) into the username field instead of the actual username
+#### IBC Native Login Disabled (`scripts/auto_tws_manager.py`)
+- **Problem**: IBC native login broken with Gateway 10.37+ -- puts `IbDir` directory path (`D:\TWS\ibgateway\`) into the username field instead of the actual username
 - **Fix**: Removed `[LOGON]` section from IBC `config.ini`; Ghost-Typist is now the sole login handler
 - **Impact**: Eliminates race condition between IBC and Ghost-Typist competing for the login form
 
-#### 🔧 Ghost-Typist No-Maximize Fix (`scripts/ibc_login_helper.py`)
-- **Problem**: `window.maximize()` stretched the window to 1920x1080, but the login form stays centered at its natural ~790x610 size. Percentage-based coordinates (75% width = x=1440) missed the actual IB API tab (which is at x=592 relative to the form)
-- **Root Cause**: April 22 failure chain: maximize failed silently -> window at unexpected position -> coordinates off-screen -> PyAutoGUI FAILSAFE triggered -> no credentials -> port 7497 never opened
-- **Fix**: Removed maximize logic; Ghost-Typist now works with the window at its natural size where coordinates are correct
+#### Ghost-Typist No-Maximize Fix (`scripts/ibc_login_helper.py`)
+- **Problem**: `window.maximize()` stretched the window to 1920x1080, but the login form stays centered at its natural ~790x610 size. Percentage-based coordinates (75% width = x=1440) missed the actual IB API tab
+- **Root Cause**: April 22 failure chain: maximize -> coordinates off-screen -> PyAutoGUI FAILSAFE triggered -> no credentials -> port 7497 never opened
+- **Fix**: Removed maximize logic; Ghost-Typist works with window at natural size
 
-#### 🛡️ Ghost-Typist Hardening (`scripts/ibc_login_helper.py`)
+#### Ghost-Typist Aggressive Field Clear (`scripts/ibc_login_helper.py`)
+- **Problem**: IBC fills garbage (`D:\TWS\ibgateway`) in fields before Ghost-Typist acts; `Ctrl+A` does not reliably select all text in Java Swing text fields
+- **Fix**: Triple-click + Delete, Ctrl+A + Delete, Home + Shift+End + Delete (belt-and-suspenders clear)
+- Added 15-second wait for IBC broken login cycle to complete before Ghost-Typist clears and retypes (prevents keystroke interleaving)
+
+#### Ghost-Typist Hardening (`scripts/ibc_login_helper.py`)
 - Disabled `pyautogui.FAILSAFE` (automated system should not crash if mouse reaches screen corner)
 - Added `safe_click()` with screen-bounds clamping to prevent off-screen clicks
 - Added `ensure_window_ready()` with 3-retry activate logic
+- Added `is_port_open()` early-exit check (skip login if already connected)
 - Added full retry wrapper: if first credential injection fails, re-finds window and retries
-- Added screen size logging for diagnostics
 - Refactored into clean functions: `find_gateway_window()`, `ensure_window_ready()`, `inject_credentials()`
 
-#### 📊 Testing Results (April 23, 2026)
-- Gateway connected in 21 seconds (Ghost-Typist sole login handler)
-- Window at natural size: 790x610, coordinates correct
-- Daily loop completed in 13.6s, 10 positions, $85,134 total
-- Email sent successfully with Purchase Date and Days Held
+#### Task Scheduler Fix (`scripts/DAILY_ROUTINE/run_trading.bat`)
+- **Problem**: `pause` command at end of bat file hangs forever in Task Scheduler (no keyboard), causing 4-hour timeout kill (exit code 267014)
+- **Fix**: Removed `pause`; bat exits cleanly after trading completes
+
+#### Testing Results (April 23, 2026)
+- Gateway connected in 60 seconds (15s IBC wait + login)
+- Ghost-Typist: aggressive clear wiped IBC garbage, clean credential injection
+- Daily loop completed in 8.0s, 10 positions, $85,259 total equity
+- Health check: 10 PASS, 0 FAIL, Exit Code 0
+- Email sent successfully
+- Task Scheduler: next run today 17:06, `pause` bug fixed
 
 ---
 

@@ -101,9 +101,6 @@ goto :END
 
 :END
 echo [VH] =============================================================================
-echo [VH] COMMAND CENTER - Dead Man's Switch Active
-echo [VH] Window will remain open for Architect review
-echo [VH] Press any key to close...
+echo [VH] Daily routine finished at %DATE% %TIME%
 echo [VH] =============================================================================
-pause
 exit /b %ERRORLEVEL%
