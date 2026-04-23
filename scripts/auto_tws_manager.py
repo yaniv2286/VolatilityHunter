@@ -224,12 +224,10 @@ class AutoTWSManager:
             "LoginDialogDisplayTimeout=180\n"
             "TradingMode=paper\n"
         )
-        # Add LOGON section with credentials
-        config += (
-            "\n[LOGON]\n"
-            f"Username={IBKR_USER}\n"
-            f"Password={IBKR_PASS}\n"
-        )
+        # NOTE: LOGON section intentionally omitted from IBC config.
+        # IBC native login is broken with Gateway 10.37+ (puts IbDir path
+        # in the username field instead of the actual username).
+        # Ghost-Typist handles login exclusively via GUI automation.
         # Add IBGateway section with API configuration
         config += (
             "\n[IBGateway]\n"

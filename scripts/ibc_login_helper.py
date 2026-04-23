@@ -5,10 +5,136 @@ import pyautogui
 import pygetwindow as gw
 from dotenv import load_dotenv
 
+# Disable fail-safe: automated system should not crash if mouse reaches corner
+pyautogui.FAILSAFE = False
+
+
+def clamp(val, lo, hi):
+    """Clamp a value to [lo, hi] range."""
+    return max(lo, min(val, hi))
+
+
+def safe_click(x, y):
+    """Click at (x,y) clamped within screen bounds."""
+    screen_w, screen_h = pyautogui.size()
+    cx = clamp(x, 5, screen_w - 5)
+    cy = clamp(y, 5, screen_h - 5)
+    if cx != x or cy != y:
+        print(f"  CLAMPED click: ({x},{y}) -> ({cx},{cy})  screen={screen_w}x{screen_h}")
+    pyautogui.click(cx, cy)
+
+
+def find_gateway_window(timeout=60):
+    """Locate IBKR Gateway window within timeout seconds."""
+    for i in range(timeout):
+        for title_pattern in ["IBKR Gateway", "ibgateway", "IB Gateway"]:
+            windows = gw.getWindowsWithTitle(title_pattern)
+            if windows:
+                print(f"Found Gateway window: {windows[0].title} after {i} seconds.")
+                return windows[0]
+        time.sleep(1)
+    return None
+
+
+def ensure_window_ready(win):
+    """Activate the window and bring it to the foreground.
+    
+    IMPORTANT: Do NOT maximize. The Gateway login form is a fixed-size dialog
+    (~790x610). When maximized, the window stretches to 1920x1080 but the form
+    stays centered — making all percentage-based coordinate calculations wrong.
+    Coordinates like 75% width only work at the natural dialog size.
+    """
+    for attempt in range(3):
+        try:
+            win.activate()
+            time.sleep(0.5)
+        except Exception as e:
+            if "Error code from Windows: 0" in str(e):
+                print(f"  activate() attempt {attempt+1}: Ignored Error Code 0")
+            else:
+                print(f"  activate() attempt {attempt+1}: {e}")
+        
+        # Re-fetch window geometry
+        try:
+            win = gw.getWindowsWithTitle(win.title)[0]
+        except Exception:
+            pass
+        
+        if win.width > 0 and win.height > 0:
+            print(f"  Window ready: {win.width}x{win.height} at ({win.left},{win.top})")
+            return win
+    
+    print(f"  Using window as-is: {win.width}x{win.height} at ({win.left},{win.top})")
+    return win
+
+
+def inject_credentials(win, username, password):
+    """Click IB API tab, enter username/password, and submit."""
+    # NUCLEAR CLEAR PROTOCOL: Click window center for focus
+    print("NUCLEAR CLEAR: Clicking window center for absolute focus...")
+    center_x = win.left + win.width // 2
+    center_y = win.top + win.height // 2
+    safe_click(center_x, center_y)
+    time.sleep(0.5)
+    
+    # Click "IB API" tab (right tab: ~75% from left, ~180px from top)
+    print("Clicking 'IB API' tab on the right side...")
+    ib_api_tab_x = win.left + int(win.width * 0.75)
+    ib_api_tab_y = win.top + 180
+    print(f"Clicking at coordinates: x={ib_api_tab_x}, y={ib_api_tab_y}")
+    safe_click(ib_api_tab_x, ib_api_tab_y)
+    time.sleep(1.0)
+    
+    # Double-click to ensure tab selected
+    print("Clicking 'IB API' tab again to ensure it's selected...")
+    safe_click(ib_api_tab_x, ib_api_tab_y)
+    time.sleep(0.5)
+    
+    # Click username field area
+    print("Clicking username field area in IB API tab...")
+    username_field_x = win.left + int(win.width * 0.55)
+    username_field_y = win.top + 300
+    safe_click(username_field_x, username_field_y)
+    time.sleep(0.5)
+    
+    # Nuclear Clear + Type Username
+    print("FOCUSED INJECTION: Nuclear Clear Username field...")
+    pyautogui.hotkey('ctrl', 'a')
+    time.sleep(0.2)
+    pyautogui.press('backspace')
+    time.sleep(0.2)
+    
+    print(f"Typing username {username}...")
+    pyautogui.PAUSE = 0.1
+    pyautogui.write(username)
+    time.sleep(0.2)
+    
+    # Tab to Password field
+    print("Moving to Password field...")
+    pyautogui.press('tab')
+    time.sleep(0.2)
+    
+    # Nuclear Clear + Type Password
+    print("FOCUSED INJECTION: Nuclear Clear Password field...")
+    pyautogui.hotkey('ctrl', 'a')
+    time.sleep(0.2)
+    pyautogui.press('backspace')
+    time.sleep(0.2)
+    
+    print("Typing password...")
+    pyautogui.write(password)
+    time.sleep(0.2)
+    
+    # Submit
+    print("Submitting login...")
+    pyautogui.press('enter')
+    
+    print("Ghost-Typist: Credentials injected successfully. Mission complete.")
+
+
 def main():
     print("Ghost-Typist: Enhanced Auto-Login Recovery System")
     
-    # Force load from .env, completely ignoring any garbage command-line arguments
     load_dotenv()
     
     username = os.getenv('IBKR_USER_NAME')
@@ -19,126 +145,47 @@ def main():
         sys.exit(1)
         
     print(f"Loaded credentials. Username: {username}")
+    print(f"Screen size: {pyautogui.size()}")
     
-    # Configure PyAutoGUI for human-like behavior
-    pyautogui.PAUSE = 0.1  # 0.1s interval between keystrokes
-    pyautogui.FAILSAFE = True
+    pyautogui.PAUSE = 0.1
     
     print("Waiting for IB Gateway window (up to 60s)...")
     
-    try:
-        # 1. FIND & FOCUS: Locate IBKR Gateway window (handles both "IBKR Gateway" and "ibgateway" titles)
-        gateway_window = None
-        for i in range(60):
-            # Try multiple possible window titles
-            for title_pattern in ["IBKR Gateway", "ibgateway", "IB Gateway"]:
-                windows = gw.getWindowsWithTitle(title_pattern)
-                if windows:
-                    gateway_window = windows[0]
-                    print(f"Found Gateway window: {gateway_window.title} after {i} seconds.")
-                    break
-            if gateway_window:
-                break
-            time.sleep(1)
-            
-        if not gateway_window:
-            print("ERROR: Gateway window not found after 60 seconds!")
-            print("Available windows:")
-            for window in gw.getAllWindows():
-                if "gateway" in window.title.lower() or "ibkr" in window.title.lower():
-                    print(f"  - {window.title}")
-            sys.exit(1)
-        
-        print("Waiting 4s for UI components to be fully interactable...")
-        time.sleep(4)
-        
-        # Activate and maximize the window
-        try:
-            if not gateway_window.isActive:
-                gateway_window.activate()
-            if not gateway_window.isMaximized:
-                gateway_window.maximize()
-            time.sleep(1)  # Wait for window to stabilize
-        except Exception as e:
-            if "Error code from Windows: 0" in str(e):
-                print("Ignored Windows Error Code 0 (window likely already active)")
-            else:
-                print(f"WARNING: Failed to fully activate/maximize window, but continuing: {e}")
-        
-        # NUCLEAR CLEAR PROTOCOL: Click window center to ensure proper focus
-        # This eliminates pre-filled paths like 'D:\TWS' that cause field offsets
-        print("NUCLEAR CLEAR: Clicking window center for absolute focus...")
-        window_center_x = gateway_window.left + gateway_window.width // 2
-        window_center_y = gateway_window.top + gateway_window.height // 2
-        pyautogui.click(window_center_x, window_center_y)
-        time.sleep(0.5)
-        
-        # CRITICAL FIX: Click directly on "IB API" tab
-        # The login window has two tabs: "FIX CTCI" (left) and "IB API" (right)
-        # We need to click on the "IB API" tab which is on the RIGHT side
-        print("Clicking 'IB API' tab on the right side...")
-        
-        # The IB API tab is on the RIGHT side of the window
-        # Based on the screenshot, it's approximately 70-80% from the left
-        # and about 180px from the top (below the title bar)
-        ib_api_tab_x = gateway_window.left + int(gateway_window.width * 0.75)  # 75% from left (right tab)
-        ib_api_tab_y = gateway_window.top + 180  # 180px from top (tab area)
-        
-        print(f"Clicking at coordinates: x={ib_api_tab_x}, y={ib_api_tab_y}")
-        pyautogui.click(ib_api_tab_x, ib_api_tab_y)
-        time.sleep(1.0)  # Give it time to switch tabs
-        
-        # Verify by clicking again to make sure
-        print("Clicking 'IB API' tab again to ensure it's selected...")
-        pyautogui.click(ib_api_tab_x, ib_api_tab_y)
-        time.sleep(0.5)
-        
-        # Now click in the username field area (should be in the center-right area)
-        print("Clicking username field area in IB API tab...")
-        username_field_x = gateway_window.left + int(gateway_window.width * 0.55)  # Slightly right of center
-        username_field_y = gateway_window.top + 300  # Below the tab area
-        pyautogui.click(username_field_x, username_field_y)
-        time.sleep(0.5)
-        
-        # 2. FOCUSED INJECTION: Nuclear Clear + Type Username
-        print("FOCUSED INJECTION: Nuclear Clear Username field...")
-        pyautogui.hotkey('ctrl', 'a')
-        time.sleep(0.2)
-        pyautogui.press('backspace')
-        time.sleep(0.2)
-        
-        # 3. Type username from environment
-        print(f"Typing username {username}...")
-        pyautogui.PAUSE = 0.1  # Set 0.1s interval for slow typing
-        pyautogui.write(username)
-        time.sleep(0.2)
-        
-        # 4. Move to Password field
-        print("Moving to Password field...")
-        pyautogui.press('tab')
-        time.sleep(0.2)
-        
-        # 5. FOCUSED INJECTION: Nuclear Clear + Type Password
-        print("FOCUSED INJECTION: Nuclear Clear Password field...")
-        pyautogui.hotkey('ctrl', 'a')
-        time.sleep(0.2)
-        pyautogui.press('backspace')
-        time.sleep(0.2)
-        
-        # 6. Type password
-        print("Typing password...")
-        pyautogui.write(password)
-        time.sleep(0.2)
-        
-        # 7. Submit login
-        print("Submitting login...")
-        pyautogui.press('enter')
-        
-        print("Ghost-Typist: Credentials injected successfully. Mission complete.")
-        
-    except Exception as e:
-        print(f"Ghost-Typist ERROR: {e}")
+    gateway_window = find_gateway_window(timeout=60)
+    if not gateway_window:
+        print("ERROR: Gateway window not found after 60 seconds!")
+        for window in gw.getAllWindows():
+            if "gateway" in window.title.lower() or "ibkr" in window.title.lower():
+                print(f"  - {window.title}")
         sys.exit(1)
+    
+    print("Waiting 4s for UI components to be fully interactable...")
+    time.sleep(4)
+    
+    # Ensure window is maximized and properly positioned
+    gateway_window = ensure_window_ready(gateway_window)
+    
+    # Inject credentials with retry
+    for attempt in range(2):
+        try:
+            inject_credentials(gateway_window, username, password)
+            break
+        except Exception as e:
+            print(f"Ghost-Typist attempt {attempt+1} FAILED: {e}")
+            if attempt == 0:
+                print("Retrying in 5 seconds...")
+                time.sleep(5)
+                # Re-find and re-maximize window
+                gateway_window = find_gateway_window(timeout=15)
+                if gateway_window:
+                    gateway_window = ensure_window_ready(gateway_window)
+                else:
+                    print("ERROR: Gateway window lost during retry!")
+                    sys.exit(1)
+            else:
+                print("Ghost-Typist: All attempts exhausted.")
+                sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

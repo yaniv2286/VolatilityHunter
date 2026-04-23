@@ -75,9 +75,10 @@ VolatilityHunter is a **deterministic quantitative trading fund** ($100k) using 
 
 ### auto_tws_manager.py (Gateway Launcher)
 - **One-shot mode**: `--one-shot` flag launches Gateway and exits after API ready
-- **Always-Spawn Ghost-Typist**: Ghost-Typist always spawned for login (exits gracefully if no window)
-  - `SESSIONNAME` env var detection removed (unreliable for Task Scheduler)
-- **IBC Integration**: Launches Gateway via IBC with classpath method
+- **Always-Spawn Ghost-Typist**: Ghost-Typist is the sole login handler (IBC LOGON disabled)
+  - IBC native login broken with Gateway 10.37+ (puts IbDir path in username field)
+  - `[LOGON]` section removed from IBC config.ini to prevent race conditions
+- **IBC Integration**: Launches Gateway via IBC classpath method (no credentials in config)
 - **Paper Mode Enforced**: Both `jts.ini` and `C:\IBC\config.ini`
 - **API Ready Check**: Waits up to 180s for port 7497 to become available
 
@@ -93,26 +94,29 @@ VolatilityHunter is a **deterministic quantitative trading fund** ($100k) using 
 
 ---
 
-## 🋏️ Deterministic Guardrails (v11.4)
+## �️ Deterministic Guardrails (v11.5)
 
 **Zero Margin Tolerance**: 11-layer protection system to eliminate IBKR Gateway failures and margin debt bugs.
 
-### Layer 1: IB API Tab Selection (ibc_login_helper.py)
-- Explicitly clicks "IB API" tab before entering credentials (75% width, 180px from top)
-- Double-click for reliability to ensure tab switch
-- Prevents credentials being entered into "FIX CTCI" tab (which uses different auth)
-- Root cause of April 17-20 login failures
+### Layer 1: Ghost-Typist Sole Login (ibc_login_helper.py)
+- Ghost-Typist is the sole login handler (IBC native login disabled)
+- Uses natural window size (~790x610) for correct coordinate calculations
+- No maximize: login form is fixed-size, maximize breaks percentage-based coordinates
+- `pyautogui.FAILSAFE` disabled (automated system must not crash on corner mouse)
+- `safe_click()` clamps all coordinates within screen bounds
+- Retry logic: re-finds window and retries if first attempt fails
+- Root cause of April 22 failure: maximize + FAILSAFE crash chain
 
 ### Layer 2: Always-Spawn Ghost-Typist (auto_tws_manager.py)
 - Ghost-Typist always spawned regardless of execution context
 - Exits gracefully if no Gateway window found within 60s
-- `SESSIONNAME` env var check removed (unreliable for Task Scheduler)
+- IBC `[LOGON]` section removed (IBC puts IbDir path in username field with Gateway 10.37+)
 - Windows auto-login via `netplwiz` ensures desktop session is always available
 
 ### Layer 3: Nuclear Clear Protocol (ibc_login_helper.py)
 - Window center click before credential entry
-- Prevents IBKR UI focus bugs during Ghost-Typist login
-- Eliminates credential injection failures
+- IB API tab explicitly clicked (75% width, 180px from window top)
+- Prevents credentials being entered into "FIX CTCI" tab
 
 ### Layer 4: JTS Configuration Guard (auto_tws_manager.py)
 - `clean_jts_ini()` overwrites jts.ini on every startup

@@ -45,7 +45,7 @@ Get-Content logs/task_scheduler.log -Wait -Tail 50
 
 ```
 ✅ Health Check System      : PASS (Exit Code 0, 11 checks)
-✅ Gateway Automation       : PASS (Ghost-Typist IB API tab, always-spawn, ~25s startup)
+✅ Gateway Automation       : PASS (Ghost-Typist sole login, no-maximize, ~21s startup)
 ✅ Deterministic Guardrails : PASS (11 protection layers active)
 ✅ ILS to USD Conversion    : PASS (Auto-detect and convert)
 ✅ Margin Protection        : PASS (Zero margin usage verified)
@@ -61,8 +61,8 @@ Get-Content logs/task_scheduler.log -Wait -Tail 50
 🎉 ALL SYSTEMS OPERATIONAL! Production-hardened with Deterministic Guardrails!
 
 📊 SYSTEM HIGHLIGHTS:
-  - **Gateway Startup**: ~25 seconds via Ghost-Typist (IB API tab click → credentials → submit)
-  - **Always-Spawn**: Ghost-Typist always spawned (SESSIONNAME detection removed as unreliable)
+  - **Gateway Startup**: ~21 seconds via Ghost-Typist (sole login handler, IBC LOGON disabled)
+  - **No-Maximize**: Ghost-Typist uses natural window size (790x610) for correct coordinates
   - **Trading Loop**: ~60 seconds total (4x faster with parallel API fetching)
   - **Email Reports**: Professional HTML format with color-coded P&L tables
   - **Execution**: Market orders filling successfully across multiple exchanges
@@ -73,18 +73,20 @@ Get-Content logs/task_scheduler.log -Wait -Tail 50
 
 ---
 
-## 🎯 Latest Achievements (v11.4)
+## 🎯 Latest Achievements (v11.5)
+
+### ✅ **Gateway Login Resilience** (April 23, 2026)
+- **IBC Native Login Disabled**: IBC puts directory path in username field with Gateway 10.37+; removed `[LOGON]` section from config.ini
+- **No-Maximize Fix**: Login form is fixed-size (~790x610); maximize broke percentage-based coordinates
+- **Ghost-Typist Hardening**: Disabled FAILSAFE, added safe_click() with screen clamping, retry logic, diagnostics
+- **Gateway Startup**: 21 seconds (Ghost-Typist sole login handler)
 
 ### ✅ **Portfolio Sync & Email Hardening** (April 21, 2026)
-- **IBKR Sync Fix**: Positions now preserve `entry_date`, `entry_price`, `stop_loss_price`, `highest_price`, and `is_power_stock` during daily IBKR sync (was resetting all to today's values)
-- **Purchase Date Column**: Email report now includes Purchase Date alongside Days Held
-- **Always-Spawn Ghost-Typist**: Removed unreliable `SESSIONNAME` env var check; Ghost-Typist always spawns (exits gracefully if no window found)
-- **RAPT Ticker Removed**: Delisted after GSK acquisition (March 2026, $58/share)
-- **Windows Auto-Login**: Configured `netplwiz` auto-login + no-sleep for unattended 24/7 operation
-
-### ✅ **Gateway Login Hardening** (April 20, 2026)
-- **IB API Tab Fix**: Ghost-Typist clicks "IB API" tab before entering credentials (75% width, 180px from top)
-- **Gateway Startup**: ~25 seconds from launch to API ready on port 7497
+- **IBKR Sync Fix**: Positions preserve `entry_date`, `entry_price`, `stop_loss_price` during sync
+- **Purchase Date Column**: Email report includes Purchase Date alongside Days Held
+- **Always-Spawn Ghost-Typist**: Removed unreliable `SESSIONNAME` check
+- **RAPT Ticker Removed**: Delisted after GSK acquisition (March 2026)
+- **Windows Auto-Login**: `netplwiz` auto-login + no-sleep for 24/7 operation
 
 ### ✅ **Deterministic Guardrails** (April 15, 2026)
 - **Nuclear Clear Protocol**: Window center click before credential entry
@@ -97,9 +99,9 @@ Get-Content logs/task_scheduler.log -Wait -Tail 50
 - **UTF-8 Force**: Environment variables for Task Scheduler compatibility
 - **Portfolio Sanity Check**: Cash range validation (0-$150k) in health check
 
-**Testing Results (April 21, 2026):**
-- ✅ Gateway connected in 25 seconds (IB API tab fix verified)
-- ✅ 10 positions active, $85,626 total portfolio value
+**Testing Results (April 23, 2026):**
+- ✅ Gateway connected in 21 seconds (Ghost-Typist sole login handler)
+- ✅ 10 positions active, $85,134 total portfolio value
 - ✅ Zero margin usage (critical success!)
 - ✅ All guardrails verified working in production
 - ✅ Email notifications working (HTML format with Purchase Date column)

@@ -1,10 +1,38 @@
 # VolatilityHunter Changelog
 
-**Version**: Production v11.4 | **Updated**: 2026-04-21
+**Version**: Production v11.5 | **Updated**: 2026-04-23
 
 ---
 
 ## 🎯 Recent Changes (2026)
+
+### 2026-04-23 - v11.5: Gateway Login Resilience
+
+#### 🔧 IBC Native Login Disabled (`scripts/auto_tws_manager.py`)
+- **Problem**: IBC native login broken with Gateway 10.37+ — puts `IbDir` directory path (`D:\TWS\ibgateway\`) into the username field instead of the actual username
+- **Fix**: Removed `[LOGON]` section from IBC `config.ini`; Ghost-Typist is now the sole login handler
+- **Impact**: Eliminates race condition between IBC and Ghost-Typist competing for the login form
+
+#### 🔧 Ghost-Typist No-Maximize Fix (`scripts/ibc_login_helper.py`)
+- **Problem**: `window.maximize()` stretched the window to 1920x1080, but the login form stays centered at its natural ~790x610 size. Percentage-based coordinates (75% width = x=1440) missed the actual IB API tab (which is at x=592 relative to the form)
+- **Root Cause**: April 22 failure chain: maximize failed silently -> window at unexpected position -> coordinates off-screen -> PyAutoGUI FAILSAFE triggered -> no credentials -> port 7497 never opened
+- **Fix**: Removed maximize logic; Ghost-Typist now works with the window at its natural size where coordinates are correct
+
+#### 🛡️ Ghost-Typist Hardening (`scripts/ibc_login_helper.py`)
+- Disabled `pyautogui.FAILSAFE` (automated system should not crash if mouse reaches screen corner)
+- Added `safe_click()` with screen-bounds clamping to prevent off-screen clicks
+- Added `ensure_window_ready()` with 3-retry activate logic
+- Added full retry wrapper: if first credential injection fails, re-finds window and retries
+- Added screen size logging for diagnostics
+- Refactored into clean functions: `find_gateway_window()`, `ensure_window_ready()`, `inject_credentials()`
+
+#### 📊 Testing Results (April 23, 2026)
+- Gateway connected in 21 seconds (Ghost-Typist sole login handler)
+- Window at natural size: 790x610, coordinates correct
+- Daily loop completed in 13.6s, 10 positions, $85,134 total
+- Email sent successfully with Purchase Date and Days Held
+
+---
 
 ### 2026-04-21 - v11.4: Portfolio Sync & Email Hardening
 
