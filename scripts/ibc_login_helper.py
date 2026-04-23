@@ -199,8 +199,17 @@ def main():
                 print(f"  - {window.title}")
         sys.exit(1)
     
-    print("Waiting 4s for UI components to be fully interactable...")
-    time.sleep(4)
+    # Wait 15s for IBC to complete its broken login cycle:
+    # T+3s: IBC fills username (with IbDir garbage) + empty password
+    # T+3s: IBC clicks "Paper Log In"
+    # T+5-10s: Auth fails, form returns to editable state
+    # T+15s: Ghost-Typist clears IBC garbage and enters correct credentials
+    print("Waiting 15s for IBC broken login cycle to complete...")
+    for i in range(15):
+        if is_port_open():
+            print(f"Port 7497 open after {i}s - login succeeded. Done.")
+            return
+        time.sleep(1)
     
     gateway_window = ensure_window_ready(gateway_window)
     
