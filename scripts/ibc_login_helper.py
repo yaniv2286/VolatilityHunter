@@ -69,7 +69,11 @@ def ensure_window_ready(win):
 
 
 def inject_credentials(win, username, password):
-    """Click IB API tab, enter username/password, and submit."""
+    """Click IB API tab, enter username/password, and submit.
+    
+    Coordinates calibrated for natural 790x610 Gateway login dialog.
+    Do NOT maximize the window — form is fixed-size, maximize breaks coords.
+    """
     # NUCLEAR CLEAR PROTOCOL: Click window center for focus
     print("NUCLEAR CLEAR: Clicking window center for absolute focus...")
     center_x = win.left + win.width // 2
@@ -90,18 +94,29 @@ def inject_credentials(win, username, password):
     safe_click(ib_api_tab_x, ib_api_tab_y)
     time.sleep(0.5)
     
-    # Click username field area
+    # Click username field area (~55% width, ~300px from top)
     print("Clicking username field area in IB API tab...")
     username_field_x = win.left + int(win.width * 0.55)
     username_field_y = win.top + 300
     safe_click(username_field_x, username_field_y)
     time.sleep(0.5)
     
-    # Nuclear Clear + Type Username
-    print("FOCUSED INJECTION: Nuclear Clear Username field...")
-    pyautogui.hotkey('ctrl', 'a')
+    # AGGRESSIVE CLEAR: IBC puts D:\TWS\ibgateway\ in this field.
+    # Ctrl+A alone doesn't work on Java Swing — use triple-click + Home/Shift+End
+    print("AGGRESSIVE CLEAR: Wiping username field (IBC may have filled garbage)...")
+    pyautogui.click(username_field_x, username_field_y, clicks=3)
     time.sleep(0.2)
-    pyautogui.press('backspace')
+    pyautogui.press('delete')
+    time.sleep(0.1)
+    pyautogui.hotkey('ctrl', 'a')
+    time.sleep(0.1)
+    pyautogui.press('delete')
+    time.sleep(0.1)
+    pyautogui.press('home')
+    time.sleep(0.1)
+    pyautogui.hotkey('shift', 'end')
+    time.sleep(0.1)
+    pyautogui.press('delete')
     time.sleep(0.2)
     
     print(f"Typing username {username}...")
@@ -112,13 +127,19 @@ def inject_credentials(win, username, password):
     # Tab to Password field
     print("Moving to Password field...")
     pyautogui.press('tab')
-    time.sleep(0.2)
+    time.sleep(0.3)
     
-    # Nuclear Clear + Type Password
-    print("FOCUSED INJECTION: Nuclear Clear Password field...")
+    # AGGRESSIVE CLEAR: Password field may also have IBC garbage
+    print("AGGRESSIVE CLEAR: Wiping password field...")
     pyautogui.hotkey('ctrl', 'a')
-    time.sleep(0.2)
-    pyautogui.press('backspace')
+    time.sleep(0.1)
+    pyautogui.press('delete')
+    time.sleep(0.1)
+    pyautogui.press('home')
+    time.sleep(0.1)
+    pyautogui.hotkey('shift', 'end')
+    time.sleep(0.1)
+    pyautogui.press('delete')
     time.sleep(0.2)
     
     print("Typing password...")
@@ -132,8 +153,19 @@ def inject_credentials(win, username, password):
     print("Ghost-Typist: Credentials injected successfully. Mission complete.")
 
 
+def is_port_open(port=7497):
+    """Check if port 7497 is already listening (IBC login succeeded)."""
+    import socket
+    try:
+        with socket.create_connection(('127.0.0.1', port), timeout=2):
+            return True
+    except (ConnectionRefusedError, OSError):
+        return False
+
+
 def main():
-    print("Ghost-Typist: Enhanced Auto-Login Recovery System")
+    print("Ghost-Typist: Primary Auto-Login System")
+    print("  IBC [LOGON] disabled (broken). Ghost-Typist handles login exclusively.")
     
     load_dotenv()
     
@@ -149,11 +181,19 @@ def main():
     
     pyautogui.PAUSE = 0.1
     
+    # Quick check: port might already be open from a previous session
+    if is_port_open():
+        print("Port 7497 already open - no login needed. Exiting.")
+        return
+    
     print("Waiting for IB Gateway window (up to 60s)...")
     
     gateway_window = find_gateway_window(timeout=60)
     if not gateway_window:
-        print("ERROR: Gateway window not found after 60 seconds!")
+        if is_port_open():
+            print("Port 7497 open now - login succeeded elsewhere. Done.")
+            return
+        print("ERROR: Gateway window not found and port 7497 not open!")
         for window in gw.getAllWindows():
             if "gateway" in window.title.lower() or "ibkr" in window.title.lower():
                 print(f"  - {window.title}")
@@ -162,7 +202,6 @@ def main():
     print("Waiting 4s for UI components to be fully interactable...")
     time.sleep(4)
     
-    # Ensure window is maximized and properly positioned
     gateway_window = ensure_window_ready(gateway_window)
     
     # Inject credentials with retry
@@ -175,11 +214,13 @@ def main():
             if attempt == 0:
                 print("Retrying in 5 seconds...")
                 time.sleep(5)
-                # Re-find and re-maximize window
                 gateway_window = find_gateway_window(timeout=15)
                 if gateway_window:
                     gateway_window = ensure_window_ready(gateway_window)
                 else:
+                    if is_port_open():
+                        print("Port 7497 open - login succeeded during retry. Done.")
+                        return
                     print("ERROR: Gateway window lost during retry!")
                     sys.exit(1)
             else:

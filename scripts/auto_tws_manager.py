@@ -99,7 +99,9 @@ class AutoTWSManager:
         
         Forces:
         - Logon.API=IB (not FIX)
-        - LastUser=yanivl228 (pre-fill username)
+        - LastUser=yanivl228 (pre-fill username so IBC's auto-login
+          fails with 'wrong password' instead of 'empty username',
+          allowing Ghost-Typist to recover cleanly)
         
         This runs BEFORE Gateway launch to eliminate startup failures.
         """
@@ -224,9 +226,9 @@ class AutoTWSManager:
             "LoginDialogDisplayTimeout=180\n"
             "TradingMode=paper\n"
         )
-        # NOTE: LOGON section intentionally omitted from IBC config.
-        # IBC native login is broken with Gateway 10.37+ (puts IbDir path
-        # in the username field instead of the actual username).
+        # NOTE: [LOGON] section intentionally omitted.
+        # IBC native login is broken — it submits wrong credentials due to
+        # s3store/Gateway 10.37 bug, then corrupts the login form state.
         # Ghost-Typist handles login exclusively via GUI automation.
         # Add IBGateway section with API configuration
         config += (
