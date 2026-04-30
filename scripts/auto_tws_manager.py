@@ -3,7 +3,7 @@
 AUTOMATED TWS MANAGER (IBC Edition)
 =====================================
 Fully headless, unattended IB Gateway auto-login using IBC.
-- Reads IBKR credentials from .env (IBKR_USER_NAME / IBKR_PASSWORD)
+- Reads IBKR credentials from .env (IBKR_LOGIN_ID / IBKR_PASSWORD)
 - Launches IB Gateway via IBC (no human login needed)
 - Monitors process health every 5 minutes
 - Auto-restarts if Gateway crashes
@@ -51,10 +51,11 @@ logging.basicConfig(
 logger = logging.getLogger("auto_tws_manager")
 
 # ── Config ─────────────────────────────────────────────────────────────────
-IBKR_USER     = os.getenv("IBKR_USER_NAME", "")
-IBKR_PASS     = os.getenv("IBKR_PASSWORD",  "")
+IBKR_LOGIN_ID  = os.getenv("IBKR_LOGIN_ID", "")
+IBKR_PASSWORD  = os.getenv("IBKR_PASSWORD",  "")
+IBKR_TRADING_MODE = os.getenv("IBKR_TRADING_MODE", "paper")
 TWS_PORT      = 7497
-API_WAIT_SECS = 300    # max seconds to wait for API after Gateway starts
+API_WAIT_SECS = 600    # max seconds to wait for API after Gateway starts (5 minutes)
 CHECK_INTERVAL = 300   # health check every 5 minutes
 
 IBC_DIR         = Path("C:\\IBC")
@@ -94,79 +95,49 @@ class AutoTWSManager:
 
     def clean_jts_ini(self):
         """
-        JTS Configuration Guard: Enforce critical settings in jts.ini
-        to prevent UI from defaulting to FIX CTCI mode.
+        JTS Configuration Guard: Force-create/overwrite jts.ini with correct settings.
         
         Forces:
         - Logon.API=IB (not FIX)
-        - LastUser=yanivl228 (pre-fill username so IBC's auto-login
-          fails with 'wrong password' instead of 'empty username',
-          allowing Ghost-Typist to recover cleanly)
+        - LastUser=IBKR_LOGIN_ID (pre-fill username for IBC)
+        - TradingMode=p (paper trading)
         
         This runs BEFORE Gateway launch to eliminate startup failures.
         """
+        login_id = os.environ.get('IBKR_LOGIN_ID', 'yanivl228')
         jts_paths = [
             Path(r"C:\Jts\jts.ini"),
             Path(self.gateway_dir) / "jts.ini",
         ]
         
         for jts_path in jts_paths:
-            if not jts_path.exists():
-                continue
-                
             try:
-                logger.info(f"JTS Configuration Guard: Cleaning {jts_path}")
-                content = jts_path.read_text(encoding='utf-8')
-                lines = content.splitlines()
+                logger.info(f"JTS Configuration Guard: Processing {jts_path}")
                 
-                # Parse and enforce settings
-                in_logon = False
-                api_set = False
-                user_set = False
-                cleaned = []
+                # Force-create/overwrite the file with correct content
+                config_content = f"""[Logon]
+API=IB
+LastUser={login_id}
+TradingMode=p
+
+[IBGateway]
+ApiOnly=yes
+ReadOnlyApi=no
+
+[Global]
+LogToConsole=no
+"""
                 
-                for line in lines:
-                    stripped = line.strip()
-                    
-                    # Track section
-                    if stripped.startswith('['):
-                        # Inject missing keys before leaving Logon section
-                        if in_logon:
-                            if not api_set:
-                                cleaned.append('API=IB')
-                            if not user_set:
-                                cleaned.append(f'LastUser={IBKR_USER}')
-                        in_logon = stripped.lower() == '[logon]'
-                        cleaned.append(line)
-                        continue
-                    
-                    # Update or skip keys in Logon section
-                    if in_logon:
-                        key = line.split('=')[0].strip()
-                        if key == 'API':
-                            cleaned.append('API=IB')
-                            api_set = True
-                        elif key == 'LastUser':
-                            cleaned.append(f'LastUser={IBKR_USER}')
-                            user_set = True
-                        else:
-                            cleaned.append(line)
-                    else:
-                        cleaned.append(line)
+                # Ensure parent directory exists
+                jts_path.parent.mkdir(parents=True, exist_ok=True)
                 
-                # Handle end-of-file Logon section
-                if in_logon:
-                    if not api_set:
-                        cleaned.append('API=IB')
-                    if not user_set:
-                        cleaned.append(f'LastUser={IBKR_USER}')
-                
-                # Write back
-                jts_path.write_text('\n'.join(cleaned) + '\n', encoding='utf-8')
-                logger.info(f"JTS Configuration Guard: Enforced API=IB and LastUser in {jts_path}")
+                # Write the enforced configuration
+                jts_path.write_text(config_content, encoding='utf-8')
+                logger.info(f"JTS Configuration Guard: Enforced clean config in {jts_path}")
                 
             except Exception as e:
                 logger.warning(f"JTS Configuration Guard failed for {jts_path}: {e}")
+                logger.error(traceback.format_exc())
 
     # ── Process checks ───────────────────────────────────────────────────
 
@@ -195,56 +166,132 @@ class AutoTWSManager:
         except Exception:
             return False
 
+    def ping_gateway_until_ready(self, max_wait_seconds=180):
+        """
+        Robust polling mechanism for Gateway API readiness.
+        Attempts TCP socket connection to 127.0.0.1:7497 every 5 seconds for up to 3 minutes.
+        Returns True on success, False on timeout.
+        """
+        logger.info(f"Pinging Gateway API on port {TWS_PORT} (max wait: {max_wait_seconds}s)")
+        
+        start_time = time.time()
+        attempt = 0
+        
+        while time.time() - start_time < max_wait_seconds:
+            attempt += 1
+            
+            if self.is_api_ready(timeout=2):
+                elapsed = time.time() - start_time
+                logger.info(f"Gateway Online - API ready after {elapsed:.1f}s (attempt {attempt})")
+                return True
+            
+            # Log progress every 30 seconds
+            if attempt % 6 == 0:  # Every 30 seconds (6 * 5s)
+                elapsed = time.time() - start_time
+                logger.info(f"Still waiting for Gateway... {elapsed:.1f}s elapsed (attempt {attempt})")
+            
+            time.sleep(5)  # Poll every 5 seconds
+        
+        # Timeout reached
+        elapsed = time.time() - start_time
+        logger.error(f"Gateway API timeout after {elapsed:.1f}s (max {max_wait_seconds}s)")
+        logger.error(f"Final attempt: {attempt} tries made")
+        return False
+
+    def kill_gateway_process_tree(self):
+        """
+        Kill the entire Java process tree if Gateway times out.
+        No silent failures - forceful termination.
+        """
+        logger.warning("Killing Gateway process tree due to timeout...")
+        
+        try:
+            if self.ibc_process and self.ibc_process.poll() is None:
+                # Kill the main IBC process
+                self.ibc_process.terminate()
+                try:
+                    self.ibc_process.wait(timeout=10)
+                    logger.info("IBC process terminated gracefully")
+                except subprocess.TimeoutExpired:
+                    self.ibc_process.kill()
+                    logger.warning("IBC process killed forcefully")
+            
+            # Kill any remaining Java/Gateway processes
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                try:
+                    if any(name.lower() in proc.info['name'].lower() for name in GATEWAY_PROCESS_NAMES):
+                        logger.info(f"Killing residual process: {proc.info['name']} (PID {proc.info['pid']})")
+                        proc.terminate()
+                        try:
+                            proc.wait(timeout=5)
+                        except subprocess.TimeoutExpired:
+                            proc.kill()
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+            
+            logger.info("Gateway process tree cleanup completed")
+            
+        except Exception as e:
+            logger.error(f"Error during process cleanup: {e}")
+            logger.error(traceback.format_exc())
+
     # ── IBC config management ────────────────────────────────────────────
 
     def ensure_ibc_config(self):
-        """Write/refresh IBC config.ini with current .env credentials."""
-        if not IBKR_USER or not IBKR_PASS:
-            logger.error("IBKR_USER_NAME or IBKR_PASSWORD missing from .env")
+        """Generate IBC config.ini with credentials from .env."""
+        if not IBKR_LOGIN_ID or not IBKR_PASSWORD:
+            logger.error("IBKR_LOGIN_ID or IBKR_PASSWORD missing from .env")
             return False
 
         IBC_DIR.mkdir(parents=True, exist_ok=True)
-        # NOTE: TradingMode is NOT a config.ini key in IBC 3.18+
-        # It is passed as the 3rd CLI argument to IbcGateway
-        config = (
-            "# IBC config - auto-managed by auto_tws_manager.py\n"
-            "[IBC]\n"
-            f"IbDir={self.gateway_dir.replace(chr(92), '/')}\n"
-            "StoreSettingsOnServer=no\n"
-            "MinimizeMainWindow=yes\n"
-            "ExistingSessionDetectedAction=primary\n"
-            "AcceptIncomingConnectionAction=accept\n"
-            "ShowAllTrades=no\n"
-            "FIX=no\n"
-            "IbAutoClosedown=no\n"
-            "ClosedownAt=\n"
-            "AllowBlindTrading=yes\n"
-            "DismissPasswordExpiryWarning=yes\n"
-            "DismissNSEComplianceNotice=yes\n"
-            "AcceptBidAskLastSizeDisplayUpdateNotification=accept\n"
-            "LogComponents=never\n"
-            "LoginDialogDisplayTimeout=180\n"
-            "TradingMode=paper\n"
-        )
-        # NOTE: [LOGON] section intentionally omitted.
-        # IBC native login is broken — it submits wrong credentials due to
-        # s3store/Gateway 10.37 bug, then corrupts the login form state.
-        # Ghost-Typist handles login exclusively via GUI automation.
-        # Add IBGateway section with API configuration
-        config += (
-            "\n[IBGateway]\n"
-            "ApiOnly=yes\n"
-            "ReadOnlyApi=no\n"
-            "OtherTrades=none\n"
-            "MasterClientId=1\n"
-            "ClientId=100\n"
-            "AcceptIncomingConnectionAction=accept\n"
-            "LocalServerPort=7497\n"
-        )
+        
+        # Generate config.ini with credentials injected
+        config_lines = [
+            "# IBC config - auto-managed by auto_tws_manager.py",
+            "[IBC]",
+            f"IbLoginId={IBKR_LOGIN_ID}",
+            f"IbPassword={IBKR_PASSWORD}",
+            f"TradingMode={IBKR_TRADING_MODE}",
+            f"IbDir={self.gateway_dir.replace(chr(92), '/')}",
+            "StoreSettingsOnServer=no",
+            "MinimizeMainWindow=yes",
+            "ExistingSessionDetectedAction=primary",
+            "AcceptIncomingConnectionAction=accept",
+            "ShowAccountTradesWindow=no",
+            "ShowAllTrades=no",
+            "FIX=no",
+            "IbAutoClosedown=no",
+            "ClosedownAt=",
+            "AllowBlindTrading=yes",
+            "DismissPasswordExpiryWarning=yes",
+            "DismissNSEComplianceNotice=yes",
+            "AcceptBidAskLastSizeDisplayUpdateNotification=accept",
+            "LogComponents=never",
+            "LoginDialogDisplayTimeout=180",
+            "MaxLoginAttempts=3",
+            "ReloginIfConnectionLost=yes",
+            "AutoReconnect=yes",
+            "",
+            "[LOGON]",
+            f"IbLoginId={IBKR_LOGIN_ID}",
+            f"IbPassword={IBKR_PASSWORD}",
+            "ReadOnlyApi=yes",  # Disable automatic login
+            "",
+            "[IBGateway]",
+            "ApiOnly=yes",
+            "ReadOnlyApi=no",
+            "OtherTrades=none",
+            "MasterClientId=1",
+            "ClientId=100",
+            "AcceptIncomingConnectionAction=accept",
+            "LocalServerPort=7497"
+        ]
+        
         try:
             with open(IBC_CONFIG, 'w', encoding='utf-8', newline='\n') as f:
-                f.write(config)
-            logger.info(f"IBC config written: {IBC_CONFIG}")
+                for line in config_lines:
+                    f.write(line + '\n')
+            logger.info(f"IBC config generated: {IBC_CONFIG}")
             return True
         except Exception as e:
             logger.error(f"Failed to write IBC config: {e}")
@@ -295,7 +342,7 @@ class AutoTWSManager:
                                 final.append('tradingMode=p')
                                 mode_set = True
                             if not user_set:
-                                final.append(f'Username={IBKR_USER}')
+                                final.append(f"Username={os.environ.get('IBKR_LOGIN_ID', 'yanivl228')}")
                                 user_set = True
                         in_logon = stripped.lower() == '[logon]'
                         final.append(line)
@@ -305,7 +352,7 @@ class AutoTWSManager:
                         final.append('tradingMode=p')
                         mode_set = True
                     elif in_logon and key == 'username':
-                        final.append(f'Username={IBKR_USER}')
+                        final.append(f"Username={os.environ.get('IBKR_LOGIN_ID', 'yanivl228')}")
                         user_set = True
                     else:
                         final.append(line)
@@ -314,7 +361,7 @@ class AutoTWSManager:
                     if not mode_set:
                         final.append('tradingMode=p')
                     if not user_set:
-                        final.append(f'Username={IBKR_USER}')
+                        final.append(f"Username={os.environ.get('IBKR_LOGIN_ID', 'yanivl228')}")
                 jts.write_text('\n'.join(final) + '\n', encoding='utf-8')
                 logger.info(f"jts.ini updated: paper mode + username in [Logon] section in {jts}")
             except Exception as e:
@@ -382,8 +429,9 @@ class AutoTWSManager:
 
     def start_gateway_via_ibc(self):
         """
-        Launch IB Gateway via IBC for fully headless auto-login.
-        IBC handles the login dialog automatically using credentials from config.ini.
+        Headless IBC Gateway launcher.
+        No GUI automation, no pyautogui, no mouse movements.
+        Launches as hidden/background subprocess with credential injection.
         """
         if not IBC_JAR.exists():
             logger.error(f"IBC not installed. Run: python scripts/setup_ibc.py")
@@ -391,30 +439,136 @@ class AutoTWSManager:
             return False
 
         if not self.ensure_ibc_config():
+            logger.error("Failed to generate IBC config.ini")
             return False
+
+        # ZOMBIE PROCESS EXECUTION: Kill existing Java processes first
+        self._kill_zombie_java_processes()
 
         # JTS Configuration Guard: Run BEFORE Gateway launch
         self.clean_jts_ini()
         self._ensure_clean_jts_ini()
 
-        # IBC works by intercepting ibgateway.exe's Swing login dialog.
-        # We must launch ibgateway.exe (the native install4j launcher) with
-        # IBC injected via -javaagent so IBC can hook the login window.
-        # Calling javaw directly bypasses the display context setup that
-        # install4j performs, causing exit 1112 (login dialog never appeared).
-
+        # Find Java 17+
         java_exe = self._find_java17()
         if not java_exe:
-            logger.error("Java 17+ not found - trying bat fallback")
-            return self._fallback_bat_launch()
+            logger.error("Java 17+ not found - cannot launch IBC")
+            return False
 
-        # Use classpath launch with the i4j-cached JRE (has JavaFX).
-        # Do NOT use ibgateway.exe directly - it ignores our vmoptions
-        # javaagent and picks its own JRE, causing IBC to miss the dialog.
-        # Ensure the javaagent line is removed from vmoptions (cleanup).
-        vmoptions_path = Path(self.gateway_dir) / "ibgateway.vmoptions"
-        self._remove_javaagent(vmoptions_path)
-        return self._launch_via_classpath(java_exe)
+        # Launch IBC as hidden subprocess
+        return self._launch_headless_ibc(java_exe)
+
+    def _kill_zombie_java_processes(self):
+        """
+        Forcefully kill existing Java processes that might be blocking Port 7497.
+        Suppress errors if none exist.
+        """
+        logger.info("Killing zombie Java processes...")
+        
+        try:
+            # Kill javaw.exe processes
+            subprocess.run(['taskkill', '/F', '/IM', 'javaw.exe', '/T'], 
+                          capture_output=True, check=False)
+            # Kill java.exe processes  
+            subprocess.run(['taskkill', '/F', '/IM', 'java.exe', '/T'], 
+                          capture_output=True, check=False)
+            logger.info("Zombie Java process cleanup completed")
+        except Exception as e:
+            logger.warning(f"Java process cleanup warning: {e}")
+            # Don't fail - continue with launch attempt
+
+    def _launch_headless_ibc(self, java_exe: str) -> bool:
+        """
+        Launch IBC Gateway as hidden background subprocess.
+        No window focusing, no GUI automation - completely headless.
+        """
+        gateway_jars = list((Path(self.gateway_dir) / "jars").glob("*.jar"))
+        classpath = str(IBC_JAR) + ";" + ";".join(str(j) for j in gateway_jars)
+
+        add_opens = [
+            "--add-opens=java.desktop/javax.swing=ALL-UNNAMED",
+            "--add-opens=java.desktop/javax.swing.plaf.basic=ALL-UNNAMED",
+            "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
+            "--add-opens=java.desktop/sun.swing=ALL-UNNAMED",
+            "--add-opens=java.base/java.lang=ALL-UNNAMED",
+            "--add-opens=java.base/java.util=ALL-UNNAMED",
+            "--add-opens=javafx.graphics/com.sun.javafx.application=ALL-UNNAMED",
+            "--add-opens=javafx.controls/com.sun.javafx.scene.control.skin=ALL-UNNAMED",
+            "--add-opens=javafx.fxml/com.sun.javafx.fxml=ALL-UNNAMED",
+            "--add-opens=javafx.graphics/com.sun.glass.ui=ALL-UNNAMED",
+        ]
+        
+        cmd = [
+            java_exe, *add_opens,
+            "-cp", classpath,
+            "ibcalpha.ibc.IbcGateway",
+            str(IBC_CONFIG),
+            str(self.gateway_dir),
+            IBKR_TRADING_MODE,
+        ]
+        
+        log_file = LOG_DIR / "ibc_gateway.log"
+        logger.info("Launching headless IBC Gateway...")
+        
+        try:
+            # NORMAL WINDOW MODE: Fix GUI detachment issue
+            startupinfo = None
+            if sys.platform == "win32":
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = 1  # SW_NORMAL - Show normally
+            
+            with open(log_file, 'a', encoding='utf-8') as lf:
+                self.ibc_process = subprocess.Popen(
+                    cmd, 
+                    stdout=lf, 
+                    stderr=lf, 
+                    cwd=str(self.gateway_dir),
+                    startupinfo=startupinfo,  # Hidden window
+                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0
+                )
+            
+            logger.info(f"Headless IBC process started (PID {self.ibc_process.pid})")
+            
+            # Wait for Gateway window to appear before launching Ghost-Typist
+            logger.info("Waiting for Gateway window to appear...")
+            time.sleep(15)  # Give Gateway time to fully load
+            
+            # Launch Surgical Ghost-Typist for credential injection
+            ghost_script = Path(__file__).parent / "surgical_ghost_typist.py"
+            if ghost_script.exists():
+                logger.info("Launching Surgical Ghost-Typist for login...")
+                ghost_log = LOG_DIR / "surgical_ghost_typist.log"
+                with open(ghost_log, 'a', encoding='utf-8') as gf:
+                    ghost_process = subprocess.Popen(
+                        [sys.executable, str(ghost_script)],
+                        stdout=gf,
+                        stderr=gf,
+                        cwd=str(ROOT)
+                    )
+                
+                # Wait for Ghost-Typist to complete (max 90 seconds)
+                try:
+                    ghost_process.wait(timeout=90)
+                    if ghost_process.returncode == 0:
+                        logger.info("✅ Surgical Ghost-Typist completed successfully")
+                    else:
+                        logger.error("❌ Surgical Ghost-Typist failed")
+                        return False
+                except subprocess.TimeoutExpired:
+                    logger.error("❌ Surgical Ghost-Typist timed out")
+                    ghost_process.kill()
+                    return False
+            else:
+                logger.warning("Surgical Ghost-Typist script not found")
+                return False
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to launch IBC: {e}")
+            logger.error(traceback.format_exc())
+            return False
 
     def _remove_javaagent(self, vmoptions_path: Path):
         """Remove any IBC javaagent line from ibgateway.vmoptions (cleanup)."""
@@ -501,35 +655,15 @@ class AutoTWSManager:
             return False
 
     def wait_for_api(self):
-        """Wait up to API_WAIT_SECS for port 7497 to open."""
-        logger.info(f"Waiting up to {API_WAIT_SECS}s for IB Gateway API on port 7497...")
-        start_time = time.time()
-        PORT_TIMEOUT = 180
-        logger.info(f"Waiting up to {PORT_TIMEOUT}s for IB Gateway API on port 7497...")
-        start = time.time()
-        while time.time() - start < PORT_TIMEOUT:
-            # Check if we've been waiting too long and process is stuck
-            if time.time() - start_time > API_WAIT_SECS - 60:  # Give 60s buffer
-                logger.error(f"Gateway process stuck - forcing restart")
-                if self.ibc_process:
-                    try:
-                        self.ibc_process.terminate()
-                        logger.info("Terminated stuck Gateway process")
-                    except Exception:
-                        pass
-                return False
-                
-            if self.is_api_ready():
-                logger.info(f"IB Gateway API ready after {int(time.time() - start)}s")
-                return True
-            if int(time.time() - start) > 15 and int(time.time() - start) % 15 == 0:
-                logger.info(f"  Still waiting... ({int(time.time() - start)}s)")
-            time.sleep(3)
+        """Wait up to API_WAIT_SECS for port 7497 to open using robust ping loop."""
+        if not self.ping_gateway_until_ready(max_wait_seconds=API_WAIT_SECS):
+            # Timeout - kill process tree and exit with code 1
+            self.kill_gateway_process_tree()
+            logger.error("Gateway startup FAILED - exiting with code 1")
+            sys.exit(1)
         
-        # PORT 7497 ENFORCEMENT: If API not ready within 180s, EXIT CODE 1
-        logger.error(f"Port 7497 not reachable within {PORT_TIMEOUT}s - ABORTING")
-        logger.error("Gateway startup FAILED - exiting with code 1")
-        sys.exit(1)
+        logger.info("Gateway API ready - continuing")
+        return True
 
     # ── Keep-alive ───────────────────────────────────────────────────────
 
@@ -585,13 +719,15 @@ class AutoTWSManager:
         logger.info("=" * 60)
         logger.info("AUTOMATED TWS MANAGER (IBC Edition)")
         logger.info("Fully headless IB Gateway management")
-        logger.info(f"IBKR User : {IBKR_USER}")
+        logger.info(f"IBKR User : {os.environ.get('IBKR_LOGIN_ID', 'yanivl228')}")
         logger.info(f"Gateway   : {self.gateway_dir}")
         logger.info(f"IBC       : {IBC_DIR}")
         logger.info("=" * 60)
 
-        if not IBKR_USER or not IBKR_PASS:
-            logger.error("IBKR_USER_NAME / IBKR_PASSWORD not in .env - cannot auto-login")
+        login_id = os.environ.get('IBKR_LOGIN_ID', 'yanivl228')
+        password = os.environ.get('IBKR_PASSWORD', '')
+        if not login_id or not password:
+            logger.error("IBKR_LOGIN_ID / IBKR_PASSWORD not in .env - cannot auto-login")
             sys.exit(1)
 
         while True:
@@ -709,18 +845,21 @@ def main():
         
         # Launch Gateway
         if not manager.is_gateway_running():
-            logger.info("Launching Gateway via IBC...")
+            logger.info("Launching headless Gateway via IBC...")
             if not manager.start_gateway_via_ibc():
                 logger.error("Failed to launch Gateway")
                 return 1
         
-        # Wait for API
-        logger.info("Waiting for API to be ready...")
-        if not manager.wait_for_api():
-            logger.error("API did not become ready in time")
+        # Wait for API using robust ping loop
+        logger.info("Waiting for Gateway API readiness...")
+        if not manager.ping_gateway_until_ready(max_wait_seconds=180):
+            # Timeout - kill process tree and exit with code 1
+            manager.kill_gateway_process_tree()
+            logger.error("Gateway startup FAILED - exiting with code 1")
             return 1
         
         logger.info("Gateway API ready - ONE-SHOT mode complete")
+        logger.info("Headless Gateway successfully launched and ready")
         return 0
     else:
         # Watchdog mode: Run indefinitely

@@ -12,10 +12,14 @@ from tqdm import tqdm
 import time
 
 # Add src to path for imports
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.config import TIINGO_KEY
-from src.notifications import log_info, log_error, log_warning
+import logging
+
+# Setup logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # Load environment variables directly
 import os
@@ -37,7 +41,7 @@ class DataUpdater:
         """Update data for a single ticker"""
         try:
             if not self.api_key:
-                log_error("No Tiingo API key found")
+                logger.error("No Tiingo API key found")
                 return False
                 
             # Set default dates
@@ -61,18 +65,35 @@ class DataUpdater:
             data = response.json()
             
             if not data:
-                log_warning(f"No data returned for {ticker}")
+                logger.warning(f"No data returned for {ticker}")
                 return False
+            
+            # Debug: Log response structure
+            logger.info(f"Response for {ticker}: {type(data)} - {len(data)} items")
+            if isinstance(data, list) and len(data) > 0:
+                logger.info(f"Sample item keys: {list(data[0].keys())}")
                 
             # Convert to DataFrame
             df = pd.DataFrame(data)
             
             if df.empty:
-                log_warning(f"Empty data for {ticker}")
+                logger.warning(f"Empty data for {ticker}")
                 return False
             
-            # Convert date column
-            df['date'] = pd.to_datetime(df['date'])
+            # Convert date column - check if 'date' column exists
+            if 'date' in df.columns:
+                df['date'] = pd.to_datetime(df['date'])
+            else:
+                # Try to find date-like column
+                date_cols = [col for col in df.columns if 'date' in col.lower()]
+                if date_cols:
+                    df['date'] = pd.to_datetime(df[date_cols[0]])
+                else:
+                    # Use index if it's date-like
+                    if hasattr(df.index, 'to_datetime'):
+                        df['date'] = pd.to_datetime(df.index)
+                    else:
+                        raise ValueError("No date column found in response")
             
             # Load existing data
             file_path = os.path.join(self.data_dir, f"{ticker.lower()}.parquet")
@@ -80,25 +101,36 @@ class DataUpdater:
             
             if os.path.exists(file_path):
                 existing_data = pd.read_parquet(file_path)
-                existing_data['date'] = pd.to_datetime(existing_data['date'])
+                if 'date' in existing_data.columns:
+                    existing_data['date'] = pd.to_datetime(existing_data['date'])
+                else:
+                    # Try to set date from index if it's date-like
+                    if hasattr(existing_data.index, 'to_datetime'):
+                        existing_data['date'] = pd.to_datetime(existing_data.index)
+                    else:
+                        logger.warning(f"Existing data for {ticker} has no date column, skipping merge")
+                        existing_data = None
                 
-                # Remove overlapping dates
-                df = df[~df['date'].isin(existing_data['date'])]
-                
-                # Combine data
-                combined_data = pd.concat([existing_data, df], ignore_index=True)
-                combined_data = combined_data.sort_values('date').reset_index(drop=True)
+                if existing_data is not None:
+                    # Remove overlapping dates
+                    df = df[~df['date'].isin(existing_data['date'])]
+                    
+                    # Combine data
+                    combined_data = pd.concat([existing_data, df], ignore_index=True)
+                    combined_data = combined_data.sort_values('date').reset_index(drop=True)
+                else:
+                    combined_data = df.sort_values('date').reset_index(drop=True)
             else:
                 combined_data = df.sort_values('date').reset_index(drop=True)
             
             # Save updated data
             combined_data.to_parquet(file_path, index=False)
             
-            log_info(f"Updated {ticker}: {len(df)} new records, total: {len(combined_data)} records")
+            logger.info(f"Updated {ticker}: {len(df)} new records, total: {len(combined_data)} records")
             return True
             
         except Exception as e:
-            log_error(f"Error updating {ticker}: {e}")
+            logger.error(f"Error updating {ticker}: {e}")
             return False
     
     def update_all_tickers(self, tickers=None):
@@ -112,7 +144,7 @@ class DataUpdater:
             else:
                 tickers = ['AAPL', 'MSFT', 'GOOGL', 'NVDA', 'TSLA']  # Default tickers
         
-        log_info(f"Updating data for {len(tickers)} tickers")
+        logger.info(f"Updating data for {len(tickers)} tickers")
         
         success_count = 0
         for ticker in tqdm(tickers, desc="Updating tickers"):
@@ -120,7 +152,7 @@ class DataUpdater:
                 success_count += 1
             time.sleep(0.1)  # Rate limiting
         
-        log_info(f"Successfully updated {success_count}/{len(tickers)} tickers")
+        logger.info(f"Successfully updated {success_count}/{len(tickers)} tickers")
         return success_count == len(tickers)
 
 if __name__ == "__main__":

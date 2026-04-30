@@ -46,7 +46,18 @@ if %ERRORLEVEL% NEQ 0 (
     echo [VH] Trading SKIPPED - check email for details
     goto :FAILED
 )
-echo [VH] IB Gateway API ready - proceeding to health check
+echo [VH] IB Gateway API ready - proceeding to data update
+echo.
+
+:: 4. DATA PIPELINE UPDATE
+echo [VH] Data Pipeline: Fetching fresh market data...
+python scripts\update_data.py
+if %ERRORLEVEL% NEQ 0 (
+    echo [CRITICAL ERROR] Data update failed - stale data detected
+    echo [VH] Trading SKIPPED - check data logs
+    goto :FAILED
+)
+echo [VH] Data update completed successfully
 echo.
 
 :CONTINUE_EXECUTION

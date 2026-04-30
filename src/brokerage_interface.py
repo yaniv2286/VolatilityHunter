@@ -513,20 +513,25 @@ class IBKRInterface(BrokerageInterface):
                 return {'success': False, 'reason': f'Anti-shorting check failed: {e}'}
         
         try:
-            from ib_insync import Stock
+            from ib_insync import Stock, LimitOrder, TagValue
+            import pandas as pd
             
             # 1. Force SMART routing and qualify the contract
             contract = Stock(symbol, 'SMART', 'USD')
             self.ib.qualifyContracts(contract)
             
-            # 2. Use MarketOrder for immediate fills in paper trading
-            from ib_insync import MarketOrder
-            order = MarketOrder(side.upper(), quantity)
+            # 2. Get market snapshot for marketable limit price
+            limit_price = self._calculate_marketable_limit(symbol, side)
+            
+            # 3. Create LimitOrder with Adaptive Algo
+            order = LimitOrder(side.upper(), quantity, limit_price)
+            order.algoStrategy = 'Adaptive'
+            order.algoParams = [TagValue('adaptivePriority', 'Normal')]
             
             # Place order
             trade = self.ib.placeOrder(contract, order)
             
-            log_info(f"Placed Market order: {side.upper()} {quantity} {symbol} (SMART)")
+            log_info(f"Placed Adaptive Limit order: {side.upper()} {quantity} {symbol} @ {limit_price:.2f} (SMART)")
             
             return {
                 'success': True,
@@ -534,13 +539,84 @@ class IBKRInterface(BrokerageInterface):
                 'symbol': symbol,
                 'quantity': quantity,
                 'side': side,
-                'type': 'market',
+                'type': 'adaptive_limit',
                 'status': trade.orderStatus.status
             }
             
         except Exception as e:
-            log_error(f"Failed to place Market order: {e}")
+            log_error(f"Failed to place Adaptive Limit order: {e}")
             return {'success': False, 'reason': str(e)}
+    
+    def _calculate_marketable_limit(self, symbol: str, side: str) -> float:
+        """Calculate marketable limit price with 1% buffer using live market data"""
+        try:
+            # Request market snapshot
+            from ib_insync import Stock
+            ticker = self.ib.reqMktData(Stock(symbol, 'SMART', 'USD'), '', False, False)
+            self.ib.sleep(1)  # Allow data to populate
+            
+            # Get bid/ask prices
+            bid = ticker.bid
+            ask = ticker.ask
+            
+            # Cancel market data subscription
+            self.ib.cancelMktData(ticker)
+            
+            # Calculate limit price with 1% buffer
+            if side.upper() == 'BUY':
+                if ask and ask > 0:
+                    limit_price = ask * 1.01  # 1% above ask
+                    log_info(f"BUY limit for {symbol}: ask={ask:.2f}, limit={limit_price:.2f}")
+                else:
+                    raise ValueError("Invalid ask price")
+            else:  # SELL
+                if bid and bid > 0:
+                    limit_price = bid * 0.99  # 1% below bid
+                    log_info(f"SELL limit for {symbol}: bid={bid:.2f}, limit={limit_price:.2f}")
+                else:
+                    raise ValueError("Invalid bid price")
+            
+            return round(limit_price, 2)
+            
+        except Exception as e:
+            log_warning(f"Market data unavailable for {symbol}, using fallback: {e}")
+            return self._fallback_limit_price(symbol, side)
+    
+    def _fallback_limit_price(self, symbol: str, side: str) -> float:
+        """Fallback to last known close price from Parquet data"""
+        try:
+            import pandas as pd
+            import os
+            
+            # Load latest data from Parquet file
+            data_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', f'{symbol.lower()}.parquet')
+            
+            if not os.path.exists(data_file):
+                raise ValueError(f"No data file found for {symbol}")
+            
+            df = pd.read_parquet(data_file)
+            if df.empty or 'close' not in df.columns:
+                raise ValueError(f"No close price data for {symbol}")
+            
+            # Get last known close price
+            close_price = df['close'].iloc[-1]
+            
+            # Apply 1% buffer
+            if side.upper() == 'BUY':
+                limit_price = close_price * 1.01
+            else:  # SELL
+                limit_price = close_price * 0.99
+            
+            log_warning(f"Fallback limit for {symbol}: close={close_price:.2f}, limit={limit_price:.2f}")
+            return round(limit_price, 2)
+            
+        except Exception as e:
+            log_error(f"Fallback pricing failed for {symbol}: {e}")
+            # Last resort - use a reasonable default
+            if side.upper() == 'BUY':
+                return 100.0  # Default buy limit
+            else:
+                return 50.0   # Default sell limit
     
     def place_limit_order(self, symbol: str, quantity: int, side: str, price: float) -> Dict:
         """Place a limit order"""
