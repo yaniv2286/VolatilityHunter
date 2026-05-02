@@ -8,6 +8,7 @@ os.environ['TOKENIZERS_PARALLELISM'] = 'false'
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Any
 from datetime import datetime
+import time
 import logging as _logging
 _bi_logger = _logging.getLogger('brokerage_interface')
 def log_info(msg): _bi_logger.info(msg)
@@ -530,8 +531,15 @@ class IBKRInterface(BrokerageInterface):
             
             # Place order
             trade = self.ib.placeOrder(contract, order)
+            fill_result = self._wait_for_trade_fill(trade, symbol, quantity, timeout_seconds=300)
+            if not fill_result.get('success'):
+                try:
+                    self.ib.cancelOrder(trade.order)
+                except Exception as cancel_error:
+                    log_error(f"Cancel attempt failed for {symbol}: {cancel_error}")
+                return fill_result
             
-            log_info(f"Placed Adaptive Limit order: {side.upper()} {quantity} {symbol} @ {limit_price:.2f} (SMART)")
+            log_info(f"Filled Adaptive Limit order: {side.upper()} {quantity} {symbol} @ {fill_result.get('filled_avg_price', limit_price):.2f} (SMART)")
             
             return {
                 'success': True,
@@ -540,7 +548,9 @@ class IBKRInterface(BrokerageInterface):
                 'quantity': quantity,
                 'side': side,
                 'type': 'adaptive_limit',
-                'status': trade.orderStatus.status
+                'status': trade.orderStatus.status,
+                'filled_qty': fill_result.get('filled_qty', 0),
+                'filled_avg_price': fill_result.get('filled_avg_price', 0)
             }
             
         except Exception as e:
@@ -581,6 +591,46 @@ class IBKRInterface(BrokerageInterface):
         except Exception as e:
             log_warning(f"Market data unavailable for {symbol}, using fallback: {e}")
             return self._fallback_limit_price(symbol, side)
+
+    def _wait_for_trade_fill(self, trade, symbol: str, quantity: int, timeout_seconds: int = 300) -> Dict:
+        """Wait for IBKR to confirm a real fill before reporting order success."""
+        start_time = time.time()
+        terminal_failures = {'Cancelled', 'Inactive', 'ApiCancelled'}
+        while time.time() - start_time < timeout_seconds:
+            try:
+                self.ib.sleep(1)
+                status = trade.orderStatus.status
+                filled_qty = float(trade.orderStatus.filled or 0)
+                avg_price = float(trade.orderStatus.avgFillPrice or 0)
+                if status == 'Filled' and filled_qty >= float(quantity) and avg_price > 0:
+                    return {
+                        'success': True,
+                        'order_id': str(trade.order.orderId),
+                        'symbol': symbol,
+                        'status': status,
+                        'filled_qty': filled_qty,
+                        'filled_avg_price': avg_price
+                    }
+                if status in terminal_failures:
+                    return {
+                        'success': False,
+                        'reason': f'Order {symbol} terminal status: {status}',
+                        'order_id': str(trade.order.orderId),
+                        'status': status,
+                        'filled_qty': filled_qty,
+                        'filled_avg_price': avg_price
+                    }
+            except Exception as e:
+                log_error(f"Fill monitor error for {symbol}: {e}")
+                return {'success': False, 'reason': f'Fill monitor error: {e}'}
+        return {
+            'success': False,
+            'reason': f'Order {symbol} not filled within {timeout_seconds}s',
+            'order_id': str(trade.order.orderId),
+            'status': trade.orderStatus.status,
+            'filled_qty': float(trade.orderStatus.filled or 0),
+            'filled_avg_price': float(trade.orderStatus.avgFillPrice or 0)
+        }
     
     def _fallback_limit_price(self, symbol: str, side: str) -> float:
         """Fallback to last known close price from Parquet data"""
@@ -612,11 +662,7 @@ class IBKRInterface(BrokerageInterface):
             
         except Exception as e:
             log_error(f"Fallback pricing failed for {symbol}: {e}")
-            # Last resort - use a reasonable default
-            if side.upper() == 'BUY':
-                return 100.0  # Default buy limit
-            else:
-                return 50.0   # Default sell limit
+            raise ValueError(f"No reliable price source for {symbol}: {e}")
     
     def place_limit_order(self, symbol: str, quantity: int, side: str, price: float) -> Dict:
         """Place a limit order"""

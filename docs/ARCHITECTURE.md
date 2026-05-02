@@ -1,6 +1,6 @@
 # VolatilityHunter Architecture - Single Source of Truth
 
-**Version**: Production v11.4 | **Updated**: 2026-04-21 | **Strategy**: v8.1 (Lean Pipeline)
+**Version**: Production v11.6 | **Updated**: 2026-05-01 | **Strategy**: v8.1 (Lean Pipeline)
 
 ---
 
@@ -8,7 +8,7 @@
 
 VolatilityHunter is a **deterministic quantitative trading fund** ($100k) using a **Lean Pipeline Architecture** with **100% autonomy**. The system executes one complete trading cycle per market day via Windows Task Scheduler, using **Tiingo Professional API** (parallel fetching) for data and **IBKR Paper Trading** for execution.
 
-**🔒 CURRENT STATUS**: Production-hardened with 11-layer Deterministic Guardrails - Gateway auto-login via Ghost-Typist IB API tab selection (~25s, always-spawned), parallel API fetching (15s for 2,135 tickers), HTML email reports with Purchase Date column, automatic failure notifications, ILS to USD conversion, IBKR sync preserves position history, zero margin usage verified. 10 positions, $85,626 total value.
+**🔒 CURRENT STATUS**: Production-hardened with v11.6 deterministic run orchestration - `scripts/run_daily_orchestrator.py` is the canonical entry point for Gateway startup, data update, health check, trading loop, manifest writing, and cleanup. Ghost-Typist is the sole login handler, IBC native LOGON credentials are not generated, Adaptive Limit orders require confirmed IBKR fills before portfolio mutation, and unsafe fallback prices are removed.
 
 ### Core Philosophy
 - **No Silent Failures**: Every error is logged, reported, and visible in Command Center
@@ -24,13 +24,24 @@ VolatilityHunter is a **deterministic quantitative trading fund** ($100k) using 
                     VOLATILITYHUNTER v8.1
                     LEAN PIPELINE ARCHITECTURE
 
-  Windows Task Scheduler (17:06 IST / 10:06 AM ET daily)
+  Windows Task Scheduler (17:06 IST / 10:06 AM ET Mon-Fri)
               |
               v
-    run_trading.bat (Command Center with Dead Man's Switch)
+    run_trading.bat (Command Center wrapper)
+              |
+              v
+    run_daily_orchestrator.py (canonical production entry)
               |
     +---------------------------+
-    | functional_health_check   |  --> Exit Code 0 gate (10 checks)
+    | auto_tws_manager          |  --> Gateway + Ghost-Typist retries
+    +---------------------------+
+              |
+    +---------------------------+
+    | update_data.py            |  --> Fresh data gate
+    +---------------------------+
+              |
+    +---------------------------+
+    | functional_health_check   |  --> Exit Code 0 gate
     +---------------------------+
               |
     +---------------------------+
@@ -62,7 +73,21 @@ VolatilityHunter is a **deterministic quantitative trading fund** ($100k) using 
   - `VOL_SIZE = True` — Volatility-adjusted sizing
 - **Signal Ranking**: `0.6 * annual_return + 0.4 * stoch_score`
 
-### daily_trading_loop.py (Live/Paper Entry Point)
+### run_daily_orchestrator.py (Canonical Production Entry Point)
+- **Single production command**: Scheduler and manual operation must use `python scripts/run_daily_orchestrator.py` or `run_trading.bat`.
+- **Gateway retries**: Starts Gateway with up to 3 bounded attempts, cleanup between attempts, and port 7497 verification.
+- **Run manifest**: Writes `data/run_manifest_YYYY-MM-DD.json` with step exit codes, elapsed seconds, Gateway attempts, and final status.
+- **No divergent path**: Running `daily_trading_loop.py` directly is a component test path, not the full production routine.
+
+### Windows Task Scheduler (`VolatilityHunter_Daily_Live`)
+- **Schedule**: Weekly Monday-Friday at 17:06.
+- **Action**: `cmd.exe /c "D:\GitHub\VolatilityHunter\scripts\DAILY_ROUTINE\run_trading.bat >> D:\GitHub\VolatilityHunter\logs\task_scheduler.log 2>&1"`.
+- **Working Directory**: `D:\GitHub\VolatilityHunter`.
+- **Wake Policy**: `WakeToRun=True`, `StartWhenAvailable=True`, restart count 3 at 5-minute intervals.
+- **Verifier**: `python scripts/verify_scheduler.py` must return Exit Code 0.
+- **Latest Proof**: On 2026-05-02, manual Scheduler trigger exited safely on Saturday before Gateway/trading; next run verified as Monday 2026-05-04 17:06.
+
+### daily_trading_loop.py (Trading Component)
 - **8-step autonomous pipeline**: scan → rank → execute → monitor → email → save
 - **Tiingo Bulk API Integration**: 3 requests for 2,147 tickers (1000 per request)
 - **IBKR Interface**: Port 7497 with paper mode fallback
@@ -84,7 +109,8 @@ VolatilityHunter is a **deterministic quantitative trading fund** ($100k) using 
 
 ### brokerage_interface.py
 - **Port 7497 Standard**: Active connection to IBKR TWS/Gateway
-- **Paper Mode Fallback**: Automatic switching when port unreachable
+- **Fill-Confirmed Orders**: Adaptive Limit orders return success only after IBKR reports `Filled`, requested quantity is filled, and average fill price is valid
+- **Unsafe Fallback Removed**: If live bid/ask and parquet fallback both fail, order placement aborts instead of using synthetic default prices
 - **Ironclad Guardrails**: 20% max position size, max 10 positions
 
 ### smart_data_loader_factory.py (Professional Data Tier)

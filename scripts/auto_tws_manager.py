@@ -249,8 +249,6 @@ LogToConsole=no
         config_lines = [
             "# IBC config - auto-managed by auto_tws_manager.py",
             "[IBC]",
-            f"IbLoginId={IBKR_LOGIN_ID}",
-            f"IbPassword={IBKR_PASSWORD}",
             f"TradingMode={IBKR_TRADING_MODE}",
             f"IbDir={self.gateway_dir.replace(chr(92), '/')}",
             "StoreSettingsOnServer=no",
@@ -271,11 +269,6 @@ LogToConsole=no
             "MaxLoginAttempts=3",
             "ReloginIfConnectionLost=yes",
             "AutoReconnect=yes",
-            "",
-            "[LOGON]",
-            f"IbLoginId={IBKR_LOGIN_ID}",
-            f"IbPassword={IBKR_PASSWORD}",
-            "ReadOnlyApi=yes",  # Disable automatic login
             "",
             "[IBGateway]",
             "ApiOnly=yes",

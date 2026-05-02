@@ -38,8 +38,8 @@ if not IBKR_LOGIN_ID or not IBKR_PASSWORD:
     sys.exit(1)
 
 # Configure pyautogui
-pyautogui.FAILSAFE = True  # Emergency stop on mouse corner
-pyautogui.PAUSE = 0.1     # Small delay between actions
+pyautogui.FAILSAFE = False
+pyautogui.PAUSE = 0.1
 
 # ── Logging ───────────────────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -96,8 +96,7 @@ class SurgicalGhostTypist:
                 window.restore()
             
             window.activate()
-            window.maximize()  # Ensure full visibility
-            time.sleep(2)  # Wait for render
+            time.sleep(2)
             
             # Verify window is active
             if not window.isActive:

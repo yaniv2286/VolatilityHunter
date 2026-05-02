@@ -1,6 +1,6 @@
 # 🎯 VolatilityHunter
 
-**Deterministic Quantitative Trading System | v11.4 - Portfolio Sync Hardened**
+**Deterministic Quantitative Trading System | v11.6 - Deterministic Automation + Fill-Confirmed Execution**
 
 ---
 
@@ -20,22 +20,28 @@
 # 1. Health Check (Critical - Exit Code 0 required)
 python scripts/functional_health_check.py
 
-# 2. Run Daily Trading (Production - includes Gateway auto-start)
+# 2. Verify Windows Task Scheduler
+python scripts/verify_scheduler.py
+
+# 3. Run Daily Trading (Production - canonical orchestrator)
+python scripts/run_daily_orchestrator.py
+
+# 4. Windows Task Scheduler wrapper
 .\scripts\DAILY_ROUTINE\run_trading.bat
 
-# 3. Manual Gateway Launch (if needed)
+# 5. Manual Gateway Launch (component test only)
 python scripts/auto_tws_manager.py --one-shot
 
-# 4. Update Data
+# 6. Update Data
 python scripts/update_data.py
 
-# 5. Backtest Strategy
+# 7. Backtest Strategy
 python scripts/backtest_v8_vs_v8_1.py
 
-# 6. Simulate Trading Day
+# 8. Simulate Trading Day
 python scripts/simulate_monday.py
 
-# 7. Monitor Live Logs
+# 9. Monitor Live Logs
 Get-Content logs/task_scheduler.log -Wait -Tail 50
 ```
 
@@ -45,14 +51,16 @@ Get-Content logs/task_scheduler.log -Wait -Tail 50
 
 ```
 ✅ Health Check System      : PASS (Exit Code 0, 10 checks)
-✅ Gateway Automation       : PASS (Ghost-Typist sole login, ~60s startup)
+✅ Daily Orchestrator       : PASS (Gateway -> Data -> Health -> Trading -> Cleanup)
+✅ Gateway Automation       : PASS (Ghost-Typist sole login, bounded retries)
 ✅ Deterministic Guardrails : PASS (11 protection layers active)
 ✅ ILS to USD Conversion    : PASS (Auto-detect and convert)
 ✅ Margin Protection        : PASS (Zero margin usage verified)
 ✅ Market Data Protocol     : PASS (Delayed data, reqMarketDataType(3))
-✅ Order Execution          : PASS (Market orders, SMART routing)
+✅ Order Execution          : PASS (Adaptive Limit, SMART routing, fill-confirmed)
 ✅ Portfolio Sync           : PASS (Live IBKR synchronization)
-✅ Daily Trading Routine    : PASS (Fully automated via Task Scheduler)
+✅ Daily Trading Routine    : PASS (Monday-Friday via Task Scheduler)
+✅ Scheduler Verification   : PASS (`scripts/verify_scheduler.py`, Exit Code 0)
 ✅ Email Notifications      : PASS (HTML format with log attachments)
 ✅ Failure Notifications    : PASS (Automatic error alerts)
 ✅ Data Pipeline            : PASS (Parallel Tiingo API, 15s for 2,136 tickers)
@@ -61,11 +69,13 @@ Get-Content logs/task_scheduler.log -Wait -Tail 50
 ALL SYSTEMS OPERATIONAL - Production-hardened with Deterministic Guardrails
 
 SYSTEM HIGHLIGHTS:
-  - **Gateway Startup**: ~60 seconds (15s IBC wait + Ghost-Typist login)
+  - **Canonical Entry**: `scripts/run_daily_orchestrator.py` writes `data/run_manifest_YYYY-MM-DD.json`
+  - **Scheduler**: `VolatilityHunter_Daily_Live` runs Monday-Friday at 17:06; next run verified as Monday 2026-05-04
+  - **Gateway Startup**: bounded retry supervisor around `auto_tws_manager.py --one-shot`
   - **Ghost-Typist**: Aggressive field clear, no-maximize, 790x610 natural window
   - **Trading Loop**: ~8 seconds (parallel API fetching)
   - **Email Reports**: Professional HTML format with color-coded P&L tables
-  - **Execution**: Market orders filling successfully across multiple exchanges
+  - **Execution**: Adaptive Limit orders only report success after IBKR confirms full fill
   - **Reliability**: Automatic failure notifications with full error details
   - **Data**: Tiingo bulk API (22 parallel requests for 2135 tickers)
   - **Automation**: 100% autonomous daily trading via Windows Task Scheduler
@@ -73,7 +83,42 @@ SYSTEM HIGHLIGHTS:
 
 ---
 
-## 🎯 Latest Achievements (v11.5)
+## 🎯 Latest Achievements (v11.6)
+
+### ✅ **Deterministic Automation + Fill-Confirmed Execution** (May 1, 2026)
+- **Canonical Orchestrator**: Added `scripts/run_daily_orchestrator.py`; Scheduler and manual production runs now use one path.
+- **Gateway Retries**: Orchestrator retries Gateway startup up to 3 times with cleanup between attempts.
+- **Run Manifest**: Writes `data/run_manifest_YYYY-MM-DD.json` with step exit codes, elapsed seconds, and final status.
+- **Ghost-Typist Hardening**: Removed window maximize and disabled PyAutoGUI failsafe to match documented natural-window automation protocol.
+- **IBC Login Race Removed**: IBC config no longer generates `[LOGON]`, `IbLoginId`, or `IbPassword`; Ghost-Typist owns credential injection.
+- **Fill-Confirmed Orders**: `brokerage_interface.py` waits for IBKR `Filled` status, full quantity, and valid average fill price before returning success.
+- **Unsafe Fallback Removed**: No synthetic `$100` buy or `$50` sell fallback prices; order placement aborts if no reliable price source exists.
+- **Validation**: Gateway invariant verifier, execution invariant verifier, py_compile, functional health check, and two backtests all returned Exit Code 0 on 2026-05-01.
+
+### ✅ **Scheduler Weekday Enforcement** (May 2, 2026)
+- **Task**: `VolatilityHunter_Daily_Live`.
+- **Schedule**: Weekly Monday-Friday at 17:06.
+- **Proof**: `schtasks` verified `Days: MON, TUE, WED, THU, FRI` and next run `2026-05-04 17:06`.
+- **Manual Trigger Test**: Saturday Scheduler run entered batch and exited safely with `US markets closed` before Gateway/trading.
+- **Verifier**: `python scripts/verify_scheduler.py` returned Exit Code 0.
+
+### 📊 **Backtest Results** (May 1, 2026)
+- **v8.1 vs v8.1.2** (`logs/backtest_v8_1_vs_v8_1_2_20260501_2041.json`):
+  - Trades: 41,510 vs 41,510
+  - 26yr CAGR: 12.88% vs 12.88%
+  - Max Drawdown: -36.68% vs -36.68%
+  - Sharpe: 0.62 vs 0.62
+  - Profit Factor: 1.51 vs 1.51
+  - Result: Trade count preserved; no metric improvement in this run.
+- **v8.1 vs v8.1.1** (`logs/backtest_v8_1_vs_v8_1_1_20260501_2041.json`):
+  - Trades: 41,510 vs 11,456
+  - 26yr CAGR: 13.94% vs 12.76%
+  - Max Drawdown: -35.86% vs -31.34%
+  - Sharpe: 0.58 vs 0.19
+  - Profit Factor: 1.51 vs 13.01
+  - Result: Drawdown improved, but trade count and 26yr CAGR degraded. v8.1 remains production default.
+
+## 🎯 Previous Achievements (v11.5)
 
 ### ✅ **Gateway Login Resilience** (April 23, 2026)
 - **IBC Native Login Disabled**: IBC puts directory path in username field with Gateway 10.37+; removed `[LOGON]` section from config.ini

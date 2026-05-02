@@ -1,6 +1,6 @@
 # VolatilityHunter Roadmap
 
-**Version**: Production v11.1 | **Updated**: 2026-04-10 | **Focus**: Future Development Goals
+**Version**: Production v11.6 | **Updated**: 2026-05-01 | **Focus**: Future Development Goals
 
 ---
 
@@ -8,13 +8,34 @@
 
 This roadmap outlines strategic initiatives and future enhancements for the VolatilityHunter quantitative trading system. Priorities are organized by impact, feasibility, and alignment with our deterministic trading philosophy.
 
-**🔒 CURRENT STATUS**: Gateway auto-login fully operational (8-10s startup), parallel API fetching (15s for 2,136 tickers), HTML email reports, automatic failure notifications. Trading loop completes in ~60 seconds. All systems nominal.
+**🔒 CURRENT STATUS**: Deterministic production orchestration implemented. `scripts/run_daily_orchestrator.py` is the canonical entry point with Gateway retries, data update, health check, trading loop, manifest writing, and cleanup. Adaptive Limit execution now requires confirmed IBKR fills before reporting success. v8.1 remains the production strategy default after May 1, 2026 backtests.
 
 ---
 
 ## 🚀 Strategic Initiatives
 
 ### Priority 1: System Resilience (Q2 2026)
+
+#### Completed: Deterministic Daily Orchestrator (2026-05-01)
+- **Implemented**: `scripts/run_daily_orchestrator.py` as the single production entry point.
+- **Implemented**: `run_trading.bat` now delegates to the orchestrator after environment setup.
+- **Implemented**: Gateway startup retry supervisor with cleanup between attempts.
+- **Implemented**: Run manifest at `data/run_manifest_YYYY-MM-DD.json`.
+- **Implemented**: `scripts/verify_gateway_login_invariants.py` and `scripts/verify_execution_invariants.py`.
+- **Validation**: All verification commands returned Exit Code 0 on 2026-05-01.
+
+#### Completed: Fill-Confirmed Execution (2026-05-01)
+- **Implemented**: Adaptive Limit order placement waits for `Filled`, full quantity, and valid average fill price before returning success.
+- **Implemented**: Removed unsafe synthetic fallback prices.
+- **Production Decision**: v8.1 remains strategy default. Reliability changes are infrastructure/execution changes, not strategy parameter changes.
+
+#### Next: IBKR Event Audit Ledger
+- **Goal**: Permanent forensic visibility for every IBKR order lifecycle event.
+- **Initiatives**:
+  - Persist `orderStatus`, `execDetails`, `commissionReport`, and API error events to `logs/ibkr_events_YYYY-MM-DD.log`.
+  - Persist structured order records to `data/orders/YYYY-MM-DD_orders.json`.
+  - Reconcile filled orders against IBKR positions before portfolio mutation.
+- **Success Metrics**: Zero false fills, every order has final terminal state, every rejection has broker error code/message.
 
 #### Enhanced Error Recovery
 - **Goal**: Zero-downtime trading operations

@@ -36,54 +36,14 @@ set PYTHONIOENCODING=utf-8
 set TOKENIZERS_PARALLELISM=false
 call venv\Scripts\activate.bat
 
-:: PILLAR 0: START IB GATEWAY WITH AUTO_TWS_MANAGER (Ghost-Typist Method)
-echo [VH] Starting IB Gateway (auto_tws_manager.py --one-shot)...
-python scripts\auto_tws_manager.py --one-shot
+:: CANONICAL ORCHESTRATOR: Gateway -> Data -> Health -> Trading -> Cleanup
+echo [VH] Running canonical daily orchestrator...
+python scripts\run_daily_orchestrator.py
 if %ERRORLEVEL% NEQ 0 (
-    echo [CRITICAL ERROR] IB Gateway failed to start
-    echo [VH] Sending failure notification email...
-    python scripts\send_gateway_failure_email.py
-    echo [VH] Trading SKIPPED - check email for details
+    echo [CRITICAL ERROR] Daily orchestrator failed - aborting execution
     goto :FAILED
 )
-echo [VH] IB Gateway API ready - proceeding to data update
-echo.
-
-:: 4. DATA PIPELINE UPDATE
-echo [VH] Data Pipeline: Fetching fresh market data...
-python scripts\update_data.py
-if %ERRORLEVEL% NEQ 0 (
-    echo [CRITICAL ERROR] Data update failed - stale data detected
-    echo [VH] Trading SKIPPED - check data logs
-    goto :FAILED
-)
-echo [VH] Data update completed successfully
-echo.
-
-:CONTINUE_EXECUTION
-
-:: 5. THE GATE - Health Check
-echo [VH] The Gate: Running functional health check...
-python scripts\functional_health_check.py
-if %ERRORLEVEL% NEQ 0 (
-    echo [CRITICAL ERROR] Health Check Failed - aborting execution
-    goto :FAILED
-)
-echo [VH] Health Check PASSED - systems GO
-
-:: 6. TRADING LOOP EXECUTION
-echo [VH] Trading Loop: Executing main trading logic...
-python scripts\daily_trading_loop.py
-if %ERRORLEVEL% NEQ 0 (
-    echo [CRITICAL ERROR] Trading Loop Failed - aborting execution
-    goto :FAILED
-)
-echo [VH] Trading Loop completed successfully
-
-:: PILLAR 4: STOP IB GATEWAY (CLEANUP)
-echo [VH] Stopping IB Gateway...
-python scripts\stop_gateway.py
-echo [VH] Gateway stopped - daily routine complete.
+echo [VH] Daily orchestrator completed successfully
 
 :: 7. CLEANUP - Kill Gateway and Watchdog
 echo [VH] Cleanup: Terminating IB Gateway and Watchdog processes...

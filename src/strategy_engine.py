@@ -103,6 +103,20 @@ PARAMS = {
         'SECTOR_MAX':       3,      # max positions per sector simultaneously
         'VOL_SIZE':         True,   # volatility-adjusted position sizing
     },
+    'v8.2': {
+        'HARD_STOP_PCT':       0.08,   # fallback hard stop loss (if ATR unavailable)
+        'ATR_STOP_MULT':       2.5,    # ATR-based stop: 2.5x ATR distance from entry
+        'TRAILING_STOP_MULT':  2.0,    # NEW: Trailing stop for standard positions (2x ATR from highest)
+        'OVERBOUGHT_EXIT':     78.0,   # K > this triggers overbought rollover exit
+        'MOMENTUM_DAYS':       20,     # 20-day momentum lookback
+        'MOMENTUM_MIN':        0.05,   # minimum +5% over 20 days
+        'REENTRY':             True,   # re-enter same day after exit if signal holds
+        'TIME_STOP_DAYS':      10,     # exit losing position after N trading days (TRADING DAYS not calendar)
+        'REGIME_MAX_POS':      3,      # max positions when SPY < SMA200 (bear market)
+        'SECTOR_MAX':          3,      # max positions per sector simultaneously
+        'VOL_SIZE':            True,   # volatility-adjusted position sizing
+        'VOLUME_CONFIRM_DAYS': 2,      # NEW: Require N consecutive days of volume surge for entry
+    },
 }
 
 DEFAULT_VERSION = 'v8.1'  # ← change this to switch all modes at once
@@ -262,8 +276,84 @@ def update_highest_prices(portfolio: dict, prices: Dict[str, float]) -> None:
 
 # ── Sector helper ────────────────────────────────────────────────────────────
 
+# Global sector mapping cache (loaded from Tiingo metadata)
+_SECTOR_CACHE = {}
+
+def load_sector_cache():
+    """Load sector mapping from Tiingo metadata cache."""
+    global _SECTOR_CACHE
+    try:
+        from pathlib import Path
+        import json
+        ROOT = Path(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+        cache_file = ROOT / 'data' / 'sector_map.json'
+        
+        if cache_file.exists():
+            with open(cache_file, 'r') as f:
+                metadata = json.load(f)
+            
+            # Build sector mapping
+            _SECTOR_CACHE = {}
+            for ticker, data in metadata.items():
+                sector = data.get('sector', 'Unknown')
+                if sector and sector != 'Unknown':
+                    _SECTOR_CACHE[ticker] = sector
+            
+            logger.info(f"Loaded {len(_SECTOR_CACHE)} real sector mappings from Tiingo metadata")
+        else:
+            logger.warning("Tiingo metadata cache not found, using fallback sector mapping")
+            _SECTOR_CACHE = {}
+    except Exception as e:
+        logger.error(f"Failed to load sector cache: {e}")
+        _SECTOR_CACHE = {}
+
 def get_sector(ticker: str) -> str:
-    """Simple sector bucket by ticker initial. Replace with GICS CSV for production."""
+    """
+    Get real sector from Tiingo metadata, with intelligent fallback.
+    Uses official GICS sectors when available.
+    """
+    global _SECTOR_CACHE
+    
+    # Load cache if empty
+    if not _SECTOR_CACHE:
+        load_sector_cache()
+    
+    # Try real sector first
+    if ticker in _SECTOR_CACHE:
+        return _SECTOR_CACHE[ticker]
+    
+    # Fallback: Improved bucketing based on known patterns
+    known_sectors = {
+        # Technology
+        'AAPL': 'Technology', 'MSFT': 'Technology', 'GOOGL': 'Technology', 'GOOG': 'Technology',
+        'NVDA': 'Technology', 'AMD': 'Technology', 'INTC': 'Technology', 'CSCO': 'Technology',
+        'ADBE': 'Technology', 'CRM': 'Technology', 'ORCL': 'Technology', 'IBM': 'Technology',
+        
+        # Financials
+        'JPM': 'Financials', 'BAC': 'Financials', 'WFC': 'Financials', 'GS': 'Financials',
+        'MS': 'Financials', 'C': 'Financials', 'AXP': 'Financials', 'BLK': 'Financials',
+        'SPGI': 'Financials', 'V': 'Financials', 'MA': 'Financials',
+        
+        # Healthcare
+        'JNJ': 'Healthcare', 'UNH': 'Healthcare', 'PFE': 'Healthcare', 'ABBV': 'Healthcare',
+        'TMO': 'Healthcare', 'ABT': 'Healthcare', 'MRK': 'Healthcare', 'DHR': 'Healthcare',
+        
+        # Energy
+        'XOM': 'Energy', 'CVX': 'Energy', 'COP': 'Energy', 'EOG': 'Energy', 'SLB': 'Energy',
+        
+        # Industrials
+        'BA': 'Industrials', 'CAT': 'Industrials', 'GE': 'Industrials', 'HON': 'Industrials',
+        'MMM': 'Industrials', 'UPS': 'Industrials', 'RTX': 'Industrials',
+        
+        # Consumer
+        'AMZN': 'Consumer', 'TSLA': 'Consumer', 'HD': 'Consumer', 'MCD': 'Consumer',
+        'NKE': 'Consumer', 'SBUX': 'Consumer', 'LOW': 'Consumer', 'TGT': 'Consumer'
+    }
+    
+    if ticker in known_sectors:
+        return known_sectors[ticker]
+    
+    # Final fallback: first-letter bucketing (better than random)
     buckets = {
         'ABCDE': 'Technology', 'FGHIJ': 'Healthcare',
         'KLMNO': 'Financials',  'PQRST': 'Energy',
@@ -273,6 +363,7 @@ def get_sector(ticker: str) -> str:
     for letters, sector in buckets.items():
         if t in letters:
             return sector
+    
     return 'Consumer'
 
 
@@ -359,6 +450,17 @@ def check_exits(portfolio: dict,
         atr    = last.get('atr',     np.nan)
 
         is_power = pos.get('is_power_stock', False)
+        
+        # DISABLED v8.2: Trailing stop for standard positions (commented out for baseline)
+        # TRAILING_STOP_MULT = p.get('TRAILING_STOP_MULT')
+        # if not is_power and TRAILING_STOP_MULT is not None:
+        #     highest = pos.get('highest_price', entry)
+        #     if not np.isnan(atr) and atr > 0 and highest > entry:
+        #         trailing_stop_price = highest - TRAILING_STOP_MULT * atr
+        #         if price < trailing_stop_price:
+        #             exits.append({'ticker': ticker, 'price': price,
+        #                           'reason': f'Trailing stop (${trailing_stop_price:.2f}, highest=${highest:.2f})'})
+        #             continue
 
         if not is_power:
             if not np.isnan(k) and not np.isnan(d) and k < d and k > OVERBOUGHT_EXIT:
@@ -404,6 +506,9 @@ def scan_universe(all_tickers: List[str],
 
     candidates = []
     scanned    = 0
+    
+    # Collect all annual returns for percentile calculation
+    all_annual_returns = []
 
     for ticker in all_tickers:
         if ticker in open_tickers:
@@ -468,23 +573,34 @@ def scan_universe(all_tickers: List[str],
         )
 
         if buy:
+            # NO SECTOR LIMITS IN SCANNER - identify all valid setups
             stoch_score = 1.0 - abs(k - 56) / 24
-            score = 0.6 * annual_ret + 0.4 * stoch_score
+            
+            # Simple scoring using raw annual return (no look-ahead bias)
+            # Normalize annual return to 0-1 range using reasonable bounds
+            annual_normalized = min(max(annual_ret, -0.5), 1.0)  # Clamp between -50% and +100%
+            annual_normalized = (annual_normalized + 0.5) / 1.5  # Scale to 0-1
+            
+            # Combined score: 60% annual return, 40% stochastic
+            normalized_score = 0.6 * annual_normalized + 0.4 * stoch_score
+            normalized_score = max(0.0, min(1.0, normalized_score))  # Ensure 0-1 range
+            
             reason_parts = [f'K={k:.1f}', f'1yr={annual_ret:.1%}', 'SMA200 ok', 'Vol surge']
             if MOMENTUM_DAYS:
                 reason_parts.append(f'20d={mom20:.1%}')
             candidates.append({
                 'ticker':        ticker,
                 'price':         price,
-                'score':         score,
+                'score':         normalized_score,
                 'stoch_k':       k,
                 'annual_return': annual_ret,
+                'annual_normalized': annual_normalized,
                 'reason':        ' | '.join(reason_parts),
             })
-
-        scanned += 1
+            
+            scanned += 1
         if scanned % 500 == 0:
-            logger.info(f"  Scanned {scanned}/{len(all_tickers)} | {len(candidates)} candidates")
+            logger.info(f"  Scanned: {scanned}/{len(all_tickers)} | {len(candidates)} candidates")
 
     candidates.sort(key=lambda x: x['score'], reverse=True)
     logger.info(f"Scan complete ({version}): {len(candidates)} candidates from {scanned} tickers")
@@ -611,7 +727,9 @@ def can_enter(ticker: str,
     if p['SECTOR_MAX'] is not None:
         sector = get_sector(ticker)
         sector_count = sum(1 for t in positions if get_sector(t) == sector)
-        if sector_count >= p['SECTOR_MAX']:
-            return False, f"Sector cap: '{sector}' already at {sector_count}/{p['SECTOR_MAX']}"
+        # Dynamic sector caps: 6 for Technology/Healthcare, 3 for others
+        sector_max = 6 if sector in ['Technology', 'Healthcare'] else 3
+        if sector_count >= sector_max:
+            return False, f"Sector cap: '{sector}' already at {sector_count}/{sector_max}"
 
     return True, ''

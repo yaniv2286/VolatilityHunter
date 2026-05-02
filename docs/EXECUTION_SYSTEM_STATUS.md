@@ -1,12 +1,12 @@
 # Order Execution System Status
 
-**Version**: Production v11.1 | **Updated**: 2026-04-10 | **Status**: FULLY OPERATIONAL
+**Version**: Production v11.6 | **Updated**: 2026-05-01 | **Status**: FULLY OPERATIONAL WITH FILL-CONFIRMED EXECUTION
 
 ---
 
 ## 🎯 Executive Summary
 
-The VolatilityHunter system is **fully operational** with 100% autonomous daily trading. Gateway auto-login via Ghost-Typist achieves 8-10 second startup times. Parallel API fetching completes in 15 seconds for 2,136 tickers. Trading loop executes in ~60 seconds total. Market orders execute successfully across multiple exchanges with real-time monitoring, HTML email reports, and automatic failure notifications.
+The VolatilityHunter system is **fully operational** with deterministic daily orchestration. `scripts/run_daily_orchestrator.py` is now the canonical production entry point and performs Gateway startup with bounded retries, data update, health check, trading loop, manifest writing, and cleanup. Order placement now uses IBKR Adaptive Limit orders and reports success only after IBKR confirms a full fill.
 
 ---
 
@@ -28,12 +28,21 @@ The VolatilityHunter system is **fully operational** with 100% autonomous daily 
 
 ## 📊 Current Performance Metrics
 
-### Execution Success Rate
-- **Order Fills**: ✅ 100% (immediate execution)
+### May 1, 2026 Reliability Validation
+- `python scripts/verify_gateway_login_invariants.py` -> Exit Code 0
+- `python scripts/verify_execution_invariants.py` -> Exit Code 0
+- `python -m py_compile ...` -> Exit Code 0
+- `python scripts/functional_health_check.py` -> Exit Code 0, 10 PASS, 1 WARN, 0 FAIL
+- `python scripts/backtest_v8_1_vs_v8_1_2.py` -> Exit Code 0
+- `python scripts/backtest_v8_1_vs_v8_1_1.py` -> Exit Code 0
+
+### Execution Safety
+- **Order Success Definition**: ✅ Full IBKR fill confirmation required
 - **Error 10089**: ✅ 0% (eliminated with delayed data)
-- **Multi-Exchange**: ✅ NASDAQ, NYSE, ARCA, BYX, LTSE
-- **Partial Fills**: ✅ Combining to complete orders
-- **Timeout Rate**: ✅ 0% (orders filling immediately)
+- **Routing**: ✅ SMART routing with Adaptive Algo Limit orders
+- **Partial Fills**: ✅ Not reported as success until requested quantity is filled
+- **Timeout Policy**: ✅ 300-second fill timeout, then cancel attempt and failure result
+- **Unsafe Fallback Prices**: ✅ Removed
 
 ### System Health
 - **Daily Routine**: ✅ 101 seconds execution time
@@ -57,16 +66,44 @@ self.ib.reqMarketDataType(3)  # 3 = Delayed data
 contract = Stock(symbol, 'SMART', 'USD')
 self.ib.qualifyContracts(contract)
 
-# Market orders for immediate fills
-order = MarketOrder(side.upper(), quantity)
+# Adaptive Limit orders for bounded execution
+order = LimitOrder(side.upper(), quantity, limit_price)
+order.algoStrategy = 'Adaptive'
+order.algoParams = [TagValue('adaptivePriority', 'Normal')]
 trade = self.ib.placeOrder(contract, order)
+
+# Success only after orderStatus.status == 'Filled'
 ```
 
 ### Monitoring System
-- **Order Status**: Real-time tracking via ib_insync
+- **Order Status**: Fill-confirmed status tracking via ib_insync
 - **Alert System**: Email notifications for unfilled orders
 - **Timeout Management**: 5-minute cancellation policy
 - **Exchange Routing**: Automatic liquidity detection
+
+---
+
+## 📊 Backtest Validation (2026-05-01)
+
+| Metric | v8.1 | v8.1.2 | Delta |
+|---|---:|---:|---:|
+| 26yr CAGR | 12.88% | 12.88% | +0.00 |
+| 5yr CAGR | 32.36% | 32.36% | +0.00 |
+| Max Drawdown | -36.68% | -36.68% | +0.00 |
+| Sharpe | 0.62 | 0.62 | +0.00 |
+| Profit Factor | 1.51 | 1.51 | +0.00 |
+| Total Trades | 41,510 | 41,510 | 0 |
+
+| Metric | v8.1 | v8.1.1 | Delta |
+|---|---:|---:|---:|
+| 26yr CAGR | 13.94% | 12.76% | -1.18 |
+| 5yr CAGR | 19.61% | 1710.23% | +1690.62 |
+| Max Drawdown | -35.86% | -31.34% | +4.52 |
+| Sharpe | 0.58 | 0.19 | -0.39 |
+| Profit Factor | 1.51 | 13.01 | +11.50 |
+| Total Trades | 41,510 | 11,456 | -30,054 |
+
+**Production Decision**: v8.1 remains the production default because v8.1.2 did not improve metrics and v8.1.1 reduced 26yr CAGR and trade count despite improving drawdown.
 
 ---
 

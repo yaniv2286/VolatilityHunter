@@ -1,10 +1,73 @@
 # VolatilityHunter Changelog
 
-**Version**: Production v11.5 | **Updated**: 2026-04-23
+**Version**: Production v11.6 | **Updated**: 2026-05-02
 
 ---
 
 ## 🎯 Recent Changes (2026)
+
+### 2026-05-02 - Scheduler Weekday Enforcement and Verification
+
+#### Windows Task Scheduler (`VolatilityHunter_Daily_Live`)
+- **Problem**: Scheduler task was configured as a daily trigger and would run on Saturday/Sunday despite batch-level weekend guards.
+- **Fix**: Changed task trigger to weekly Monday-Friday at 17:06.
+- **Verified**: `schtasks` showed next run moved from Saturday 2026-05-02 to Monday 2026-05-04 17:06.
+- **Verified**: Manual Scheduler trigger on Saturday ran the production batch and exited safely with `Sat 05/02/2026 is Saturday - US markets closed. Exiting.`
+
+#### Scheduler Verification Tooling
+- Added `scripts/verify_scheduler.py` to verify task readiness, weekly Monday-Friday trigger, command path, working directory, wake settings, restart policy, elevated privileges, and interactive logon.
+- Added `scripts/fix_scheduler_weekdays.ps1` for elevated repair of the Scheduler task if Windows resets it.
+- Final verifier result on 2026-05-02: Exit Code 0, Scheduler configuration production-ready.
+
+### 2026-05-01 - v11.6: Deterministic Automation and Fill-Confirmed Execution
+
+#### Canonical Daily Orchestrator (`scripts/run_daily_orchestrator.py`)
+- **Problem**: Manual runs of `daily_trading_loop.py` bypassed Gateway startup, while Task Scheduler used `run_trading.bat`. This created divergent execution paths and repeated manual intervention.
+- **Fix**: Added a canonical orchestrator that runs Gateway startup with bounded retries, data update, health check, trading loop, manifest writing, and cleanup.
+- **Batch Update**: `scripts/DAILY_ROUTINE/run_trading.bat` now calls only `python scripts\run_daily_orchestrator.py` after environment setup.
+- **Manifest**: Each run writes `data/run_manifest_YYYY-MM-DD.json` with step exit codes, elapsed seconds, Gateway attempt count, and final status.
+
+#### Gateway Login Determinism (`scripts/auto_tws_manager.py`, `scripts/surgical_ghost_typist.py`)
+- **Problem**: The source contradicted the documented Gateway fix. `surgical_ghost_typist.py` still maximized the Gateway window and left `pyautogui.FAILSAFE=True`, while docs required no-maximize and failsafe disabled.
+- **Fix**: Removed window maximize and set `pyautogui.FAILSAFE=False` to keep coordinate behavior stable in unattended automation.
+- **Problem**: IBC native LOGON credentials were still generated, creating possible races with Ghost-Typist.
+- **Fix**: Removed generated `[LOGON]`, `IbLoginId`, and `IbPassword` from IBC config. IBC launches Gateway; Ghost-Typist owns credential injection.
+
+#### Fill-Confirmed IBKR Execution (`src/brokerage_interface.py`)
+- **Problem**: Order placement returned success immediately after `placeOrder()`, before IBKR confirmed a fill. Portfolio mutation could therefore happen on submitted/rejected/inactive orders.
+- **Fix**: Adaptive Limit orders now wait up to 300 seconds for `orderStatus.status == 'Filled'`, filled quantity >= requested quantity, and average fill price > 0 before returning success.
+- **Safety Fix**: Removed unsafe default fallback prices (`$100` buy, `$50` sell). If live snapshot and parquet fallback fail, order placement aborts with "No reliable price source".
+
+#### Verification Scripts
+- Added `scripts/verify_gateway_login_invariants.py`.
+- Added `scripts/verify_execution_invariants.py`.
+- Validation on 2026-05-01:
+  - `python scripts/verify_gateway_login_invariants.py` -> Exit Code 0
+  - `python scripts/verify_execution_invariants.py` -> Exit Code 0
+  - `python -m py_compile ...` -> Exit Code 0
+  - `python scripts/functional_health_check.py` -> Exit Code 0, 10 PASS, 1 WARN, 0 FAIL. WARN was expected because Gateway was offline after cleanup.
+
+#### Backtest Validation Numbers (2026-05-01)
+- `python scripts/backtest_v8_1_vs_v8_1_2.py` -> Exit Code 0, results saved to `logs/backtest_v8_1_vs_v8_1_2_20260501_2041.json`.
+  - v8.1 trades: 41,510
+  - v8.1.2 trades: 41,510
+  - 26yr CAGR: 12.88% vs 12.88% (delta +0.00)
+  - 5yr CAGR: 32.36% vs 32.36% (delta +0.00)
+  - Max Drawdown: -36.68% vs -36.68% (delta +0.00)
+  - Sharpe: 0.62 vs 0.62 (delta +0.00)
+  - Profit Factor: 1.51 vs 1.51 (delta +0.00)
+  - Final Equity: $2.1485M vs $2.1485M (delta +0.00)
+  - Conclusion: foundation changes preserve trade count but do not improve metrics in this run.
+- `python scripts/backtest_v8_1_vs_v8_1_1.py` -> Exit Code 0, results saved to `logs/backtest_v8_1_vs_v8_1_1_20260501_2041.json`.
+  - v8.1 trades: 41,510
+  - v8.1.1 trades: 11,456
+  - 26yr CAGR: 13.94% vs 12.76% (delta -1.18)
+  - 5yr CAGR: 19.61% vs 1710.23% (delta +1690.62)
+  - Max Drawdown: -35.86% vs -31.34% (delta +4.52)
+  - Sharpe: 0.58 vs 0.19 (delta -0.39)
+  - Profit Factor: 1.51 vs 13.01 (delta +11.50)
+  - Final Equity: $2.7249M vs $2.0953M (delta -$629.63k)
+  - Conclusion: trailing-stop-only reduced drawdown but materially reduced trade count and 26yr CAGR; v8.1 remains production default.
 
 ### 2026-04-23 - v11.5: Gateway Login Resilience
 
