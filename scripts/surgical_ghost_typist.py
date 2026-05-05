@@ -9,6 +9,7 @@ Deterministic, strict timeouts, no brittle coordinates.
 import os
 import sys
 import time
+import socket
 import logging
 from pathlib import Path
 from typing import Optional
@@ -52,6 +53,8 @@ class SurgicalGhostTypist:
         self.window_titles = ["I B API", "IB Gateway", "IBKR Gateway", "Gateway", "IBKR", "TWS Gateway"]
         self.timeout_seconds = 60
         self.keystroke_delay = 0.1
+        self.api_port = 7497
+        self.api_wait_timeout = 120
         
     def find_gateway_window(self) -> Optional[gw.Win32Window]:
         """Find and activate the IB Gateway window."""
@@ -141,6 +144,26 @@ class SurgicalGhostTypist:
         except Exception as e:
             raise RuntimeError(f"Nuclear clear failed: {e}")
     
+    def wait_for_api_ready(self) -> bool:
+        """Wait for Gateway API to become available on port 7497."""
+        logger.info(f"Waiting for Gateway API on port {self.api_port} (timeout: {self.api_wait_timeout}s)...")
+        start_time = time.time()
+        
+        while time.time() - start_time < self.api_wait_timeout:
+            try:
+                with socket.create_connection(('127.0.0.1', self.api_port), timeout=2):
+                    elapsed = time.time() - start_time
+                    logger.info(f"✅ Gateway API ready on port {self.api_port} after {elapsed:.1f}s")
+                    return True
+            except (socket.timeout, ConnectionRefusedError, OSError):
+                pass
+            
+            time.sleep(2)
+        
+        elapsed = time.time() - start_time
+        logger.error(f"❌ Gateway API not ready after {elapsed:.1f}s")
+        return False
+    
         
     def execute_login(self) -> bool:
         """Execute the complete surgical login sequence."""
@@ -218,21 +241,26 @@ class SurgicalGhostTypist:
             except Exception as e:
                 logger.warning(f"Warning popup handling failed: {e}")
             
-            # Wait after login to see if Gateway stays open
-            logger.info("Waiting 10 seconds after login to verify Gateway stays open...")
-            time.sleep(10)
+            # CRITICAL: Wait for Gateway API to actually become available
+            logger.info("Credentials submitted. Waiting for Gateway API to start...")
             
-            # Check if Gateway window is still visible
+            if not self.wait_for_api_ready():
+                logger.error("Gateway API never became available after login")
+                logger.error("Possible causes: wrong credentials, 2FA required, IBKR server error, account locked")
+                logger.error("=" * 60)
+                return False
+            
+            # Verify Gateway window is still visible
             try:
                 if window.isVisible:
-                    logger.info("✅ Gateway window is still open after login")
+                    logger.info("✅ Gateway window is still open")
                 else:
-                    logger.warning("❌ Gateway window closed after login")
+                    logger.warning("⚠ Gateway window closed but API is running")
             except Exception as e:
                 logger.warning(f"Could not verify Gateway window state: {e}")
             
             logger.info("=" * 60)
-            logger.info("✅ SURGICAL LOGIN COMPLETED")
+            logger.info("✅ SURGICAL LOGIN COMPLETED - API VERIFIED")
             logger.info("=" * 60)
             return True
             

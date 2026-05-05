@@ -6,6 +6,24 @@
 
 ## 🎯 Recent Changes (2026)
 
+### 2026-05-05 - Ghost-Typist API Verification (CRITICAL FIX)
+
+#### Root Cause Analysis
+- **Problem**: Ghost-Typist reported success immediately after typing credentials without verifying the Gateway API actually started on port 7497.
+- **Impact**: Daily runs failed repeatedly with "Surgical Ghost-Typist failed" despite Ghost-Typist claiming success. The orchestrator retried 3 times, all failing the same way.
+- **Why It Kept Failing**: Ghost-Typist had no feedback loop. It typed username, password, pressed Enter, waited 10 seconds, then always returned `True` regardless of whether IBKR accepted the credentials or the API started.
+
+#### The Fix (`scripts/surgical_ghost_typist.py`)
+- **Added**: `wait_for_api_ready()` method that polls port 7497 for up to 120 seconds after credential submission.
+- **Changed**: `execute_login()` now only returns `True` if the Gateway API becomes reachable on port 7497.
+- **Error Detection**: If API never becomes available, Ghost-Typist now returns `False` and logs possible causes (wrong credentials, 2FA required, IBKR server error, account locked).
+- **Verification**: Ghost-Typist now reports "✅ SURGICAL LOGIN COMPLETED - API VERIFIED" only when port 7497 is actually reachable.
+
+#### Why This Is The Permanent Fix
+- Previous fixes addressed symptoms (window maximize, failsafe, IBC race conditions) but Ghost-Typist fundamentally could not tell if login succeeded.
+- Now Ghost-Typist has a real success criterion: the Gateway API must be running and reachable.
+- If login fails for any reason (bad credentials, 2FA, network error, session limit), Ghost-Typist will correctly report failure instead of false success.
+
 ### 2026-05-02 - Scheduler Weekday Enforcement and Verification
 
 #### Windows Task Scheduler (`VolatilityHunter_Daily_Live`)
