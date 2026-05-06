@@ -528,10 +528,10 @@ LogToConsole=no
             time.sleep(15)  # Give Gateway time to fully load
             
             # Launch Surgical Ghost-Typist for credential injection
-            ghost_script = Path(__file__).parent / "surgical_ghost_typist.py"
+            ghost_script = Path(__file__).parent / "ibc_login_helper.py"
             if ghost_script.exists():
                 logger.info("Launching Surgical Ghost-Typist for login...")
-                ghost_log = LOG_DIR / "surgical_ghost_typist.log"
+                ghost_log = LOG_DIR / "ghost_typist.log"
                 with open(ghost_log, 'a', encoding='utf-8') as gf:
                     ghost_process = subprocess.Popen(
                         [sys.executable, str(ghost_script)],
