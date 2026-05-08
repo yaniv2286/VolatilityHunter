@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  ibeam:
+    image: voyz/ibeam:latest
+    container_name: volatilityhunter_gateway
+    restart: unless-stopped
+    environment:
+      # IBKR Account Credentials
+      IBEAM_ACCOUNT: yanivl228
+      IBEAM_PASSWORD: ${IBKR_PASSWORD}
+      
+      # Gateway Configuration
+      IBEAM_GATEWAY_BASE_URL: https://localhost:5000
+      IBEAM_GATEWAY_STARTUP: 1
+      
+      # Port Configuration
+      IBEAM_GATEWAY_PORT: 7497
+      
+      # Trading Mode (paper trading)
+      IBEAM_TRADING_MODE: paper
+      
+      # Region
+      IBEAM_REGION: America
+      
+      # Logging
+      IBEAM_LOG_LEVEL: INFO
+      
+      # Authentication
+      IBEAM_REQUEST_RETRIES: 3
+      IBEAM_REQUEST_TIMEOUT: 30
+      
+      # Keep Gateway alive
+      IBEAM_MAINTENANCE_INTERVAL: 60
+      
+    ports:
+      # Gateway API port (IBKR API)
+      - "7497:7497"
+      # IBeam web interface/API
+      - "5000:5000"
+    
+    volumes:
+      # Persist IBeam configuration and session data
+      - ibeam_data:/srv/ibeam
+      
+    networks:
+      - volatilityhunter_network
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  ibeam_data:
+    driver: local
+
+networks:
+  volatilityhunter_network:
+    driver: bridge

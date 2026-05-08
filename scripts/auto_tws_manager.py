@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """
-AUTOMATED TWS MANAGER (IBC Edition)
-=====================================
-Fully headless, unattended IB Gateway auto-login using IBC.
+AUTOMATED TWS MANAGER (Ghost-Typist Edition)
+=============================================
+Fully headless IB Gateway using IBC + Ghost-Typist credential injection.
 - Reads IBKR credentials from .env (IBKR_LOGIN_ID / IBKR_PASSWORD)
-- Launches IB Gateway via IBC (no human login needed)
+- Launches IB Gateway via IBC
+- Ghost-Typist (ibc_login_helper.py) handles authentication via GUI automation
 - Monitors process health every 5 minutes
 - Auto-restarts if Gateway crashes
 - Starts keep-alive heartbeat after connection confirmed
 - ASCII output only (Task Scheduler compatible)
+- Requires interactive desktop session (Run only when user is logged on)
 
 Modes:
   - Watchdog mode (default): Runs indefinitely, monitoring Gateway health
@@ -245,15 +247,18 @@ LogToConsole=no
 
         IBC_DIR.mkdir(parents=True, exist_ok=True)
         
-        # Generate config.ini with credentials injected
+        # Generate config.ini (Ghost-Typist handles credentials via GUI automation)
         config_lines = [
             "# IBC config - auto-managed by auto_tws_manager.py",
+            "# Ghost-Typist handles authentication - credentials NOT stored here",
             "[IBC]",
+            "IbkrUserId=",
+            "IbkrPassword=",
             f"TradingMode={IBKR_TRADING_MODE}",
             f"IbDir={self.gateway_dir.replace(chr(92), '/')}",
             "StoreSettingsOnServer=no",
             "MinimizeMainWindow=yes",
-            "ExistingSessionDetectedAction=primary",
+            "ExistingSessionDetectedAction=restart",
             "AcceptIncomingConnectionAction=accept",
             "ShowAccountTradesWindow=no",
             "ShowAllTrades=no",

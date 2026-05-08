@@ -1,6 +1,6 @@
 # VolatilityHunter Architecture - Single Source of Truth
 
-**Version**: Production v11.6 | **Updated**: 2026-05-01 | **Strategy**: v8.1 (Lean Pipeline)
+**Version**: Production v9.0 | **Updated**: 2026-05-08 | **Strategy**: v8.1.1 (Ghost-Typist + Interactive Session)
 
 ---
 
@@ -8,7 +8,7 @@
 
 VolatilityHunter is a **deterministic quantitative trading fund** ($100k) using a **Lean Pipeline Architecture** with **100% autonomy**. The system executes one complete trading cycle per market day via Windows Task Scheduler, using **Tiingo Professional API** (parallel fetching) for data and **IBKR Paper Trading** for execution.
 
-**🔒 CURRENT STATUS**: Production-hardened with v11.6 deterministic run orchestration - `scripts/run_daily_orchestrator.py` is the canonical entry point for Gateway startup, data update, health check, trading loop, manifest writing, and cleanup. Ghost-Typist is the sole login handler, IBC native LOGON credentials are not generated, Adaptive Limit orders require confirmed IBKR fills before portfolio mutation, and unsafe fallback prices are removed.
+**🔒 CURRENT STATUS**: Production v9.0 - Ghost-Typist Authentication - `scripts/run_daily_orchestrator.py` is the canonical entry point for Gateway startup, data update, health check, trading loop, manifest writing, and cleanup. Ghost-Typist (ibc_login_helper.py) handles authentication via GUI automation, Adaptive Limit orders require confirmed IBKR fills before portfolio mutation, and unsafe fallback prices are removed. Requires interactive desktop session (Task Scheduler: "Run only when user is logged on"), proven working solution.
 
 ### Core Philosophy
 - **No Silent Failures**: Every error is logged, reported, and visible in Command Center
@@ -33,7 +33,7 @@ VolatilityHunter is a **deterministic quantitative trading fund** ($100k) using 
     run_daily_orchestrator.py (canonical production entry)
               |
     +---------------------------+
-    | auto_tws_manager          |  --> Gateway + Ghost-Typist retries
+    | auto_tws_manager          |  --> IBC + Ghost-Typist (GUI auth)
     +---------------------------+
               |
     +---------------------------+

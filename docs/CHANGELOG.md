@@ -1,12 +1,30 @@
 # VolatilityHunter Changelog
 
-**Version**: Production v11.6 | **Updated**: 2026-05-02
+**Version**: Production v9.0 | **Updated**: 2026-05-08
 
 ---
 
 ## 🎯 Recent Changes (2026)
 
-### 2026-05-05 - Ghost-Typist API Verification (CRITICAL FIX)
+### 2026-05-08 - v9.0: Ghost-Typist Restoration (FRESH START)
+
+#### Emergency Rollback from Native Authentication
+- **Problem**: Native IBC credential injection blocked by unknown IBKR security dialog. Docker IBeam failed with Selenium timeout (same GUI automation issues).
+- **Solution**: Restored proven Ghost-Typist authentication method (successful on May 6).
+- **Security Fix**: Removed plaintext credentials from `C:\IBC\config.ini` - Ghost-Typist now handles all authentication via .env.
+- **Task Scheduler**: Reconfigured to run in Interactive session mode (bypasses Session 0 isolation).
+- **Requirement**: User must be logged in during scheduled run time (17:06 IST).
+- **Verification**: Manual orchestrator run successful - Gateway launched, Ghost-Typist authenticated, Port 7497 ready, health check 11 PASS / 0 FAIL.
+- **Status**: Production ready for next scheduled run (May 11, 2026).
+
+#### Version 9.0 Signifies Fresh Start
+- Clean slate after Docker/Native IBC attempts
+- Proven working solution (Ghost-Typist + Interactive Session)
+- Real sector mapping active (2,135 tickers)
+- Strategy v8.1.1 with trailing stops
+- All core systems verified and healthy
+
+### 2026-05-05 - Ghost-Typist API Verification
 
 #### Root Cause Analysis
 - **Problem**: Ghost-Typist reported success immediately after typing credentials without verifying the Gateway API actually started on port 7497.

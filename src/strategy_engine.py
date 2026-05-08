@@ -103,6 +103,19 @@ PARAMS = {
         'SECTOR_MAX':       3,      # max positions per sector simultaneously
         'VOL_SIZE':         True,   # volatility-adjusted position sizing
     },
+    'v8.1.1': {
+        'HARD_STOP_PCT':       0.08,   # fallback hard stop loss (if ATR unavailable)
+        'ATR_STOP_MULT':       2.5,    # ATR-based stop: 2.5x ATR distance from entry
+        'TRAILING_STOP_MULT':  2.0,    # Trailing stop for standard positions (2x ATR from highest)
+        'OVERBOUGHT_EXIT':     78.0,   # K > this triggers overbought rollover exit
+        'MOMENTUM_DAYS':       20,     # 20-day momentum lookback
+        'MOMENTUM_MIN':        0.05,   # minimum +5% over 20 days
+        'REENTRY':             True,   # re-enter same day after exit if signal holds
+        'TIME_STOP_DAYS':      10,     # exit losing position after N trading days
+        'REGIME_MAX_POS':      3,      # max positions when SPY < SMA200 (bear market)
+        'SECTOR_MAX':          3,      # max positions per sector simultaneously
+        'VOL_SIZE':            True,   # volatility-adjusted position sizing
+    },
     'v8.2': {
         'HARD_STOP_PCT':       0.08,   # fallback hard stop loss (if ATR unavailable)
         'ATR_STOP_MULT':       2.5,    # ATR-based stop: 2.5x ATR distance from entry
@@ -119,7 +132,7 @@ PARAMS = {
     },
 }
 
-DEFAULT_VERSION = 'v8.1'  # ← change this to switch all modes at once
+DEFAULT_VERSION = 'v8.1.1'  # ← change this to switch all modes at once
 
 
 def get_params(version: str = DEFAULT_VERSION) -> dict:
@@ -451,16 +464,16 @@ def check_exits(portfolio: dict,
 
         is_power = pos.get('is_power_stock', False)
         
-        # DISABLED v8.2: Trailing stop for standard positions (commented out for baseline)
-        # TRAILING_STOP_MULT = p.get('TRAILING_STOP_MULT')
-        # if not is_power and TRAILING_STOP_MULT is not None:
-        #     highest = pos.get('highest_price', entry)
-        #     if not np.isnan(atr) and atr > 0 and highest > entry:
-        #         trailing_stop_price = highest - TRAILING_STOP_MULT * atr
-        #         if price < trailing_stop_price:
-        #             exits.append({'ticker': ticker, 'price': price,
-        #                           'reason': f'Trailing stop (${trailing_stop_price:.2f}, highest=${highest:.2f})'})
-        #             continue
+        # v8.1.1: Trailing stop for standard positions (2x ATR from highest)
+        TRAILING_STOP_MULT = p.get('TRAILING_STOP_MULT')
+        if not is_power and TRAILING_STOP_MULT is not None:
+            highest = pos.get('highest_price', entry)
+            if not np.isnan(atr) and atr > 0 and highest > entry:
+                trailing_stop_price = highest - TRAILING_STOP_MULT * atr
+                if price < trailing_stop_price:
+                    exits.append({'ticker': ticker, 'price': price,
+                                  'reason': f'Trailing stop (${trailing_stop_price:.2f}, highest=${highest:.2f})'})
+                    continue
 
         if not is_power:
             if not np.isnan(k) and not np.isnan(d) and k < d and k > OVERBOUGHT_EXIT:
