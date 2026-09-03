@@ -64,16 +64,16 @@ class TradingCircuitBreaker:
             self.logger.info(f"Executing {check_name}...")
             try:
                 check_func()
-                self.logger.info(f"✅ {check_name} PASSED")
+                self.logger.info(f"[OK] {check_name} PASSED")
             except CriticalFailure as e:
-                self.logger.error(f"❌ {check_name} FAILED: {e}")
+                self.logger.error(f"[FAIL] {check_name} FAILED: {e}")
                 raise
             except Exception as e:
-                self.logger.error(f"❌ {check_name} ERROR: {e}")
+                self.logger.error(f"[FAIL] {check_name} ERROR: {e}")
                 raise CriticalFailure(f"{check_name} encountered unexpected error: {e}")
         
         self.logger.info("=" * 60)
-        self.logger.info("✅ ALL PRE-FLIGHT CHECKS PASSED - TRADING ENABLED")
+        self.logger.info("[OK] ALL PRE-FLIGHT CHECKS PASSED - TRADING ENABLED")
         self.logger.info("=" * 60)
         return True
     
@@ -261,7 +261,7 @@ ACTION REQUIRED:
         from email_notifier import EmailNotifier
         notifier = EmailNotifier()
         
-        subject = "🚨 CRITICAL FAILURE - TRADING HALTED"
+        subject = "ALERT: CRITICAL FAILURE - TRADING HALTED"
         body = f"""
 Circuit Breaker triggered - trading system halted.
 

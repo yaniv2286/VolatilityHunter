@@ -54,7 +54,7 @@ def main():
             total_updated += batch_updated
             total_failed += batch_failed
             
-            print(f"  ✅ Batch {batch_num}: {batch_updated} updated, {batch_failed} failed")
+            print(f"  [OK] Batch {batch_num}: {batch_updated} updated, {batch_failed} failed")
             
             # Show sample of updated data if available
             ohlcv = result.get('ohlcv', {})
@@ -63,20 +63,20 @@ def main():
                 for j, (ticker, data) in enumerate(list(ohlcv.items())[:3]):
                     print(f"  {ticker}: O=${data['open']:.2f} H=${data['high']:.2f} L=${data['low']:.2f} C=${data['close']:.2f} V={data['volume']:,}")
         else:
-            print(f"  ❌ Batch {batch_num} failed: {result.get('error', 'Unknown error')}")
+            print(f"  [FAIL] Batch {batch_num} failed: {result.get('error', 'Unknown error')}")
             total_failed += len(batch)
     
     print("\n" + "=" * 60)
     print("PARQUET POISON FLUSH COMPLETE")
-    print(f"✅ Total updated: {total_updated}/{len(tickers)} tickers")
-    print(f"❌ Total failed: {total_failed}/{len(tickers)} tickers")
+    print(f"[OK] Total updated: {total_updated}/{len(tickers)} tickers")
+    print(f"[FAIL] Total failed: {total_failed}/{len(tickers)} tickers")
     
     if total_updated > 0:
-        print("✅ Fresh OHLCV data now in parquet files")
-        print("✅ No more high=price, low=price poison")
-        print("✅ Ready for clean foundation backtest")
+        print("[OK] Fresh OHLCV data now in parquet files")
+        print("[OK] No more high=price, low=price poison")
+        print("[OK] Ready for clean foundation backtest")
     else:
-        print("❌ No files updated - check API connection")
+        print("[FAIL] No files updated - check API connection")
     
     print("=" * 60)
     

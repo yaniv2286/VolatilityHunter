@@ -91,7 +91,7 @@ class LogMonitor:
         
         # Order issues (most critical)
         if order_issues:
-            report.append("🚨 CRITICAL: Order Execution Issues")
+            report.append("ALERT: CRITICAL: Order Execution Issues")
             report.append(f"  - {len(order_issues)} orders failed to fill:")
             for ticker in order_issues:
                 report.append(f"    • {ticker}")
@@ -107,7 +107,7 @@ class LogMonitor:
             
         # General errors
         if errors:
-            report.append("❌ General Errors")
+            report.append("[FAIL] General Errors")
             report.append(f"  - {len(errors)} error(s) found:")
             for i, error in enumerate(errors[:10]):  # Limit to first 10
                 report.append(f"    {i+1}. {error}")
@@ -136,7 +136,7 @@ class LogMonitor:
         
     def send_critical_alert(self, report):
         """Send critical alert email."""
-        subject = f"🚨 VolatilityHunter CRITICAL Issues Detected - {datetime.now().strftime('%Y-%m-%d')}"
+        subject = f"ALERT: VolatilityHunter CRITICAL Issues Detected - {datetime.now().strftime('%Y-%m-%d')}"
         
         if self.email_notifier.send_email(subject, report):
             logger.info("Critical alert email sent successfully")

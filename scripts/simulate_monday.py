@@ -1,20 +1,22 @@
 """
 simulate_monday.py
 ==================
-Simulates a full Monday trading run using real prices from last Monday (2026-02-24).
+Simulates a full trading run using today's parquet data (Tiingo-sourced).
+Accepts optional --date YYYY-MM-DD argument (defaults to today).
 Uses PAPER mode (no IBKR connection needed).
 Runs the full pipeline:
   1. Load current portfolio.json
-  2. Fetch real prices for 2026-02-24 from Yahoo Finance
+  2. Load prices from parquet files (already updated by Tiingo daily endpoint)
   3. Check exits on all open positions
   4. Scan 2,147 tickers for buy signals
   5. Execute entries (paper)
   6. Print full summary
 
-Does NOT modify portfolio.json — read-only simulation.
+Does NOT modify portfolio.json - read-only simulation.
 Exit code 0 = pipeline ran end-to-end cleanly.
 """
 
+import argparse
 import os
 import sys
 import json
@@ -22,13 +24,12 @@ import copy
 import shutil
 import logging
 import traceback
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
 import pandas as pd
 import numpy as np
-import yfinance as yf
 from dotenv import load_dotenv
 
 ROOT = Path(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -51,10 +52,16 @@ from src.strategy_engine import (
     DEFAULT_VERSION,
 )
 
+# ── CLI args ───────────────────────────────────────────────────────────────────
+_parser = argparse.ArgumentParser(description='Simulate a full trading day (no IBKR needed)')
+_parser.add_argument('--date', default=None,
+                     help='Simulation date YYYY-MM-DD (default: today)')
+_args, _ = _parser.parse_known_args()
+SIM_DATE = date.fromisoformat(_args.date) if _args.date else date.today()
+
 # ── Config ─────────────────────────────────────────────────────────────────────
-SIM_DATE        = date(2026, 2, 24)   # last Monday
 DATA_DIR        = ROOT / 'data'
-PORTFOLIO_FILE  = DATA_DIR / 'portfolio_sim.json'   # simulation snapshot — never the live file
+PORTFOLIO_FILE  = DATA_DIR / 'portfolio_sim.json'   # simulation snapshot - never the live file
 PORTFOLIO_LIVE  = DATA_DIR / 'portfolio.json'        # source of truth for live state
 TICKERS_FILE    = ROOT / 'tickers.txt'
 LOG_DIR         = ROOT / 'logs'
@@ -73,7 +80,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s %(levelname)s %(message)s',
     handlers=[
-        logging.FileHandler(str(LOG_DIR / f'simulate_monday_{SIM_DATE}.log'), encoding='utf-8'),
+        logging.FileHandler(str(LOG_DIR / f'simulate_{SIM_DATE}.log'), encoding='utf-8'),
         logging.StreamHandler(sys.stdout)
     ]
 )
@@ -90,7 +97,7 @@ def load_portfolio() -> dict:
         with open(PORTFOLIO_FILE) as f:
             p = json.load(f)
         logger.info(f"Portfolio: {len(p.get('positions', {}))} positions, ${p.get('cash', 0):,.2f} cash")
-        return copy.deepcopy(p)   # deep copy — we never write back
+        return copy.deepcopy(p)   # deep copy - we never write back
     except Exception as e:
         logger.error(f"Portfolio load failed: {e}")
         logger.error(traceback.format_exc())
@@ -98,38 +105,45 @@ def load_portfolio() -> dict:
 
 
 def fetch_prices_for_date(tickers: List[str], sim_date: date) -> Dict[str, float]:
-    """Fetch real closing prices for sim_date from Yahoo Finance."""
-    logger.info(f"Fetching real prices for {sim_date} ({len(tickers)} tickers)...")
+    """
+    Load closing prices from parquet files for the closest available date <= sim_date.
+    Uses Tiingo-sourced parquets (already updated by smart_data_loader_factory).
+    No Yahoo Finance dependency.
+    """
+    logger.info(f"Loading prices from parquets for {sim_date} ({len(tickers)} tickers)...")
     prices = {}
-    # Download a window around sim_date
-    start = pd.Timestamp(sim_date) - pd.Timedelta(days=5)
-    end   = pd.Timestamp(sim_date) + pd.Timedelta(days=2)
-    batch_size = 200
+    target = pd.Timestamp(sim_date)
+    missing = 0
 
-    for i in range(0, len(tickers), batch_size):
-        batch = tickers[i:i + batch_size]
+    for ticker in tickers:
+        parquet = DATA_DIR / f"{ticker.lower()}.parquet"
+        if not parquet.exists():
+            missing += 1
+            continue
         try:
-            data = yf.download(batch, start=start.strftime('%Y-%m-%d'),
-                               end=end.strftime('%Y-%m-%d'),
-                               auto_adjust=True, progress=False, threads=True)
-            if 'Close' in data:
-                close = data['Close']
-                # Find the row closest to sim_date
-                target = pd.Timestamp(sim_date)
-                available = close.index[close.index <= target]
-                if len(available) == 0:
-                    continue
-                row = close.loc[available[-1]]
-                for t in batch:
-                    if t in row.index and not pd.isna(row[t]):
-                        prices[t] = float(row[t])
+            df = pd.read_parquet(parquet)
+            if 'date' in df.columns:
+                df['date'] = pd.to_datetime(df['date'])
+                df = df.set_index('date')
+            if hasattr(df.index, 'tz') and df.index.tz is not None:
+                df.index = df.index.tz_localize(None)
+            df.sort_index(inplace=True)
+            available = df[df.index <= target]
+            if available.empty:
+                missing += 1
+                continue
+            last_row = available.iloc[-1]
+            close_col = 'adjClose' if 'adjClose' in df.columns else 'close'
+            price = float(last_row[close_col])
+            if price > 0:
+                prices[ticker] = price
+            else:
+                missing += 1
         except Exception as e:
-            logger.warning(f"Batch {i}-{i+batch_size} price error: {e}")
+            logger.debug(f"Price load {ticker}: {e}")
+            missing += 1
 
-        if (i // batch_size) % 5 == 0:
-            logger.info(f"  Price fetch progress: {min(i+batch_size, len(tickers))}/{len(tickers)}")
-
-    logger.info(f"Fetched prices for {len(prices)}/{len(tickers)} tickers")
+    logger.info(f"Loaded prices for {len(prices)}/{len(tickers)} tickers ({missing} missing/no parquet)")
     return prices
 
 
@@ -220,9 +234,9 @@ def simulate_entries(candidates: List[dict], portfolio: dict,
             logger.info(f"Skipping {ticker}: {reason}")
             continue
 
-        shares, cost = calc_position_size(portfolio, price, prices,
-                                          ticker=ticker, load_fn=_load,
-                                          version=DEFAULT_VERSION)
+        shares, cost, atr = calc_position_size(portfolio, price, prices,
+                                                 ticker=ticker, load_fn=_load,
+                                                 version=DEFAULT_VERSION)
         if shares <= 0 or cost > portfolio.get('cash', 0):
             continue
 
@@ -236,6 +250,7 @@ def simulate_entries(candidates: List[dict], portfolio: dict,
             'is_power_stock':  False,
             'stop_loss_price': price * (1 - p['HARD_STOP_PCT']),
             'highest_price':   price,
+            'atr':             atr,
         }
         executed.append({'ticker': ticker, 'shares': shares, 'price': price,
                          'cost': cost, 'reason': cand['reason']})
@@ -248,7 +263,7 @@ def simulate_entries(candidates: List[dict], portfolio: dict,
 def send_summary(portfolio: dict, exits: List[dict], entries: List[dict],
                  candidates: List[dict], sim_date: date, total_equity: float):
     try:
-        log_file = LOG_DIR / f'simulate_monday_{sim_date}.log'
+        log_file = LOG_DIR / f'simulate_{sim_date}.log'
 
         total_value = portfolio.get('cash', 0) + sum(
             p.get('shares', 0) * p.get('entry_price', 0)
@@ -299,7 +314,7 @@ def send_summary(portfolio: dict, exits: List[dict], entries: List[dict],
                 lines.append(f"  {c['ticker']:6s} | score={c['score']:.3f} | ${c['price']:.2f} | {c['reason']}")
 
         body = "\n".join(lines)
-        subject = f"VH SIM {sim_date} | {len(exits)} exits {len(entries)} entries | ${total_value:,.0f}"
+        subject = f"VH SIM {sim_date} | {len(exits)} exits {len(entries)} entries | ${total_value:,.0f} | PAPER"
 
         notifier = EmailNotifier()
         attachment = str(log_file) if log_file.exists() else None
@@ -325,7 +340,7 @@ def main():
         shutil.copy2(PORTFOLIO_LIVE, PORTFOLIO_FILE)
         logger.info(f"Snapshot: portfolio.json -> portfolio_sim.json")
     else:
-        logger.warning("portfolio.json not found — portfolio_sim.json will be used as-is")
+        logger.warning("portfolio.json not found - portfolio_sim.json will be used as-is")
 
     # Load tickers
     tickers = [t.strip() for t in TICKERS_FILE.read_text().splitlines() if t.strip()]
@@ -388,7 +403,7 @@ def main():
     # ── Summary ────────────────────────────────────────────────────────────────
     logger.info("")
     logger.info("=" * 65)
-    logger.info(f"SIMULATION SUMMARY — {SIM_DATE}")
+    logger.info(f"SIMULATION SUMMARY - {SIM_DATE}")
     logger.info("=" * 65)
     logger.info(f"Starting portfolio:  ${total_equity:,.2f}")
     logger.info(f"Exits:               {len(exit_trades)}")
@@ -411,7 +426,7 @@ def main():
     for c in candidates[:10]:
         logger.info(f"  {c['ticker']:6s} | score={c['score']:.3f} | ${c['price']:.2f} | {c['reason']}")
     logger.info("=" * 65)
-    logger.info("SIMULATION COMPLETE — portfolio.json was NOT modified")
+    logger.info("SIMULATION COMPLETE - portfolio.json was NOT modified")
     logger.info("=" * 65)
 
     # Step 6: Email summary with log attached

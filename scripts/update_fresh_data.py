@@ -41,7 +41,7 @@ def main():
     result = loader.update_all_stocks(test_tickers)
     
     if result['success']:
-        print(f"✅ SUCCESS: Updated {result['updated']}/{result['total']} tickers")
+        print(f"[OK] SUCCESS: Updated {result['updated']}/{result['total']} tickers")
         print(f"OHLCV data fetched for {len(result.get('ohlcv', {}))} tickers")
         
         # Show sample of fetched data
@@ -53,7 +53,7 @@ def main():
                 if i >= 4:
                     break
     else:
-        print(f"❌ FAILED: {result.get('error', 'Unknown error')}")
+        print(f"[FAIL] FAILED: {result.get('error', 'Unknown error')}")
         return 1
     
     # Test sector metadata fetching
@@ -61,7 +61,7 @@ def main():
     
     try:
         metadata = loader.fetch_all_metadata(test_tickers)
-        print(f"✅ SUCCESS: Fetched metadata for {len(metadata)} tickers")
+        print(f"[OK] SUCCESS: Fetched metadata for {len(metadata)} tickers")
         
         # Show sample sectors
         if metadata:
@@ -77,9 +77,9 @@ def main():
     
     print("\n" + "=" * 60)
     print("FRESH DATA UPDATE COMPLETE")
-    print("✅ OHLCV pipeline working")
-    print("✅ Parquet files updated") 
-    print("✅ Ready for backtest validation")
+    print("[OK] OHLCV pipeline working")
+    print("[OK] Parquet files updated") 
+    print("[OK] Ready for backtest validation")
     print("=" * 60)
     
     return 0

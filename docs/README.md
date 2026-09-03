@@ -47,26 +47,25 @@ Get-Content logs/task_scheduler.log -Wait -Tail 50
 
 ---
 
-## 📊 System Status
+## System Status (2026-09-02)
 
 ```
-✅ Health Check System      : PASS (Exit Code 0, 10 checks)
-✅ Daily Orchestrator       : PASS (Gateway -> Data -> Health -> Trading -> Cleanup)
-✅ Gateway Automation       : PASS (Ghost-Typist sole login, bounded retries)
-✅ Deterministic Guardrails : PASS (11 protection layers active)
-✅ ILS to USD Conversion    : PASS (Auto-detect and convert)
-✅ Margin Protection        : PASS (Zero margin usage verified)
-✅ Market Data Protocol     : PASS (Delayed data, reqMarketDataType(3))
-✅ Order Execution          : PASS (Adaptive Limit, SMART routing, fill-confirmed)
-✅ Portfolio Sync           : PASS (Live IBKR synchronization)
-✅ Daily Trading Routine    : PASS (Monday-Friday via Task Scheduler)
-✅ Scheduler Verification   : PASS (`scripts/verify_scheduler.py`, Exit Code 0)
-✅ Email Notifications      : PASS (HTML format with log attachments)
-✅ Failure Notifications    : PASS (Automatic error alerts)
-✅ Data Pipeline            : PASS (Parallel Tiingo API, 15s for 2,136 tickers)
-✅ Mode                     : IBKR_PAPER only (no simulation fallback)
+[OK] Health Check          : PASS (Exit Code 0, 12 PASS / 1 WARN / 0 FAIL)
+[OK] Data Pipeline         : Tiingo EOD only, IEX snapshots not persisted
+[OK] Parquet Repair        : Poisoned rows rebuilt from 2026-04-29
+[OK] Volume Sanity Gate    : PASS (0/49 sample tickers below threshold)
+[OK] Sector Map            : 1,655 real sectors / 2,135 tickers
+[OK] Strategy Default      : v8.1
+[OK] ATR Stop              : Capped at HARD_STOP_PCT
+[OK] Market Calendar       : NYSE holidays + early closes enforced
+[OK] Position Sizing         : ATR stored on entry, median ATR fixed
+[OK] Ledger                : Records actual IBKR fill price
+[OK] Order Execution       : Adaptive Limit, SMART routing, fill-confirmed
+[OK] Mode                  : IBKR_PAPER
+WARN IBKR Port 7497        : Not reachable outside trading hours
 ```
-ALL SYSTEMS OPERATIONAL - Production-hardened with Deterministic Guardrails
+Pipeline is healthy; full backtest on repaired data still required before further strategy changes.
+See `docs/POST_AUDIT_FIXES.md` for complete remediation details.
 
 SYSTEM HIGHLIGHTS:
   - **Canonical Entry**: `scripts/run_daily_orchestrator.py` writes `data/run_manifest_YYYY-MM-DD.json`

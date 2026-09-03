@@ -6,18 +6,20 @@ Imported by: daily_trading_loop.py, simulate_monday.py, full_universe_backtest.p
              strategy_v8_1.py (backtest), strategy_v8.py (backtest)
 
 All 4 modes (backtest, simulation, paper, live) use the same functions from here.
-No strategy logic lives in the caller scripts — only orchestration.
+No strategy logic lives in the caller scripts - only orchestration.
 
 Strategy versions:
   v7   = original  (HARD_STOP=5%, OVERBOUGHT_EXIT=70)
   v8   = optimized (HARD_STOP=8%, OVERBOUGHT_EXIT=78, 20d momentum, re-entry)
   v8.1 = production (v8 + regime filter + sector cap + time stop + vol sizing)
 
-CHANGE STRATEGY PARAMETERS HERE — all modes pick them up automatically.
+CHANGE STRATEGY PARAMETERS HERE - all modes pick them up automatically.
 """
 
 import logging
+import os
 import traceback
+from datetime import datetime, time
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -61,13 +63,16 @@ POSITION_SIZE_PCT = 0.20
 MIN_PRICE         = 5.0
 MIN_LIQUIDITY     = 500_000
 VOLUME_SURGE      = 1.5
+MARKET_OPEN_MIN   = 570   # 9:30 ET in minutes from midnight
+MARKET_CLOSE_MIN  = 960   # 16:00 ET in minutes from midnight
+MARKET_DURATION   = 390   # 6.5 hours in minutes
 CAGR_FILTER       = 0.15
 STOCH_LOW         = 32.0
 STOCH_HIGH        = 80.0
 
 # ── Version-specific parameters ───────────────────────────────────────────────
 # !! THIS IS THE SINGLE SOURCE OF TRUTH !!
-# Change parameters here — backtest, simulation, paper, and live all read from PARAMS.
+# Change parameters here - backtest, simulation, paper, and live all read from PARAMS.
 PARAMS = {
     'v7': {
         'HARD_STOP_PCT':    0.05,
@@ -109,9 +114,9 @@ PARAMS = {
         'TRAILING_STOP_MULT':  2.0,    # Trailing stop for standard positions (2x ATR from highest)
         'OVERBOUGHT_EXIT':     78.0,   # K > this triggers overbought rollover exit
         'MOMENTUM_DAYS':       20,     # 20-day momentum lookback
-        'MOMENTUM_MIN':        0.05,   # minimum +5% over 20 days
+        'MOMENTUM_MIN':        0.02,   # minimum +2% over 20 days (lowered from 5% for bear recovery)
         'REENTRY':             True,   # re-enter same day after exit if signal holds
-        'TIME_STOP_DAYS':      10,     # exit losing position after N trading days
+        'TIME_STOP_DAYS':      15,     # exit losing position after N TRADING days (not calendar)
         'REGIME_MAX_POS':      3,      # max positions when SPY < SMA200 (bear market)
         'SECTOR_MAX':          3,      # max positions per sector simultaneously
         'VOL_SIZE':            True,   # volatility-adjusted position sizing
@@ -132,7 +137,7 @@ PARAMS = {
     },
 }
 
-DEFAULT_VERSION = 'v8.1.1'  # ← change this to switch all modes at once
+DEFAULT_VERSION = 'v8.1'  # ← change this to switch all modes at once
 
 
 def get_params(version: str = DEFAULT_VERSION) -> dict:
@@ -186,7 +191,7 @@ def load_and_prepare(path_or_df, min_rows: int = 300,
 
 def get_dd_scale(portfolio: dict) -> float:
     """
-    Reduce position size during drawdown — matches backtest behaviour.
+    Reduce position size during drawdown - matches backtest behaviour.
     -10% DD -> 50% of normal size
     -20% DD -> 25% of normal size
     """
@@ -249,7 +254,7 @@ def promote_power_stocks(portfolio: dict,
 
 
 def _qualifies_for_power(df: pd.DataFrame) -> bool:
-    """2-consecutive-day power criteria — matches backtest state machine."""
+    """2-consecutive-day power criteria - matches backtest state machine."""
     close_col = get_col(df, ['adjClose', 'Close', 'close'])
     vol_col   = get_col(df, ['Volume', 'volume', 'adjVolume'])
     if close_col is None or vol_col is None:
@@ -305,13 +310,13 @@ def load_sector_cache():
             with open(cache_file, 'r') as f:
                 metadata = json.load(f)
             
-            # Build sector mapping
+            # Build sector mapping - ignore Unknown or Tiingo "Field not available" placeholders
             _SECTOR_CACHE = {}
             for ticker, data in metadata.items():
                 sector = data.get('sector', 'Unknown')
-                if sector and sector != 'Unknown':
+                if sector and sector != 'Unknown' and 'not available' not in str(sector).lower():
                     _SECTOR_CACHE[ticker] = sector
-            
+
             logger.info(f"Loaded {len(_SECTOR_CACHE)} real sector mappings from Tiingo metadata")
         else:
             logger.warning("Tiingo metadata cache not found, using fallback sector mapping")
@@ -422,11 +427,12 @@ def check_exits(portfolio: dict,
             last = df.iloc[-1]
             atr = last.get('atr', np.nan)
 
-        # ATR-based stop (v8.1+)
+        # ATR-based stop (v8.1+) - capped at the HARD_STOP_PCT to avoid giant losses
         if ATR_STOP_MULT is not None and not np.isnan(atr) and atr > 0:
             stop_distance = ATR_STOP_MULT * atr
             stop_pct = stop_distance / entry if entry > 0 else HARD_STOP_PCT
-            
+            stop_pct = min(stop_pct, HARD_STOP_PCT)
+
             if pnl_pct <= -stop_pct:
                 exits.append({'ticker': ticker, 'price': price,
                               'reason': f'ATR stop ({pnl_pct:.1%}, {stop_pct:.1%} threshold)'})
@@ -438,15 +444,16 @@ def check_exits(portfolio: dict,
                               'reason': f'Hard stop ({pnl_pct:.1%})'})
                 continue
 
-        # Time stop (v8.1)
+        # Time stop (v8.1) - counts TRADING days (weekdays), not calendar days
         if TIME_STOP_DAYS is not None:
             try:
                 from datetime import date as _date, datetime as _dt
+                import numpy as _np
                 entry_dt = _dt.strptime(pos.get('entry_date', str(today)), '%Y-%m-%d').date()
-                days_held = (today - entry_dt).days
-                if days_held >= TIME_STOP_DAYS and pnl_pct < 0:
+                trading_days_held = int(_np.busday_count(entry_dt, today))
+                if trading_days_held >= TIME_STOP_DAYS and pnl_pct < 0:
                     exits.append({'ticker': ticker, 'price': price,
-                                  'reason': f'Time stop ({days_held}d, {pnl_pct:.1%})'})
+                                  'reason': f'Time stop ({trading_days_held}td, {pnl_pct:.1%})'})
                     continue
             except Exception:
                 pass
@@ -495,6 +502,29 @@ def check_exits(portfolio: dict,
     return exits
 
 
+# ── Volume normalization helper ───────────────────────────────────────────────
+
+def _get_market_elapsed_fraction() -> float:
+    """
+    Returns the fraction of the US trading day (9:30-16:00 ET) that has elapsed.
+    Used to normalize volume: at 10:00am ET only ~7.7% of daily volume is expected.
+    Returns 1.0 if market is closed (safe for EOD runs and backtests).
+    Minimum floor of 0.05 to avoid division issues near open.
+    """
+    try:
+        import pytz
+        et = pytz.timezone('US/Eastern')
+        now_et = datetime.now(et)
+        minutes_since_midnight = now_et.hour * 60 + now_et.minute
+        elapsed = minutes_since_midnight - MARKET_OPEN_MIN
+        if elapsed <= 0 or elapsed >= MARKET_DURATION:
+            return 1.0  # Before open or after close: use full-day volume (backtest-safe)
+        frac = elapsed / MARKET_DURATION
+        return max(frac, 0.05)  # Floor at 5% to avoid near-zero threshold
+    except Exception:
+        return 1.0  # Fallback: full-day comparison (original behavior)
+
+
 # ── Entry scan logic ──────────────────────────────────────────────────────────
 
 def scan_universe(all_tickers: List[str],
@@ -506,7 +536,7 @@ def scan_universe(all_tickers: List[str],
     """
     Scan all tickers for buy signals. Returns ranked list of candidates.
     load_fn(ticker) -> Optional[pd.DataFrame]
-    recently_exited: set of tickers exited today — skip unless version=v8 with REENTRY=True
+    recently_exited: set of tickers exited today - skip unless version=v8 with REENTRY=True
     """
     p = get_params(version)
     CAGR_MIN        = CAGR_FILTER
@@ -577,10 +607,14 @@ def scan_universe(all_tickers: List[str],
                 scanned += 1
                 continue
 
+        # Backtest-matched volume filter: require a full-day 1.5x volume surge.
+        # Do NOT use intraday elapsed-fraction scaling; it poisoned live signals with partial volume.
+        vol_threshold = vsma * VOLUME_SURGE
+
         buy = (
             STOCH_LOW <= k <= STOCH_HIGH and
             price > sma200 and
-            volume >= vsma * VOLUME_SURGE and
+            volume >= vol_threshold and
             annual_ret >= CAGR_MIN and
             (price * volume) >= MIN_LIQUIDITY
         )
@@ -648,9 +682,14 @@ def get_spy_regime(spy_parquet_path, cutoff_date=None) -> bool:
         if close_col is None or 'sma_200' not in spy_df.columns or spy_df.empty:
             return True
         last = spy_df.iloc[-1]
-        is_bull = float(last[close_col]) > float(last['sma_200'])
+        sma200_val = last['sma_200']
+        if pd.isna(sma200_val):
+            logger.warning(f"SPY SMA200 is NaN (only {len(spy_df)} rows, need 200) - "
+                           f"defaulting BULL. SPY parquet needs repair!")
+            return True
+        is_bull = float(last[close_col]) > float(sma200_val)
         logger.info(f"SPY regime: {'BULL' if is_bull else 'BEAR'} "
-                    f"(close={last[close_col]:.2f} vs SMA200={last['sma_200']:.2f})")
+                    f"(close={last[close_col]:.2f} vs SMA200={sma200_val:.2f})")
         return is_bull
     except Exception as e:
         logger.warning(f"get_spy_regime failed: {e} - defaulting BULL")
@@ -673,32 +712,40 @@ def calc_position_size(portfolio: dict,
                        prices: Dict[str, float],
                        ticker: str = '',
                        load_fn=None,
-                       version: str = DEFAULT_VERSION) -> Tuple[int, float]:
+                       version: str = DEFAULT_VERSION) -> Tuple[int, float, float]:
     """
-    Returns (shares, cost) using 20% of equity with drawdown + vol scaling.
-    Returns (0, 0) if position not viable.
+    Returns (shares, cost, atr) using 20% of equity with drawdown + vol scaling.
+    Returns (0, 0, 0) if position not viable.
     """
     p = get_params(version)
     dd_scale     = get_dd_scale(portfolio)
     total_equity = _portfolio_equity(portfolio, prices)
+    atr_val      = 0.0
 
     # v8.1: volatility-adjusted sizing
     vol_scale = 1.0
     if p['VOL_SIZE'] and load_fn is not None and ticker:
         try:
-            # median ATR% across open positions
-            atr_pcts = []
-            for t, pos in portfolio.get('positions', {}).items():
-                ep = pos.get('entry_price', 0)
-                if ep > 0 and pos.get('atr', 0) > 0:
-                    atr_pcts.append(pos['atr'] / ep)
-            median_atr = float(np.median(atr_pcts)) if atr_pcts else 0.02
-
             df_c = load_fn(ticker)
             if df_c is not None and not df_c.empty:
                 atr_val = float(df_c.iloc[-1].get('atr', 0))
-                if atr_val > 0 and price > 0 and median_atr > 0:
-                    atr_pct = atr_val / price
+
+            if atr_val > 0 and price > 0:
+                atr_pct = atr_val / price
+
+                # median ATR% across open positions; if none, use the candidate's own ATR%
+                atr_pcts = []
+                for t, pos in portfolio.get('positions', {}).items():
+                    ep = pos.get('entry_price', 0)
+                    if ep > 0 and pos.get('atr', 0) > 0:
+                        atr_pcts.append(pos['atr'] / ep)
+
+                if atr_pcts:
+                    median_atr = float(np.median(atr_pcts))
+                else:
+                    median_atr = atr_pct
+
+                if median_atr > 0:
                     vol_scale = min(1.0, median_atr / atr_pct)
                     vol_scale = max(0.25, vol_scale)
         except Exception as e:
@@ -711,12 +758,12 @@ def calc_position_size(portfolio: dict,
     # TRIPLE-LOCK CASH GUARD: Use safe buying power (minimum of all sources)
     # This prevents margin usage from inflated IBKR balances
     safe_cash = get_safe_buying_power(portfolio)
-    
+
     # NO MARGIN/LEVERAGE: Only trade with available cash
     # Check cost against safe cash AND allocation
     if shares <= 0 or cost > safe_cash or cost > alloc:
-        return 0, 0.0
-    return shares, cost
+        return 0, 0.0, 0.0
+    return shares, cost, atr_val
 
 
 def can_enter(ticker: str,

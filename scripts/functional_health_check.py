@@ -177,6 +177,76 @@ def check_parquet_universe() -> dict:
     return _result("data/*.parquet", PASS, f"{len(spy_excluded)} ticker parquets present")
 
 
+def check_last_bar_volume_sanity() -> dict:
+    """Ensure the latest bar in a sample of parquets looks like a full EOD bar."""
+    try:
+        import pandas as pd
+        import numpy as np
+        data_dir = ROOT / 'data'
+        parquets = [p for p in data_dir.glob('*.parquet') if p.stem.upper() != 'SPY']
+        if not parquets:
+            return _result("Last-bar volume sanity", WARN, "No parquets found")
+
+        sample = parquets[:50]  # 50-ticker sample
+        bad = 0
+        checked = 0
+        for path in sample:
+            try:
+                df = pd.read_parquet(path)
+                if 'date' in df.columns:
+                    df['date'] = pd.to_datetime(df['date'])
+                    df = df.set_index('date')
+                if len(df) < 60:
+                    continue
+                if 'volume' not in df.columns:
+                    continue
+                # Compute 30-day volume SMA on the fly if not persisted.
+                if 'volume_sma' not in df.columns:
+                    df['volume_sma'] = df['volume'].rolling(window=30, min_periods=1).mean()
+                last = df.iloc[-1]
+                vsma = last['volume_sma']
+                vol = last['volume']
+                if pd.isna(vsma) or vsma <= 0 or pd.isna(vol):
+                    continue
+                checked += 1
+                if vol < vsma * 0.2:
+                    bad += 1
+            except Exception:
+                continue
+
+        if checked == 0:
+            return _result("Last-bar volume sanity", WARN, "Could not evaluate any sample bars")
+        ratio = bad / checked
+        detail = f"{bad}/{checked} sample tickers have last-bar volume < 20% of 30-day SMA"
+        if ratio > 0.2:
+            return _result("Last-bar volume sanity", FAIL,
+                           f"{detail} - IEX partial-volume poisoning likely; run repair_poisoned_parquets.py")
+        return _result("Last-bar volume sanity", PASS, detail)
+    except Exception as e:
+        return _result("Last-bar volume sanity", FAIL, f"{e}\n{traceback.format_exc()}")
+
+
+def check_sector_map() -> dict:
+    try:
+        path = ROOT / 'data' / 'sector_map.json'
+        if not path.exists():
+            return _result("Sector map", WARN, "sector_map.json not found; run python scripts/update_data.py")
+        data = json.load(open(path))
+        total = len(data)
+        real = sum(1 for v in data.values()
+                   if v.get('sector') not in (None, 'Unknown', '')
+                   and 'not available' not in str(v.get('sector', '')).lower())
+        pct = (real / total * 100) if total else 0
+        if total == 0:
+            return _result("Sector map", WARN, "sector_map.json is empty")
+        if pct < 50:
+            return _result("Sector map", WARN,
+                           f"Only {real}/{total} ({pct:.1f}%) real sector mappings - sector cap will be unreliable")
+        return _result("Sector map", PASS, f"{real}/{total} ({pct:.1f}%) real sector mappings")
+    except Exception as e:
+        return _result("Sector map", FAIL, f"{e}\n{traceback.format_exc()}")
+
+
 def check_ibkr_port() -> dict:
     """PORT 7497 REACHABILITY TEST - Deterministic Guardrail"""
     try:
@@ -245,6 +315,8 @@ def main() -> int:
         check_tickers,
         check_spy_parquet,
         check_parquet_universe,
+        check_last_bar_volume_sanity,
+        check_sector_map,
         check_ibkr_port,
         check_portfolio_sanity,
     ]

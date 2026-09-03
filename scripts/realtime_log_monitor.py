@@ -106,7 +106,7 @@ class RealtimeLogMonitor:
         if now - self.last_alert_time.get(alert_key, 0) < self.alert_cooldown:
             return
             
-        subject = f"🚨 Order Cancellation Alert - {ticker}"
+        subject = f"ALERT: Order Cancellation Alert - {ticker}"
         message = f"""
 Order failed to fill and was cancelled:
 
@@ -158,7 +158,7 @@ This is an automated alert from VolatilityHunter.
         if now - self.last_alert_time.get(alert_key, 0) < self.alert_cooldown:
             return
             
-        subject = "❌ General Error Alert"
+        subject = "[FAIL] General Error Alert"
         message = f"""
 General error detected in trading system:
 

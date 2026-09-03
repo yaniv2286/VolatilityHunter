@@ -1,6 +1,6 @@
 # Order Execution System Status
 
-**Version**: Production v11.6 | **Updated**: 2026-05-01 | **Status**: FULLY OPERATIONAL WITH FILL-CONFIRMED EXECUTION
+**Version**: Production v11.6 | **Updated**: 2026-05-01 | **Status**: SUPERSEDED - See `docs/POST_AUDIT_FIXES.md` for the 2026-09-02 audit remediation
 
 ---
 

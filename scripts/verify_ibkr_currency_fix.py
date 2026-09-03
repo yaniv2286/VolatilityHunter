@@ -27,10 +27,10 @@ def main():
     
     ibkr = get_brokerage_interface(ibkr_config)
     if not ibkr.connect():
-        print("❌ FAILED: Could not connect to IBKR")
+        print("[FAIL] FAILED: Could not connect to IBKR")
         return 1
     
-    print("✅ PASS: Connected to IBKR")
+    print("[OK] PASS: Connected to IBKR")
     time.sleep(2)
     
     # Test 2: Get account info
@@ -38,7 +38,7 @@ def main():
     info = ibkr.get_account_info()
     
     if not info:
-        print("❌ FAILED: No account info returned")
+        print("[FAIL] FAILED: No account info returned")
         ibkr.disconnect()
         return 1
     
@@ -51,11 +51,11 @@ def main():
     print(f"  Buying Power: ₪{buying_power:,.2f}")
     
     if cash == 0 or equity == 0:
-        print("❌ FAILED: Cash or equity is zero (currency not read correctly)")
+        print("[FAIL] FAILED: Cash or equity is zero (currency not read correctly)")
         ibkr.disconnect()
         return 1
     
-    print("✅ PASS: Account values read correctly")
+    print("[OK] PASS: Account values read correctly")
     
     # Test 3: Position sizing with real cash
     print("\n[TEST 3] Testing position sizing (NO MARGIN enforcement)...")
@@ -70,60 +70,60 @@ def main():
     test_price = 100.0
     prices = {'SPY': 500.0}  # Dummy price for equity calculation
     
-    shares, cost = calc_position_size(portfolio, test_price, prices, 'TEST')
+    shares, cost, _ = calc_position_size(portfolio, test_price, prices, 'TEST')
     
     print(f"  Test stock price: ${test_price:.2f}")
     print(f"  Calculated shares: {shares}")
     print(f"  Calculated cost: ₪{cost:,.2f}")
     
     if shares == 0:
-        print("❌ FAILED: Position sizing returned 0 shares")
+        print("[FAIL] FAILED: Position sizing returned 0 shares")
         ibkr.disconnect()
         return 1
     
     if cost > cash:
-        print(f"❌ FAILED: Cost (₪{cost:,.2f}) exceeds cash (₪{cash:,.2f}) - NO MARGIN violated!")
+        print(f"[FAIL] FAILED: Cost (₪{cost:,.2f}) exceeds cash (₪{cash:,.2f}) - NO MARGIN violated!")
         ibkr.disconnect()
         return 1
     
-    print(f"✅ PASS: Position sizing works (cost ≤ cash, no margin)")
+    print(f"[OK] PASS: Position sizing works (cost ≤ cash, no margin)")
     
     # Test 4: Verify NO MARGIN enforcement
     print("\n[TEST 4] Testing NO MARGIN enforcement...")
     
     # Try to buy more than available cash
     expensive_price = cash + 1000  # More than we have
-    shares_expensive, cost_expensive = calc_position_size(portfolio, expensive_price, prices, 'EXPENSIVE')
+    shares_expensive, cost_expensive, _ = calc_position_size(portfolio, expensive_price, prices, 'EXPENSIVE')
     
     print(f"  Test stock price: ₪{expensive_price:,.2f} (more than cash)")
     print(f"  Calculated shares: {shares_expensive}")
     
     if shares_expensive > 0:
-        print("❌ FAILED: System allowed purchase beyond available cash (MARGIN used!)")
+        print("[FAIL] FAILED: System allowed purchase beyond available cash (MARGIN used!)")
         ibkr.disconnect()
         return 1
     
-    print("✅ PASS: NO MARGIN enforcement working (rejected expensive stock)")
+    print("[OK] PASS: NO MARGIN enforcement working (rejected expensive stock)")
     
     # Test 5: Get positions
     print("\n[TEST 5] Reading positions...")
     positions = ibkr.get_positions()
     print(f"  Current positions: {len(positions)}")
-    print("✅ PASS: Position reading works")
+    print("[OK] PASS: Position reading works")
     
     # Cleanup
     ibkr.disconnect()
     
     print("\n" + "=" * 70)
-    print("ALL TESTS PASSED ✅")
+    print("ALL TESTS PASSED [OK]")
     print("=" * 70)
     print("\nSummary:")
-    print(f"  • IBKR connection: ✅ Working")
-    print(f"  • Currency handling: ✅ ILS values read correctly")
-    print(f"  • Account values: ✅ Cash=₪{cash:,.2f}, Equity=₪{equity:,.2f}")
-    print(f"  • Position sizing: ✅ Calculates shares correctly")
-    print(f"  • NO MARGIN policy: ✅ Enforced (cost ≤ cash)")
-    print(f"  • Position reading: ✅ Working")
+    print(f"  • IBKR connection: [OK] Working")
+    print(f"  • Currency handling: [OK] ILS values read correctly")
+    print(f"  • Account values: [OK] Cash=₪{cash:,.2f}, Equity=₪{equity:,.2f}")
+    print(f"  • Position sizing: [OK] Calculates shares correctly")
+    print(f"  • NO MARGIN policy: [OK] Enforced (cost ≤ cash)")
+    print(f"  • Position reading: [OK] Working")
     print("\nSystem is ready for trading!")
     
     return 0

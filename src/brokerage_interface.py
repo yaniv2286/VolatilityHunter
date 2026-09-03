@@ -519,8 +519,11 @@ class IBKRInterface(BrokerageInterface):
             
             # 1. Force SMART routing and qualify the contract
             contract = Stock(symbol, 'SMART', 'USD')
-            self.ib.qualifyContracts(contract)
-            
+            qualified = self.ib.qualifyContracts(contract)
+            if not qualified:
+                log_error(f"qualifyContracts failed for {symbol} - IBKR cannot find this security. Skipping order.")
+                return {'success': False, 'reason': f'No security definition found for {symbol}'}
+
             # 2. Get market snapshot for marketable limit price
             limit_price = self._calculate_marketable_limit(symbol, side)
             

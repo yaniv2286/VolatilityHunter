@@ -84,8 +84,9 @@ MAX_POSITIONS     = 10
 POSITION_SIZE_PCT = 0.20          # 20% per position (Ironclad Guardrail)
 # Strategy parameters are in src/strategy_engine.py PARAMS[DEFAULT_VERSION]
 # Change DEFAULT_VERSION there to switch all modes at once.
-SPY_PARQUET       = DATA_DIR / "SPY.parquet"
-ORDER_CONFIRM_SEC = 90
+SPY_PARQUET         = DATA_DIR / "SPY.parquet"
+IBKR_BLACKLIST_FILE = DATA_DIR / "ibkr_blacklist.json"
+ORDER_CONFIRM_SEC   = 90
 
 IBKR_CONFIG = {
     'BROKERAGE_TYPE': 'ibkr',
@@ -208,7 +209,7 @@ def reconcile_with_ibkr(portfolio: dict) -> Tuple[dict, object]:
                 'entry_price': old_pos.get('entry_price', pos.get('entry_price', pos.get('current_price', 0))),
                 'entry_date':  old_pos.get('entry_date', today_str),
                 'ticker':      sym,
-                'execution_mode': 'LIVE',
+                'execution_mode': 'IBKR_PAPER',
                 'is_power_stock': old_pos.get('is_power_stock', False),
                 'highest_price':  max(pos.get('current_price', 0), old_pos.get('highest_price', 0)),
                 'quality_score':  old_pos.get('quality_score', 0),
@@ -237,36 +238,57 @@ def reconcile_with_ibkr(portfolio: dict) -> Tuple[dict, object]:
         sys.exit(1)
 
 
+# ── IBKR blacklist (tickers that never fill due to contract errors) ─────────
+
+def load_ibkr_blacklist() -> set:
+    """Load set of tickers blacklisted due to persistent IBKR Error 200."""
+    try:
+        if IBKR_BLACKLIST_FILE.exists():
+            import json as _json
+            data = _json.loads(IBKR_BLACKLIST_FILE.read_text(encoding='utf-8'))
+            bl = set(data.get('blacklist', []))
+            if bl:
+                logger.info(f"IBKR blacklist loaded: {sorted(bl)}")
+            return bl
+    except Exception as e:
+        logger.warning(f"Failed to load IBKR blacklist: {e}")
+    return set()
+
+
+def save_ibkr_blacklist(blacklist: set) -> None:
+    """Persist blacklist to disk."""
+    try:
+        import json as _json
+        IBKR_BLACKLIST_FILE.write_text(
+            _json.dumps({'blacklist': sorted(blacklist)}, indent=2),
+            encoding='utf-8'
+        )
+        logger.info(f"IBKR blacklist saved: {sorted(blacklist)}")
+    except Exception as e:
+        logger.error(f"Failed to save IBKR blacklist: {e}\n{traceback.format_exc()}")
+
+
 # ── Step 2: Fetch today's data ────────────────────────────────────────────────
 
 def fetch_latest_prices(tickers: List[str]) -> Dict[str, float]:
-    """Fetch today's close for a list of tickers using Tiingo Professional API only."""
-    logger.info(f"Production: Fetching latest prices for {len(tickers)} tickers via Tiingo Professional API")
-    
+    """Fetch intraday snapshot prices via the Tiingo IEX bulk endpoint (NOT persisted)."""
+    logger.info(f"Production: Fetching IEX snapshot prices for {len(tickers)} tickers")
+
     try:
-        # Use the professional data loader (Tiingo only)
         from src.smart_data_loader_factory import get_data_loader
         loader = get_data_loader()
-        
-        # Call Tiingo bulk API - this handles 1000 tickers per request
-        result = loader.update_all_stocks(tickers, full_refresh=False, batch_size=1000)
-        
-        if result['success']:
-            prices = result.get('prices', {})
-            logger.info(f"Production: Successfully fetched {len(prices)}/{len(tickers)} ticker prices via Tiingo bulk API")
-            
-            # Log first few prices for verification
-            for i, (ticker, price) in enumerate(prices.items()):
-                if i < 5:  # Log first 5 for verification
-                    logger.info(f"Production: Got price for {ticker}: ${price:.2f}")
-                else:
-                    break
-                    
-            return prices
-        else:
-            logger.error(f"Production: Tiingo API failed - {result.get('error', 'Unknown error')}")
-            return {}
-            
+
+        prices = loader.get_latest_prices(tickers)
+        logger.info(f"Production: Successfully fetched {len(prices)}/{len(tickers)} IEX snapshot prices")
+
+        for i, (ticker, price) in enumerate(prices.items()):
+            if i < 5:
+                logger.info(f"Production: Got price for {ticker}: ${price:.2f}")
+            else:
+                break
+
+        return prices
+
     except Exception as e:
         logger.error(f"Production: Critical error in fetch_latest_prices: {e}")
         logger.error(traceback.format_exc())
@@ -275,8 +297,9 @@ def fetch_latest_prices(tickers: List[str]) -> Dict[str, float]:
 
 def load_ticker_with_latest(ticker: str, latest_prices: Dict[str, float]) -> Optional[pd.DataFrame]:
     """
-    Load parquet history + append today's row from Yahoo Finance.
+    Load parquet history (completed EOD bars only, updated by smart_data_loader_factory).
     Returns df with indicators calculated, or None on failure.
+    Intraday IEX snapshots are NOT merged into this df.
     """
     try:
         parquet = DATA_DIR / f"{ticker.lower()}.parquet"
@@ -292,47 +315,15 @@ def load_ticker_with_latest(ticker: str, latest_prices: Dict[str, float]) -> Opt
         df = df[~df.index.duplicated(keep='last')]
         df.sort_index(inplace=True)
 
-        # Append today's data via Yahoo if not already present
-        today = pd.Timestamp(date.today())
-        if today not in df.index and ticker in latest_prices:
-            try:
-                yf_data = yf.download(
-                    ticker, period='5d', auto_adjust=True,
-                    progress=False, threads=False
-                )
-                if not yf_data.empty:
-                    yf_data.index = yf_data.index.tz_localize(None) if hasattr(yf_data.index, 'tz') and yf_data.index.tz else yf_data.index
-                    # Only append rows newer than last parquet date
-                    new_rows = yf_data[yf_data.index > df.index[-1]]
-                    if not new_rows.empty:
-                        # Align columns
-                        col_map = {}
-                        for c in new_rows.columns:
-                            c_lower = c.lower()
-                            if 'close' in c_lower:
-                                col_map[c] = 'adjClose'
-                            elif 'open' in c_lower:
-                                col_map[c] = 'adjOpen'
-                            elif 'high' in c_lower:
-                                col_map[c] = 'adjHigh'
-                            elif 'low' in c_lower:
-                                col_map[c] = 'adjLow'
-                            elif 'volume' in c_lower:
-                                col_map[c] = 'volume'
-                        new_rows = new_rows.rename(columns=col_map)
-                        df = pd.concat([df, new_rows[list(col_map.values())]])
-                        df = df[~df.index.duplicated(keep='last')]
-            except Exception:
-                pass  # use parquet-only data if Yahoo fetch fails
-
         if len(df) < 300:
+            logger.warning(f"load_ticker_with_latest {ticker}: only {len(df)} rows (need 300) - parquet may need repair")
             return None
 
         df = add_indicators_v7_2(df)
         return df
 
     except Exception as e:
-        logger.debug(f"load_ticker_with_latest {ticker}: {e}")
+        logger.error(f"load_ticker_with_latest {ticker}: {e}\n{traceback.format_exc()}")
         return None
 
 
@@ -351,9 +342,13 @@ def check_exits(portfolio: dict, latest_prices: Dict[str, float]) -> List[dict]:
 def scan_universe(all_tickers: List[str],
                   open_tickers: set,
                   latest_prices: Dict[str, float]) -> List[dict]:
+    blacklist = load_ibkr_blacklist()
+    filtered = [t for t in all_tickers if t not in blacklist]
+    if len(filtered) < len(all_tickers):
+        logger.info(f"Scanner: skipped {len(all_tickers)-len(filtered)} blacklisted tickers")
     def _load(ticker):
         return load_ticker_with_latest(ticker, latest_prices)
-    return engine_scan_universe(all_tickers, open_tickers, latest_prices,
+    return engine_scan_universe(filtered, open_tickers, latest_prices,
                                 _load, version=DEFAULT_VERSION)
 
 
@@ -363,6 +358,7 @@ def execute_exits(exits: List[dict], portfolio: dict, ibkr) -> List[dict]:
     """
     Execute exit orders on IBKR Paper account.
     All orders are real market orders placed via IBKR API.
+    P/L and the ledger are recorded using the IBKR fill price, not the signal price.
     """
     executed = []
     for ex in exits:
@@ -373,39 +369,40 @@ def execute_exits(exits: List[dict], portfolio: dict, ibkr) -> List[dict]:
 
         pos      = portfolio['positions'][ticker]
         shares   = pos.get('shares', 0)
-        price    = ex.get('price', 0)
+        signal_px = ex.get('price', 0)
         entry_px = pos.get('entry_price', 0)
-        pnl      = (price - entry_px) * shares
-        pnl_pct  = ((price - entry_px) / entry_px * 100) if entry_px > 0 else 0
 
-        logger.info(f"EXIT {ticker}: {shares} shares @ ${price:.2f} | {ex['reason']}")
+        logger.info(f"EXIT {ticker}: {shares} shares (signal px ${signal_px:.2f}) | {ex['reason']}")
 
-        # Place real market order on IBKR Paper account
-        result = ibkr.place_market_order(ticker, shares, 'sell', price)
+        result = ibkr.place_market_order(ticker, shares, 'sell', signal_px)
         success = result.get('success', False)
         if not success:
             logger.error(f"IBKR sell order FAILED for {ticker}: {result.get('reason')}")
+            continue
 
-        if success:
-            proceeds = shares * price
-            portfolio['cash'] = portfolio.get('cash', 0) + proceeds
-            del portfolio['positions'][ticker]
+        fill_px = result.get('filled_avg_price') or signal_px
+        proceeds = shares * fill_px
+        pnl      = (fill_px - entry_px) * shares
+        pnl_pct  = ((fill_px - entry_px) / entry_px * 100) if entry_px > 0 else 0
 
-            trade_record = {
-                'type':     'SELL',
-                'ticker':   ticker,
-                'shares':   shares,
-                'price':    price,
-                'proceeds': proceeds,
-                'pnl':      pnl,
-                'pnl_pct':  pnl_pct,
-                'timestamp': datetime.now().isoformat(),
-                'execution_mode': 'IBKR_PAPER',
-                'reason':   ex['reason']
-            }
-            portfolio.setdefault('trade_history', []).append(trade_record)
-            executed.append(trade_record)
-            logger.info(f"  Exited {ticker}: P&L=${pnl:+.2f} ({pnl_pct:+.1f}%)")
+        portfolio['cash'] = portfolio.get('cash', 0) + proceeds
+        del portfolio['positions'][ticker]
+
+        trade_record = {
+            'type':     'SELL',
+            'ticker':   ticker,
+            'shares':   shares,
+            'price':    fill_px,
+            'proceeds': proceeds,
+            'pnl':      pnl,
+            'pnl_pct':  pnl_pct,
+            'timestamp': datetime.now().isoformat(),
+            'execution_mode': 'IBKR_PAPER',
+            'reason':   ex['reason']
+        }
+        portfolio.setdefault('trade_history', []).append(trade_record)
+        executed.append(trade_record)
+        logger.info(f"  Exited {ticker}: fill=${fill_px:.2f} P&L=${pnl:+.2f} ({pnl_pct:+.1f}%)")
 
     return executed
 
@@ -414,13 +411,22 @@ def execute_entries(candidates: List[dict], portfolio: dict, ibkr) -> List[dict]
     """
     Execute entry orders on IBKR Paper account.
     All orders are real market orders placed via IBKR API.
-    
-    CRITICAL FIX: Track available cash separately to prevent margin usage.
-    Portfolio cash is updated in memory after each order to ensure subsequent
-    position size calculations use the correct remaining cash balance.
+    Ledger records the actual IBKR fill price and ATR (for future vol sizing).
     """
     executed = []
-    is_bull  = get_spy_regime(SPY_PARQUET)
+    spy_df = load_ticker_with_latest('SPY', latest_prices_ref)
+    if spy_df is not None and not spy_df.empty and 'sma_200' in spy_df.columns:
+        last = spy_df.iloc[-1]
+        close_col = next((c for c in ['adjClose', 'close', 'Close'] if c in spy_df.columns), None)
+        spy_close = float(last[close_col]) if close_col else None
+        spy_sma200 = float(last['sma_200'])
+        if spy_close is not None and not pd.isna(spy_sma200):
+            is_bull = spy_close > spy_sma200
+            logger.info(f"SPY regime: {'BULL' if is_bull else 'BEAR'} (close={spy_close:.2f} vs SMA200={spy_sma200:.2f})")
+        else:
+            is_bull = get_spy_regime(SPY_PARQUET)
+    else:
+        is_bull = get_spy_regime(SPY_PARQUET)
     if not is_bull:
         max_pos = get_regime_max_positions(is_bull, DEFAULT_VERSION)
         logger.warning(f"BEAR REGIME (SPY < SMA200): max positions -> {max_pos}")
@@ -432,7 +438,7 @@ def execute_entries(candidates: List[dict], portfolio: dict, ibkr) -> List[dict]
 
     for cand in candidates:
         ticker = cand['ticker']
-        price  = cand['price']
+        signal_px = cand['price']
         if ticker in portfolio.get('positions', {}):
             continue
 
@@ -441,57 +447,58 @@ def execute_entries(candidates: List[dict], portfolio: dict, ibkr) -> List[dict]
             logger.info(f"Skipping {ticker}: {reason}")
             continue
 
-        # CRITICAL: Use current portfolio cash (updated after each order)
-        # This prevents margin usage by ensuring each position size calculation
-        # uses the remaining cash after previous orders
-        shares, cost = calc_position_size(portfolio, price, latest_prices_ref,
-                                          ticker=ticker, load_fn=_load,
-                                          version=DEFAULT_VERSION)
+        shares, cost, atr = calc_position_size(portfolio, signal_px, latest_prices_ref,
+                                                 ticker=ticker, load_fn=_load,
+                                                 version=DEFAULT_VERSION)
         if shares <= 0:
-            logger.warning(f"Skipping {ticker}: shares=0 (price=${price:.2f})")
+            logger.warning(f"Skipping {ticker}: shares=0 (price=${signal_px:.2f})")
             continue
         if cost > portfolio.get('cash', 0):
             logger.warning(f"Skipping {ticker}: cost=${cost:.2f} > cash=${portfolio['cash']:.2f}")
             continue
 
-        logger.info(f"ENTRY {ticker}: {shares} shares @ ${price:.2f} "
+        logger.info(f"ENTRY {ticker}: {shares} shares @ ${signal_px:.2f} "
                     f"(cost=${cost:,.2f}, score={cand['score']:.3f})")
 
-        # Place real market order on IBKR Paper account
-        result = ibkr.place_market_order(ticker, shares, 'buy', price)
+        result = ibkr.place_market_order(ticker, shares, 'buy', signal_px)
         success = result.get('success', False)
         if not success:
             logger.error(f"IBKR buy order FAILED for {ticker}: {result.get('reason')}")
+            continue
 
-        if success:
-            stop_loss = price * (1 - p['HARD_STOP_PCT'])
-            portfolio['cash'] = portfolio.get('cash', 0) - cost
-            portfolio.setdefault('positions', {})[ticker] = {
-                'shares':          shares,
-                'entry_price':     price,
-                'stop_loss_price': stop_loss,
-                'entry_date':      today_str,
-                'quality_score':   cand['score'],
-                'execution_mode':  'IBKR_PAPER',
-                'is_power_stock':  False,
-                'highest_price':   price,
-                'ticker':          ticker,
-            }
-            trade_record = {
-                'type':            'BUY',
-                'ticker':          ticker,
-                'shares':          shares,
-                'price':           price,
-                'cost':            cost,
-                'timestamp':       datetime.now().isoformat(),
-                'execution_mode':  'IBKR_PAPER',
-                'quality_score':   cand['score'],
-                'reason':          cand['reason'],
-                'stop_loss_price': stop_loss,
-            }
-            portfolio.setdefault('trade_history', []).append(trade_record)
-            executed.append(trade_record)
-            logger.info(f"  Entered {ticker}: stop=${stop_loss:.2f}")
+        fill_px = result.get('filled_avg_price') or signal_px
+        cost = shares * fill_px
+        stop_loss = fill_px * (1 - p['HARD_STOP_PCT'])
+
+        portfolio['cash'] = portfolio.get('cash', 0) - cost
+        portfolio.setdefault('positions', {})[ticker] = {
+            'shares':          shares,
+            'entry_price':     fill_px,
+            'stop_loss_price': stop_loss,
+            'entry_date':      today_str,
+            'quality_score':   cand['score'],
+            'execution_mode':  'IBKR_PAPER',
+            'is_power_stock':  False,
+            'highest_price':   fill_px,
+            'ticker':          ticker,
+            'atr':             atr,
+        }
+        trade_record = {
+            'type':            'BUY',
+            'ticker':          ticker,
+            'shares':          shares,
+            'price':           fill_px,
+            'cost':            cost,
+            'timestamp':       datetime.now().isoformat(),
+            'execution_mode':  'IBKR_PAPER',
+            'quality_score':   cand['score'],
+            'reason':          cand['reason'],
+            'stop_loss_price': stop_loss,
+            'atr':             atr,
+        }
+        portfolio.setdefault('trade_history', []).append(trade_record)
+        executed.append(trade_record)
+        logger.info(f"  Entered {ticker}: fill=${fill_px:.2f} stop=${stop_loss:.2f} atr={atr:.4f}")
 
     return executed
 
@@ -576,6 +583,14 @@ class OrderMonitor:
                         refund = pos.get('shares', 0) * pos.get('entry_price', 0)
                         portfolio['cash'] = portfolio.get('cash', 0) + refund
                         logger.error(f"Removed {sym} from portfolio, refunded ${refund:,.2f}")
+                # Blacklist any ticker that timed out - likely IBKR Error 200 / untradeable
+                if failed:
+                    bl = load_ibkr_blacklist()
+                    new_entries = set(failed) - bl
+                    if new_entries:
+                        bl.update(new_entries)
+                        save_ibkr_blacklist(bl)
+                        logger.error(f"BLACKLISTED (persistent fill failure): {sorted(new_entries)}")
                 break
 
             time.sleep(self.POLL_INTERVAL)
@@ -599,7 +614,7 @@ class OrderMonitor:
 
 def verify_fills(ibkr, executed_entries: List[dict], executed_exits: List[dict],
                  portfolio: dict) -> List[str]:
-    """Wrapper — uses OrderMonitor to poll fills and handle failures."""
+    """Wrapper - uses OrderMonitor to poll fills and handle failures."""
     monitor = OrderMonitor(ibkr)
     return monitor.monitor(executed_entries, executed_exits, portfolio)
 
@@ -660,7 +675,7 @@ def send_summary(portfolio: dict, exits: List[dict], entries: List[dict],
         <body>
             <div class="container">
                 <div class="header">
-                    <h2 style="margin: 0;">VolatilityHunter — IBKR Paper Account</h2>
+                    <h2 style="margin: 0;">VolatilityHunter - IBKR Paper Account</h2>
                     <p style="margin: 10px 0 0 0;">{timestamp} IST | <span class="status-badge">{status}</span></p>
                 </div>
                 
@@ -893,7 +908,7 @@ def send_failure_email(error_message, step_failed, traceback_str=""):
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
         body_lines = [
-            f"VolatilityHunter — CRITICAL FAILURE",
+            f"VolatilityHunter - CRITICAL FAILURE",
             f"{timestamp} IST  |  Status: [FAILED]",
             f"",
             f"Execution Summary",
@@ -902,7 +917,7 @@ def send_failure_email(error_message, step_failed, traceback_str=""):
             f"Failed Step\t{step_failed}",
             f"Timestamp\t{timestamp}",
             f"",
-            f"🚨 Error Details",
+            f"ALERT: Error Details",
             f"Error Message:\t{error_message}",
             f"",
         ]
@@ -959,7 +974,7 @@ def main():
     lock_file = DATA_DIR / f"trading_lock_{today_str}.lock"
     if lock_file.exists():
         logger.error("=" * 68)
-        logger.error("🚨 EXECUTION LOCK DETECTED")
+        logger.error("ALERT: EXECUTION LOCK DETECTED")
         logger.error(f"Trading loop already ran today ({today_str})")
         logger.error("Multiple executions cause IBKR reconciliation to reset cash,")
         logger.error("leading to margin usage bugs. Aborting to prevent margin trades.")
@@ -971,7 +986,7 @@ def main():
     
     # Create lock file
     lock_file.write_text(f"Locked at {datetime.now().isoformat()}")
-    logger.info(f"✅ Execution lock created: {lock_file}")
+    logger.info(f"[OK] Execution lock created: {lock_file}")
     
     ibkr = None  # Initialize for cleanup in except block
     
@@ -989,7 +1004,7 @@ def main():
         # ── Step 2: Fetch today's prices ───────────────────────────────────────
         logger.info("--- Step 2: Fetching latest prices ---")
         open_tickers = list(portfolio.get('positions', {}).keys())
-        fetch_tickers = list(set(all_tickers) | set(open_tickers))
+        fetch_tickers = list(set(all_tickers) | set(open_tickers) | {'SPY'})
         latest_prices = fetch_latest_prices(fetch_tickers)
         latest_prices_ref = latest_prices   # make available to execute_entries
 
@@ -1003,48 +1018,50 @@ def main():
         update_highest_prices(portfolio, latest_prices)
         update_high_water_mark(portfolio, latest_prices)
 
-        # ── Step 3: Check exits ───────────────────────────────────────────────
-        logger.info("--- Step 3: Checking exits ---")
-        exit_decisions = check_exits(portfolio, latest_prices)
-        logger.info(f"Exit signals: {len(exit_decisions)}")
-
-        executed_exits = execute_exits(exit_decisions, portfolio, ibkr)
-
-        # ── Step 3b: Power stock promotion (Bug 1 fix) ────────────────────────
-        logger.info("--- Step 3b: Power stock promotion check ---")
-        def _load_for_promotion(ticker):
-            return load_ticker_with_latest(ticker, latest_prices)
-        promoted = promote_power_stocks(portfolio, latest_prices, _load_for_promotion)
-        if promoted:
-            logger.info(f"Power promoted: {promoted}")
-
-        # ── Step 4: Scan universe for new entries ─────────────────────────────
-        logger.info("--- Step 4: Scanning universe ---")
-        open_set  = set(portfolio.get('positions', {}).keys())
-        slots_available = MAX_POSITIONS - len(open_set)
-
-        if slots_available > 0:
-            candidates = scan_universe(all_tickers, open_set, latest_prices)
-            logger.info(f"Available slots: {slots_available} | Candidates: {len(candidates)}")
-        else:
-            candidates = []
-            logger.info(f"No slots available ({len(open_set)}/{MAX_POSITIONS} positions full)")
-
-        # ── Step 5: Execute entries ───────────────────────────────────────────
-        logger.info("--- Step 5: Market hours validation ---")
-        
-        # Check market hours before placing orders
+        # ── Step 2c: Market-hours / holiday guard ───────────────────────────
+        market_open = False
         try:
             from src.market_hours import validate_before_trading
-            if not validate_before_trading():
-                logger.error("🚨 MARKET CLOSED - Skipping order execution")
-                executed_entries = []
-            else:
-                logger.info("--- Step 5: Executing entries ---")
-                executed_entries = execute_entries(candidates[:MAX_POSITIONS], portfolio, ibkr)
+            status = validate_before_trading()
+            market_open = status.get('is_market_open', False) if isinstance(status, dict) else bool(status)
         except Exception as e:
             logger.error(f"Market hours check failed: {e}")
-            logger.info("--- Step 5: Executing entries (fallback) ---")
+            market_open = False
+
+        if not market_open:
+            logger.error("ALERT: MARKET CLOSED OR HOLIDAY - Skipping all order execution")
+            executed_exits = []
+            executed_entries = []
+        else:
+            # ── Step 3: Check exits ───────────────────────────────────────────
+            logger.info("--- Step 3: Checking exits ---")
+            exit_decisions = check_exits(portfolio, latest_prices)
+            logger.info(f"Exit signals: {len(exit_decisions)}")
+
+            executed_exits = execute_exits(exit_decisions, portfolio, ibkr)
+
+            # ── Step 3b: Power stock promotion (Bug 1 fix) ────────────────────
+            logger.info("--- Step 3b: Power stock promotion check ---")
+            def _load_for_promotion(ticker):
+                return load_ticker_with_latest(ticker, latest_prices)
+            promoted = promote_power_stocks(portfolio, latest_prices, _load_for_promotion)
+            if promoted:
+                logger.info(f"Power promoted: {promoted}")
+
+            # ── Step 4: Scan universe for new entries ─────────────────────────
+            logger.info("--- Step 4: Scanning universe ---")
+            open_set  = set(portfolio.get('positions', {}).keys())
+            slots_available = MAX_POSITIONS - len(open_set)
+
+            if slots_available > 0:
+                candidates = scan_universe(all_tickers, open_set, latest_prices)
+                logger.info(f"Available slots: {slots_available} | Candidates: {len(candidates)}")
+            else:
+                candidates = []
+                logger.info(f"No slots available ({len(open_set)}/{MAX_POSITIONS} positions full)")
+
+            # ── Step 5: Execute entries ───────────────────────────────────────
+            logger.info("--- Step 5: Executing entries ---")
             executed_entries = execute_entries(candidates[:MAX_POSITIONS], portfolio, ibkr)
 
         # ── Step 6: Verify fills (OrderMonitor R5) ───────────────────────────
@@ -1121,10 +1138,10 @@ def main():
                 cmdline = ' '.join(proc.info.get('cmdline') or []).lower()
                 if 'ibgateway' in name or 'ibgateway' in cmdline:
                     proc.terminate()
-                    logger.info(f"✅ Terminated Gateway process (PID {proc.pid})")
+                    logger.info(f"[OK] Terminated Gateway process (PID {proc.pid})")
                 elif name == 'javaw.exe' and ('ibgateway' in cmdline or 'ibcgateway' in cmdline):
                     proc.terminate()
-                    logger.info(f"✅ Terminated Gateway Java process (PID {proc.pid})")
+                    logger.info(f"[OK] Terminated Gateway Java process (PID {proc.pid})")
             except (psutil.NoSuchProcess, psutil.AccessDenied, PermissionError):
                 continue
         logger.info("🧹 Gateway cleanup complete")

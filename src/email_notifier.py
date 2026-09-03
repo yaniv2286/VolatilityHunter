@@ -18,7 +18,7 @@ class EmailNotifier:
         self.sender_email = os.environ.get('EMAIL_SENDER')
         self.sender_password = os.environ.get('EMAIL_PASSWORD')
         
-        # Safe Recipient Loading — config.json first, .env fallback
+        # Safe Recipient Loading - config.json first, .env fallback
         recipients = self.config.get('EMAIL_RECIPIENTS', [])
         if not recipients:
             env_recipients = os.environ.get('EMAIL_RECIPIENTS', '')
@@ -115,11 +115,11 @@ class EmailNotifier:
             server.sendmail(self.sender_email, self.recipient_email, msg.as_string())
             server.quit()
             
-            logger.info("✅ Email sent successfully.")
+            logger.info("Email sent successfully.")
             return True
             
         except Exception as e:
-            logger.error(f"❌ Email failed: {e}")
+            logger.error(f"[FAIL] Email failed: {e}")
             return False
 
     # THE FIX: Added 'attach_log_file' argument to handle the call from main.py
@@ -337,7 +337,7 @@ class EmailNotifier:
             return self.send_email("Daily Report", html_body, attachment_path)
             
         except Exception as e:
-            logger.error(f"❌ Report generation failed: {e}")
+            logger.error(f"[FAIL] Report generation failed: {e}")
             return False
     
     def send_error_email(self, subject: str, error_message: str, traceback_details: str, mode: str = 'UNKNOWN') -> bool:
@@ -368,7 +368,7 @@ class EmailNotifier:
             </head>
             <body>
                 <div class="error-header">
-                    <h2>🚨 VOLATILITYHUNTER CRITICAL ERROR</h2>
+                    <h2>ALERT: VOLATILITYHUNTER CRITICAL ERROR</h2>
                     <p>Execution failed in {mode} mode</p>
                 </div>
                 
@@ -398,5 +398,5 @@ class EmailNotifier:
             return self.send_email(subject, html_body, attachment_path)
             
         except Exception as e:
-            logger.error(f"❌ Error email failed to send: {e}")
+            logger.error(f"[FAIL] Error email failed to send: {e}")
             return False
