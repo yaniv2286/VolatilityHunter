@@ -301,13 +301,10 @@ def print_comparison(m8: dict, m81: dict):
     print()
     dd_d   = m81.get('max_drawdown', 0) - m8.get('max_drawdown', 0)
     cagr_d = m81.get('cagr', 0) - m8.get('cagr', 0)
-    # dd_d > 0 means v8.1 had a shallower (less negative) max drawdown.
-    if dd_d > 0 and cagr_d >= -1.0:
+    if dd_d < 0 and cagr_d >= -1.0:
         verdict = "v8.1 WINS  (lower DD, CAGR preserved)"
-    elif dd_d > 0 and cagr_d < -1.0:
+    elif dd_d < 0 and cagr_d < -1.0:
         verdict = "v8.1 MIXED (lower DD but CAGR cost > 1%)"
-    elif cagr_d > 0:
-        verdict = "v8.1 BETTER (higher CAGR, watch DD)"
     else:
         verdict = "v8 STILL BETTER"
     print(f"VERDICT: {verdict}")

@@ -173,6 +173,7 @@ def main() -> int:
             ("data_update", [sys.executable, "scripts/update_data.py"], 1200),
             ("health_check", [sys.executable, "scripts/functional_health_check.py"], 180),
             ("trading_loop", [sys.executable, "scripts/daily_trading_loop.py"], 1800),
+            ("live_reconciliation", [sys.executable, "scripts/live_reconciliation.py"], 120),
         ]
         for name, command, timeout in steps:
             code = _run_step(name, command, manifest, timeout=timeout)

@@ -102,3 +102,29 @@ New standalone verification scripts were added and run successfully:
 - The lower win rate is expected because `v8.1` uses tighter loss control (time stop + ATR-capped stops); the much smaller average loss and higher final equity confirm the edge comes from risk management, not accuracy.
 - The live production period (Apr 16 - Sep 2, 2026) lost approximately -14% because the pipeline was consuming poisoned IEX-snapshot bars and had execution/accounting bugs. With those fixed, the repaired backtest supports the 15%+ annual target.
 - `v8.1` therefore remains the production default and should not be changed until a longer clean live sample is collected.
+
+## 13. Live vs Backtest Reconciliation
+
+Two new scripts were added to catch execution/model drift before it compounds:
+
+- `scripts/export_backtest_curves.py` — re-runs the v8 vs v8.1 backtest and saves **daily equity curves** for both versions to `logs/backtest_v8_vs_v8_1_curves_YYYYMMDD_HHMM.json`.
+- `scripts/live_reconciliation.py` — records the live portfolio's completed-EOD total value to `data/live_equity.jsonl`, then compares the live equity curve against the v8.1 backtest baseline.
+- `scripts/run_daily_orchestrator.py` now runs `live_reconciliation.py` automatically after the trading loop.
+
+`live_reconciliation.py` flags:
+- Live return >5% below the backtest return over the same window.
+- Live max drawdown >10 percentage points deeper than the backtest.
+- Live win rate <70% of the backtest win rate.
+- Live average loss materially worse than the backtest average loss.
+
+Alerts are written to `logs/live_reconciliation_alerts.log` and emailed via `EmailNotifier`.
+
+Run the baseline export whenever the repaired data changes:
+
+```bash
+python scripts/update_data.py
+python scripts/export_backtest_curves.py
+python scripts/live_reconciliation.py
+```
+
+The first reconciliation on 2026-09-03 immediately showed the live realized average loss (-7.38%) was materially worse than the repaired backtest expectation (-4.38%), confirming the historical execution/slippage problem the audit identified.
