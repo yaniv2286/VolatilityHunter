@@ -9,6 +9,8 @@ from email import encoders
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
+from src.telegram_notifier import TelegramNotifier
+
 logger = logging.getLogger("VolatilityHunter")
 
 class EmailNotifier:
@@ -17,6 +19,7 @@ class EmailNotifier:
         self.config = self._load_config()
         self.sender_email = os.environ.get('EMAIL_SENDER')
         self.sender_password = os.environ.get('EMAIL_PASSWORD')
+        self.telegram_notifier = TelegramNotifier()
         
         # Safe Recipient Loading - config.json first, .env fallback
         recipients = self.config.get('EMAIL_RECIPIENTS', [])
@@ -116,6 +119,10 @@ class EmailNotifier:
             server.quit()
             
             logger.info("Email sent successfully.")
+            try:
+                self.telegram_notifier.send_html_email_mirror(subject, body)
+            except Exception as tg_err:
+                logger.warning(f"[TELEGRAM] Mirror failed: {tg_err}")
             return True
             
         except Exception as e:

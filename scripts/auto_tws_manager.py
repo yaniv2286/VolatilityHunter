@@ -168,7 +168,7 @@ LogToConsole=no
         except Exception:
             return False
 
-    def ping_gateway_until_ready(self, max_wait_seconds=180):
+    def ping_gateway_until_ready(self, max_wait_seconds=300):
         """
         Robust polling mechanism for Gateway API readiness.
         Attempts TCP socket connection to 127.0.0.1:7497 every 5 seconds for up to 3 minutes.
@@ -247,13 +247,14 @@ LogToConsole=no
 
         IBC_DIR.mkdir(parents=True, exist_ok=True)
         
-        # Generate config.ini (Ghost-Typist handles credentials via GUI automation)
+        # Generate config.ini with real credentials so IBC handles login natively.
+        # Ghost-Typist is unreliable in Task Scheduler context (no desktop focus).
         config_lines = [
             "# IBC config - auto-managed by auto_tws_manager.py",
-            "# Ghost-Typist handles authentication - credentials NOT stored here",
+            "# IBC handles native login - credentials injected from .env",
             "[IBC]",
-            "IbkrUserId=",
-            "IbkrPassword=",
+            f"IbkrUserId={IBKR_LOGIN_ID}",
+            f"IbkrPassword={IBKR_PASSWORD}",
             f"TradingMode={IBKR_TRADING_MODE}",
             f"IbDir={self.gateway_dir.replace(chr(92), '/')}",
             "StoreSettingsOnServer=no",
@@ -503,6 +504,8 @@ LogToConsole=no
             str(IBC_CONFIG),
             str(self.gateway_dir),
             IBKR_TRADING_MODE,
+            IBKR_LOGIN_ID,
+            IBKR_PASSWORD,
         ]
         
         log_file = LOG_DIR / "ibc_gateway.log"
@@ -527,39 +530,7 @@ LogToConsole=no
                 )
             
             logger.info(f"Headless IBC process started (PID {self.ibc_process.pid})")
-            
-            # Wait for Gateway window to appear before launching Ghost-Typist
-            logger.info("Waiting for Gateway window to appear...")
-            time.sleep(15)  # Give Gateway time to fully load
-            
-            # Launch Surgical Ghost-Typist for credential injection
-            ghost_script = Path(__file__).parent / "ibc_login_helper.py"
-            if ghost_script.exists():
-                logger.info("Launching Surgical Ghost-Typist for login...")
-                ghost_log = LOG_DIR / "ghost_typist.log"
-                with open(ghost_log, 'a', encoding='utf-8') as gf:
-                    ghost_process = subprocess.Popen(
-                        [sys.executable, str(ghost_script)],
-                        stdout=gf,
-                        stderr=gf,
-                        cwd=str(ROOT)
-                    )
-                
-                # Wait for Ghost-Typist to complete (max 90 seconds)
-                try:
-                    ghost_process.wait(timeout=90)
-                    if ghost_process.returncode == 0:
-                        logger.info("✅ Surgical Ghost-Typist completed successfully")
-                    else:
-                        logger.error("❌ Surgical Ghost-Typist failed")
-                        return False
-                except subprocess.TimeoutExpired:
-                    logger.error("❌ Surgical Ghost-Typist timed out")
-                    ghost_process.kill()
-                    return False
-            else:
-                logger.warning("Surgical Ghost-Typist script not found")
-                return False
+            logger.info("IBC has credentials in config.ini - native login active, skipping Ghost-Typist")
             
             return True
             
@@ -850,7 +821,7 @@ def main():
         
         # Wait for API using robust ping loop
         logger.info("Waiting for Gateway API readiness...")
-        if not manager.ping_gateway_until_ready(max_wait_seconds=180):
+        if not manager.ping_gateway_until_ready(max_wait_seconds=300):
             # Timeout - kill process tree and exit with code 1
             manager.kill_gateway_process_tree()
             logger.error("Gateway startup FAILED - exiting with code 1")

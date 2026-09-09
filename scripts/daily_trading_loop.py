@@ -90,9 +90,9 @@ ORDER_CONFIRM_SEC   = 90
 
 IBKR_CONFIG = {
     'BROKERAGE_TYPE': 'ibkr',
-    'IBKR_HOST':      '127.0.0.1',
-    'IBKR_PORT':      7497,
-    'IBKR_CLIENT_ID': 42
+    'IBKR_HOST':      os.environ.get('IBKR_HOST', '127.0.0.1'),
+    'IBKR_PORT':      int(os.environ.get('IBKR_PORT', '7497')),
+    'IBKR_CLIENT_ID': int(os.environ.get('IBKR_CLIENT_ID', '42'))
 }
 
 

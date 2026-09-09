@@ -75,11 +75,30 @@ def calculate_stochastic_v7_2(df, k_period=10, d_period=3, smooth=3):
     try:
         # Use adjusted columns if available, otherwise regular columns (handle capitalization)
         close_col = 'adjClose' if 'adjClose' in df.columns else 'Close' if 'Close' in df.columns else 'close'
-        high_col = 'adjHigh' if 'adjHigh' in df.columns else 'High' if 'High' in df.columns else 'high'
-        low_col = 'adjLow' if 'adjLow' in df.columns else 'Low' if 'Low' in df.columns else 'low'
-        
-        low_min = df[low_col].rolling(window=k_period).min()
-        high_max = df[high_col].rolling(window=k_period).max()
+        # For high/low: prefer adj columns, but fall back to raw if adj has NaN values
+        # (IEX endpoint historically wrote NaN to adjHigh/adjLow from Feb 2026 onwards)
+        def _pick_col(adj_name, raw_names, df):
+            if adj_name in df.columns and not df[adj_name].isna().all():
+                col = df[adj_name].copy()
+                # Fill NaN positions with raw column values
+                for raw in raw_names:
+                    if raw in df.columns:
+                        col = col.fillna(df[raw])
+                        break
+                return col
+            for raw in raw_names:
+                if raw in df.columns:
+                    return df[raw]
+            return None
+
+        high_series = _pick_col('adjHigh', ['High', 'high'], df)
+        low_series  = _pick_col('adjLow',  ['Low',  'low'],  df)
+
+        if high_series is None or low_series is None:
+            return pd.Series([50.0] * len(df), index=df.index), pd.Series([50.0] * len(df), index=df.index)
+
+        low_min = low_series.rolling(window=k_period).min()
+        high_max = high_series.rolling(window=k_period).max()
         
         # Avoid division by zero
         denominator = high_max - low_min
@@ -131,12 +150,26 @@ def calculate_atr_v7_2(df, period=14):
     """Calculate ATR with safety checks"""
     try:
         close_col = 'adjClose' if 'adjClose' in df.columns else 'Close' if 'Close' in df.columns else 'close'
-        high_col = 'adjHigh' if 'adjHigh' in df.columns else 'High' if 'High' in df.columns else 'high'
-        low_col = 'adjLow' if 'adjLow' in df.columns else 'Low' if 'Low' in df.columns else 'low'
-        
-        high_low = df[high_col] - df[low_col]
-        high_close = np.abs(df[high_col] - df[close_col].shift(1))
-        low_close = np.abs(df[low_col] - df[close_col].shift(1))
+
+        def _best_col(adj, raws, df):
+            if adj in df.columns and not df[adj].isna().all():
+                col = df[adj].copy()
+                for r in raws:
+                    if r in df.columns:
+                        col = col.fillna(df[r])
+                        break
+                return col
+            for r in raws:
+                if r in df.columns:
+                    return df[r]
+            return df[close_col]
+
+        high_s = _best_col('adjHigh', ['High', 'high'], df)
+        low_s  = _best_col('adjLow',  ['Low',  'low'],  df)
+
+        high_low = high_s - low_s
+        high_close = np.abs(high_s - df[close_col].shift(1))
+        low_close = np.abs(low_s - df[close_col].shift(1))
         
         true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
         return true_range.rolling(window=period, min_periods=1).mean()
