@@ -177,28 +177,120 @@ def calculate_atr_v7_2(df, period=14):
         log_error(f"Error calculating ATR: {e}")
         return pd.Series([1.0] * len(df))
 
+def _pick_ohlc_col(df, adj_name, raw_names):
+    """Pick adjusted OHLC column if usable, else raw column. Shared helper."""
+    if adj_name in df.columns and not df[adj_name].isna().all():
+        col = df[adj_name].copy()
+        for raw in raw_names:
+            if raw in df.columns:
+                col = col.fillna(df[raw])
+                break
+        return col
+    for raw in raw_names:
+        if raw in df.columns:
+            return df[raw]
+    return None
+
+def calculate_ema_v7_2(df, span):
+    """Calculate EMA on the close column with safety checks"""
+    try:
+        close_col = 'adjClose' if 'adjClose' in df.columns else 'Close' if 'Close' in df.columns else 'close'
+        return df[close_col].ewm(span=span, adjust=False).mean()
+    except Exception as e:
+        log_error(f"Error calculating EMA {span}: {e}")
+        close_col = 'adjClose' if 'adjClose' in df.columns else 'Close' if 'Close' in df.columns else 'close'
+        if close_col in df.columns:
+            return pd.Series([df[close_col].iloc[-1]] * len(df), index=df.index)
+        return pd.Series([0.0] * len(df), index=df.index)
+
+def calculate_rsi_v7_2(df, period=8):
+    """Calculate Wilder RSI with safety checks. Falls back to 50.0 on error."""
+    try:
+        close_col = 'adjClose' if 'adjClose' in df.columns else 'Close' if 'Close' in df.columns else 'close'
+        close = df[close_col]
+        delta = close.diff()
+        gain = delta.clip(lower=0)
+        loss = -delta.clip(upper=0)
+        alpha = 1.0 / period
+        avg_gain = gain.ewm(alpha=alpha, min_periods=period, adjust=False).mean()
+        avg_loss = loss.ewm(alpha=alpha, min_periods=period, adjust=False).mean()
+        rs = avg_gain / avg_loss.replace(0, np.nan)
+        rsi = 100.0 - (100.0 / (1.0 + rs))
+        # avg_loss == 0 (all gains) -> RSI = 100; flat series -> RSI = 50
+        rsi = rsi.where(avg_loss != 0, 100.0)
+        rsi = rsi.mask((avg_gain == 0) & (avg_loss == 0), 50.0)
+        return rsi
+    except Exception as e:
+        log_error(f"Error calculating RSI {period}: {e}")
+        return pd.Series([50.0] * len(df), index=df.index)
+
+def calculate_adx_v7_2(df, period=14):
+    """Calculate Wilder DMI/ADX. Returns (adx, plus_di, minus_di) tuple of Series."""
+    try:
+        high = _pick_ohlc_col(df, 'adjHigh', ['High', 'high'])
+        low = _pick_ohlc_col(df, 'adjLow', ['Low', 'low'])
+        close_col = 'adjClose' if 'adjClose' in df.columns else 'Close' if 'Close' in df.columns else 'close'
+        if high is None or low is None or close_col not in df.columns:
+            z = pd.Series([0.0] * len(df), index=df.index)
+            return z, z.copy(), z.copy()
+        close = df[close_col]
+
+        up = high.diff()
+        down = -low.diff()
+        plus_dm = up.where((up > down) & (up > 0), 0.0)
+        minus_dm = down.where((down > up) & (down > 0), 0.0)
+
+        true_range = pd.concat([
+            high - low,
+            (high - close.shift(1)).abs(),
+            (low - close.shift(1)).abs(),
+        ], axis=1).max(axis=1)
+
+        alpha = 1.0 / period
+        atr_w = true_range.ewm(alpha=alpha, min_periods=period, adjust=False).mean()
+        plus_sm = plus_dm.ewm(alpha=alpha, min_periods=period, adjust=False).mean()
+        minus_sm = minus_dm.ewm(alpha=alpha, min_periods=period, adjust=False).mean()
+
+        plus_di = 100.0 * plus_sm / atr_w.replace(0, np.nan)
+        minus_di = 100.0 * minus_sm / atr_w.replace(0, np.nan)
+        di_sum = (plus_di + minus_di).replace(0, np.nan)
+        dx = 100.0 * (plus_di - minus_di).abs() / di_sum
+        adx = dx.ewm(alpha=alpha, min_periods=period, adjust=False).mean()
+        return adx, plus_di, minus_di
+    except Exception as e:
+        log_error(f"Error calculating ADX {period}: {e}")
+        z = pd.Series([0.0] * len(df), index=df.index)
+        return z, z.copy(), z.copy()
+
 def add_indicators_v7_2(df):
     """Add all technical indicators for v7.2 Hybrid Strategy"""
     df = df.copy()
-    
+
     # Calculate Stochastic DNA
     stoch_k, stoch_d = calculate_stochastic_v7_2(df)
     df['stoch_k'] = stoch_k
     df['stoch_d'] = stoch_d
-    
+
     # Calculate SMAs
     df['sma_25'] = calculate_sma_v7_2(df, 25)
     df['sma_50'] = calculate_sma_v7_2(df, 50)
     df['sma_100'] = calculate_sma_v7_2(df, 100)
     df['sma_200'] = calculate_sma_v7_2(df, 200)
-    
+
     # Vectorized volume indicators
     df['volume_sma'] = calculate_volume_sma_v7_2(df, 30)
     df['volume_sma_30'] = df['volume_sma']  # Map for compatibility
-    
+
     # Calculate ATR
     df['atr'] = calculate_atr_v7_2(df, 14)
-    
+
+    # v8.3+ shared indicators (param-gated in strategy_engine - unused by v8.1)
+    df['ema_3'] = calculate_ema_v7_2(df, 3)
+    df['ema_8'] = calculate_ema_v7_2(df, 8)
+    df['sma_20'] = calculate_sma_v7_2(df, 20)
+    df['rsi_8'] = calculate_rsi_v7_2(df, 8)
+    df['adx_14'], df['plus_di_14'], df['minus_di_14'] = calculate_adx_v7_2(df, 14)
+
     return df
 
 def check_entry_zone_v7_2(df):

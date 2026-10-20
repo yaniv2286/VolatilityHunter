@@ -135,9 +135,102 @@ PARAMS = {
         'VOL_SIZE':            True,   # volatility-adjusted position sizing
         'VOLUME_CONFIRM_DAYS': 2,      # NEW: Require N consecutive days of volume surge for entry
     },
+    'v8.3': {
+        'HARD_STOP_PCT':    0.08,   # fallback hard stop loss (if ATR unavailable)
+        'ATR_STOP_MULT':    2.5,    # ATR-based stop: 2.5x ATR distance
+        'OVERBOUGHT_EXIT':  78.0,   # K > this triggers overbought rollover exit
+        'MOMENTUM_DAYS':    20,     # 20-day momentum lookback
+        'MOMENTUM_MIN':     0.05,   # minimum +5% over 20 days
+        'REENTRY':          True,   # re-enter same day after exit if signal holds
+        'TIME_STOP_DAYS':   10,     # exit losing position after N trading days
+        'REGIME_MAX_POS':   3,      # max positions when SPY < SMA200 (bear market)
+        'SECTOR_MAX':       3,      # max positions per sector simultaneously
+        'VOL_SIZE':         True,   # volatility-adjusted position sizing
+        'ADX_MIN':          20.0,   # sideways filter: require adx_14 >= this
+        'SMA200_PROXIMITY': 0.015,  # pause entries within 1.5% of SMA200
+        'BREAKOUT_LOOKBACK': 20,    # close > max(high, 20) replaces diagonal trendline
+        'MAX_STOP_PCT':     0.05,   # reject if min(candle_low, ema8, sma20) >5% below entry
+    },
+    'v8.3b': {
+        'HARD_STOP_PCT':    0.08,   # fallback hard stop loss (if ATR unavailable)
+        'ATR_STOP_MULT':    2.5,    # ATR-based stop: 2.5x ATR distance
+        'OVERBOUGHT_EXIT':  78.0,   # K > this triggers overbought rollover exit
+        'MOMENTUM_DAYS':    20,     # 20-day momentum lookback
+        'MOMENTUM_MIN':     0.05,   # minimum +5% over 20 days
+        'REENTRY':          True,   # re-enter same day after exit if signal holds
+        'TIME_STOP_DAYS':   10,     # exit losing position after N trading days
+        'REGIME_MAX_POS':   3,      # max positions when SPY < SMA200 (bear market)
+        'SECTOR_MAX':       3,      # max positions per sector simultaneously
+        'VOL_SIZE':         True,   # volatility-adjusted position sizing
+        'ADX_MIN':          20.0,   # sideways filter: require adx_14 >= this
+        'SMA200_PROXIMITY': 0.015,  # pause entries within 1.5% of SMA200
+        # v8.3b drops BREAKOUT_LOOKBACK + MAX_STOP_PCT: audit showed they reject
+        # 72.7% / 52.9% of v8.1 entry bars (breakout contradicts buy-the-dip).
+    },
+    'v8.3c': {
+        'HARD_STOP_PCT':    0.08,
+        'ATR_STOP_MULT':    2.5,
+        'OVERBOUGHT_EXIT':  78.0,
+        'MOMENTUM_DAYS':    20,
+        'MOMENTUM_MIN':     0.05,
+        'REENTRY':          True,
+        'TIME_STOP_DAYS':   10,
+        'REGIME_MAX_POS':   3,
+        'SECTOR_MAX':       3,
+        'VOL_SIZE':         True,
+        'ADX_MIN':          15.0,   # looser ADX after v8.3b (-1.94% CAGR) failed acceptance
+        'SMA200_PROXIMITY': 0.015,
+    },
+    'v8.4': {
+        'HARD_STOP_PCT':    0.08,
+        'ATR_STOP_MULT':    2.5,
+        'OVERBOUGHT_EXIT':  78.0,
+        'MOMENTUM_DAYS':    20,
+        'MOMENTUM_MIN':     0.05,
+        'REENTRY':          True,
+        'TIME_STOP_DAYS':   10,
+        'REGIME_MAX_POS':   3,
+        'SECTOR_MAX':       3,
+        'VOL_SIZE':         True,
+        'RSI_MIN':          50.0,   # momentum confirmation: rsi_8 >= 50 at entry
+        # Spec'd v8.4 (juicy 1.5xATR body + RSI-50 *cross*) rejected ~89% of base
+        # bars each in audit - dead on arrival. RSI_MIN tests the same
+        # momentum-confirmation hypothesis at 90.9% trade retention.
+    },
+    'v8.5': {
+        'HARD_STOP_PCT':    0.08,
+        'ATR_STOP_MULT':    2.5,
+        'OVERBOUGHT_EXIT':  78.0,
+        'MOMENTUM_DAYS':    20,
+        'MOMENTUM_MIN':     0.05,
+        'REENTRY':          True,
+        'TIME_STOP_DAYS':   10,
+        'REGIME_MAX_POS':   3,
+        'SECTOR_MAX':       3,
+        'VOL_SIZE':         True,
+        'PARTIAL_ENABLED':  True,   # sell PARTIAL_FRACTION on first exit signal
+        'PARTIAL_FRACTION': 0.5,    # half-and-half rule
+        'PARTIAL_STOCK_OB': 80.0,   # partial trigger: stoch_k > 80 and k < d
+    },
+    'v8.6': {
+        'HARD_STOP_PCT':    0.08,
+        'ATR_STOP_MULT':    2.5,
+        'OVERBOUGHT_EXIT':  78.0,
+        'MOMENTUM_DAYS':    20,
+        'MOMENTUM_MIN':     0.05,
+        'REENTRY':          True,
+        'TIME_STOP_DAYS':   10,
+        'REGIME_MAX_POS':   3,
+        'SECTOR_MAX':       3,
+        'VOL_SIZE':         True,
+        # Earnings guard (free Nasdaq bulk calendar via src/earnings_calendar.py).
+        # Live/sim only - no point-in-time history for backtests.
+        'EARNINGS_BLOCK_DAYS':      14,  # no entries within 14d of earnings
+        'EARNINGS_FORCE_EXIT_DAYS': 1,   # full exit the day before a report
+    },
 }
 
-DEFAULT_VERSION = 'v8.1'  # ← change this to switch all modes at once
+DEFAULT_VERSION = 'v8.6'  # v8.1 + earnings guard; rollback = 'v8.1'
 
 
 def get_params(version: str = DEFAULT_VERSION) -> dict:
@@ -391,7 +484,8 @@ def check_exits(portfolio: dict,
                 prices: Dict[str, float],
                 load_fn,
                 version: str = DEFAULT_VERSION,
-                today=None) -> List[dict]:
+                today=None,
+                earnings_map: Optional[Dict[str, str]] = None) -> List[dict]:
     """
     Check all open positions for exit conditions.
     Returns list of exit dicts: {ticker, price, reason}
@@ -406,9 +500,26 @@ def check_exits(portfolio: dict,
     OVERBOUGHT_EXIT = p['OVERBOUGHT_EXIT']
     TIME_STOP_DAYS  = p['TIME_STOP_DAYS']
 
+    # v8.5+ partial-exit params (inactive when keys absent)
+    PARTIAL_ENABLED  = p.get('PARTIAL_ENABLED', False)
+    PARTIAL_FRACTION = p.get('PARTIAL_FRACTION', 0.5)
+    PARTIAL_STOCK_OB = p.get('PARTIAL_STOCK_OB', 80.0)
+
+    # v8.6+ earnings guard (inactive when key absent; fail-open on missing data)
+    EARNINGS_FORCE_EXIT = p.get('EARNINGS_FORCE_EXIT_DAYS')
+
     if today is None:
         from datetime import date as _date
         today = _date.today()
+
+    if EARNINGS_FORCE_EXIT is not None and earnings_map is None:
+        try:
+            from src.earnings_calendar import get_earnings_map
+            earnings_map = get_earnings_map()
+        except Exception as e:
+            logger.error(f"earnings map fetch failed, guard disabled: {e}\n"
+                         f"{traceback.format_exc()}")
+            earnings_map = {}
 
     exits = []
     for ticker, pos in portfolio.get('positions', {}).items():
@@ -458,6 +569,24 @@ def check_exits(portfolio: dict,
             except Exception:
                 pass
 
+        # v8.6: force exit just before a scheduled earnings report
+        if EARNINGS_FORCE_EXIT is not None and earnings_map:
+            ed = earnings_map.get(ticker)
+            if ed:
+                try:
+                    from datetime import datetime as _dt2
+                    dte = (_dt2.strptime(ed, '%Y-%m-%d').date() - today).days
+                    if 0 <= dte <= EARNINGS_FORCE_EXIT:
+                        ex = {'ticker': ticker, 'price': price,
+                              'reason': f'Earnings guard (reports {ed}, {dte}d)'}
+                        if PARTIAL_ENABLED:
+                            ex['fraction'] = 1.0
+                        exits.append(ex)
+                        continue
+                except Exception as e:
+                    logger.error(f"earnings guard {ticker}: {e}\n"
+                                 f"{traceback.format_exc()}")
+
         df = load_fn(ticker)
         if df is None or df.empty:
             continue
@@ -483,7 +612,36 @@ def check_exits(portfolio: dict,
                     continue
 
         if not is_power:
-            if not np.isnan(k) and not np.isnan(d) and k < d and k > OVERBOUGHT_EXIT:
+            if PARTIAL_ENABLED:
+                # v8.5: breakeven floor (set when a partial was already taken)
+                be_stop = pos.get('breakeven_stop')
+                ema3 = last.get('ema_3', np.nan)
+                ema8 = last.get('ema_8', np.nan)
+                if be_stop is not None and price <= be_stop:
+                    exits.append({'ticker': ticker, 'price': price, 'fraction': 1.0,
+                                  'reason': f'Breakeven stop ({price:.2f} <= {be_stop:.2f})'})
+                elif not np.isnan(k) and not np.isnan(d) and k < d and k > PARTIAL_STOCK_OB:
+                    if pos.get('partial_taken', False):
+                        exits.append({'ticker': ticker, 'price': price, 'fraction': 1.0,
+                                      'reason': f'Overbought rollover final K={k:.1f}'})
+                    else:
+                        exits.append({'ticker': ticker, 'price': price,
+                                      'fraction': PARTIAL_FRACTION,
+                                      'reason': f'Partial: overbought rollover K={k:.1f}'})
+                elif not np.isnan(sma200) and price < sma200:
+                    exits.append({'ticker': ticker, 'price': price, 'fraction': 1.0,
+                                  'reason': f'SMA200 break ({price:.2f} < {sma200:.2f})'})
+                elif pos.get('partial_taken', False):
+                    # Remaining runner exits when close slips below the fast EMA8
+                    if not np.isnan(ema8) and price < ema8:
+                        exits.append({'ticker': ticker, 'price': price, 'fraction': 1.0,
+                                      'reason': f'Final exit: close < ema_8 ({price:.2f} < {ema8:.2f})'})
+                elif (not np.isnan(ema3) and not np.isnan(ema8)
+                      and ema3 < ema8):
+                    exits.append({'ticker': ticker, 'price': price,
+                                  'fraction': PARTIAL_FRACTION,
+                                  'reason': f'Partial: ema_3 < ema_8 ({ema3:.2f} < {ema8:.2f})'})
+            elif not np.isnan(k) and not np.isnan(d) and k < d and k > OVERBOUGHT_EXIT:
                 exits.append({'ticker': ticker, 'price': price,
                               'reason': f'Overbought rollover K={k:.1f} (>{OVERBOUGHT_EXIT})'})
             elif not np.isnan(sma200) and price < sma200:
@@ -532,7 +690,9 @@ def scan_universe(all_tickers: List[str],
                   prices: Dict[str, float],
                   load_fn,
                   version: str = DEFAULT_VERSION,
-                  recently_exited: Optional[set] = None) -> List[dict]:
+                  recently_exited: Optional[set] = None,
+                  today=None,
+                  earnings_map: Optional[Dict[str, str]] = None) -> List[dict]:
     """
     Scan all tickers for buy signals. Returns ranked list of candidates.
     load_fn(ticker) -> Optional[pd.DataFrame]
@@ -543,6 +703,41 @@ def scan_universe(all_tickers: List[str],
     MOMENTUM_DAYS   = p['MOMENTUM_DAYS']
     MOMENTUM_MIN    = p['MOMENTUM_MIN']
     REENTRY         = p['REENTRY']
+
+    # v8.3+ trend-quality filters (inactive when keys absent - v8.1 untouched)
+    ADX_MIN           = p.get('ADX_MIN')
+    SMA200_PROXIMITY  = p.get('SMA200_PROXIMITY')
+    BREAKOUT_LOOKBACK = p.get('BREAKOUT_LOOKBACK')
+    MAX_STOP_PCT      = p.get('MAX_STOP_PCT')
+
+    # v8.4+ candle-quality triggers (inactive when keys absent)
+    JUICY_BODY_MULT  = p.get('JUICY_BODY_MULT')
+    REQUIRE_GREEN    = p.get('REQUIRE_GREEN')
+    CLOSE_ABOVE_EMA8 = p.get('CLOSE_ABOVE_EMA8')
+    RSI_CROSS_50     = p.get('RSI_CROSS_50')
+    RSI_MIN          = p.get('RSI_MIN')
+
+    # v8.7+ candidate ranking override (inactive when key absent)
+    RANK_BY = p.get('RANK_BY')  # 'momentum' | 'rsi' | 'volume' | 'combo'
+
+    # v8.6+ earnings guard (inactive when key absent; fail-open on missing data)
+    EARNINGS_BLOCK_DAYS = p.get('EARNINGS_BLOCK_DAYS')
+    if EARNINGS_BLOCK_DAYS is not None:
+        if today is None:
+            from datetime import date as _date
+            today = _date.today()
+        if earnings_map is None:
+            try:
+                from src.earnings_calendar import get_earnings_map
+                earnings_map = get_earnings_map()
+            except Exception as e:
+                logger.error(f"earnings map fetch failed, guard disabled: {e}\n"
+                             f"{traceback.format_exc()}")
+                earnings_map = {}
+
+    rej_counts = {'adx': 0, 'sma200_prox': 0, 'breakout': 0, 'stop_dist': 0,
+                  'green': 0, 'juicy': 0, 'ema8': 0, 'rsi_cross': 0, 'rsi_min': 0,
+                  'earnings': 0}
 
     if recently_exited is None:
         recently_exited = set()
@@ -597,6 +792,7 @@ def scan_universe(all_tickers: List[str],
             continue
 
         # 20-day momentum filter (v8 only)
+        mom20 = np.nan
         if MOMENTUM_DAYS and MOMENTUM_MIN is not None:
             if len(df) >= MOMENTUM_DAYS + 1:
                 p20 = df[close_col].iloc[-(MOMENTUM_DAYS + 1)]
@@ -618,6 +814,81 @@ def scan_universe(all_tickers: List[str],
             annual_ret >= CAGR_MIN and
             (price * volume) >= MIN_LIQUIDITY
         )
+
+        # v8.3+ param-gated trend-quality filters (keys absent for v8.1)
+        if buy and ADX_MIN is not None:
+            adx = last.get('adx_14', np.nan)
+            if np.isnan(adx) or adx < ADX_MIN:
+                rej_counts['adx'] += 1
+                buy = False
+        if buy and SMA200_PROXIMITY is not None:
+            if sma200 <= 0 or abs(price - sma200) / sma200 <= SMA200_PROXIMITY:
+                rej_counts['sma200_prox'] += 1
+                buy = False
+        if buy and BREAKOUT_LOOKBACK is not None:
+            high_col = get_col(df, ['adjHigh', 'High', 'high'])
+            if (high_col is None or len(df) < BREAKOUT_LOOKBACK + 1 or
+                    not (df[close_col].iloc[-1] >
+                         df[high_col].iloc[-(BREAKOUT_LOOKBACK + 1):-1].max())):
+                rej_counts['breakout'] += 1
+                buy = False
+        if buy and MAX_STOP_PCT is not None:
+            low_col = get_col(df, ['adjLow', 'Low', 'low'])
+            candle_low = float(last[low_col]) if low_col else np.nan
+            stop_legs = [v for v in [candle_low,
+                                     last.get('ema_8', np.nan),
+                                     last.get('sma_20', np.nan)]
+                         if not np.isnan(v)]
+            initial_stop = min(stop_legs) if stop_legs else np.nan
+            if np.isnan(initial_stop) or (price - initial_stop) / price > MAX_STOP_PCT:
+                rej_counts['stop_dist'] += 1
+                buy = False
+
+        # v8.4+ param-gated candle-quality triggers (keys absent for v8.1/v8.3x)
+        if buy and (REQUIRE_GREEN or JUICY_BODY_MULT is not None):
+            open_col = get_col(df, ['adjOpen', 'Open', 'open'])
+            last_open = float(last[open_col]) if open_col else np.nan
+            close_last = float(df[close_col].iloc[-1])
+            if REQUIRE_GREEN:
+                if np.isnan(last_open) or not (close_last > last_open):
+                    rej_counts['green'] += 1
+                    buy = False
+            if buy and JUICY_BODY_MULT is not None:
+                atr_last = last.get('atr', np.nan)
+                if (np.isnan(last_open) or np.isnan(atr_last) or
+                        (close_last - last_open) < JUICY_BODY_MULT * atr_last):
+                    rej_counts['juicy'] += 1
+                    buy = False
+        if buy and CLOSE_ABOVE_EMA8:
+            ema8 = last.get('ema_8', np.nan)
+            if np.isnan(ema8) or not (float(df[close_col].iloc[-1]) > ema8):
+                rej_counts['ema8'] += 1
+                buy = False
+        if buy and RSI_CROSS_50:
+            rsi_now = last.get('rsi_8', np.nan)
+            rsi_prev = float(df['rsi_8'].iloc[-2]) if len(df) >= 2 else np.nan
+            if (np.isnan(rsi_now) or np.isnan(rsi_prev) or
+                    not (rsi_prev < 50 <= rsi_now)):
+                rej_counts['rsi_cross'] += 1
+                buy = False
+        if buy and RSI_MIN is not None:
+            rsi_now = last.get('rsi_8', np.nan)
+            if np.isnan(rsi_now) or rsi_now < RSI_MIN:
+                rej_counts['rsi_min'] += 1
+                buy = False
+
+        # v8.6: earnings guard - ticker absent from map = no report in window
+        if buy and EARNINGS_BLOCK_DAYS is not None and earnings_map:
+            ed = earnings_map.get(ticker)
+            if ed:
+                try:
+                    dte = (datetime.strptime(ed, '%Y-%m-%d').date() - today).days
+                    if 0 <= dte <= EARNINGS_BLOCK_DAYS:
+                        rej_counts['earnings'] += 1
+                        buy = False
+                except Exception as e:
+                    logger.error(f"earnings guard {ticker}: {e}\n"
+                                 f"{traceback.format_exc()}")
 
         if buy:
             # NO SECTOR LIMITS IN SCANNER - identify all valid setups
@@ -642,6 +913,10 @@ def scan_universe(all_tickers: List[str],
                 'stoch_k':       k,
                 'annual_return': annual_ret,
                 'annual_normalized': annual_normalized,
+                # v8.7 ranking inputs (unused unless RANK_BY is set)
+                'mom_20':        mom20,
+                'rsi_8':         last.get('rsi_8', np.nan),
+                'vol_ratio':     volume / vsma if vsma else np.nan,
                 'reason':        ' | '.join(reason_parts),
             })
             
@@ -649,8 +924,25 @@ def scan_universe(all_tickers: List[str],
         if scanned % 500 == 0:
             logger.info(f"  Scanned: {scanned}/{len(all_tickers)} | {len(candidates)} candidates")
 
-    candidates.sort(key=lambda x: x['score'], reverse=True)
+    if RANK_BY == 'combo':
+        # mean of momentum/volume percentile ranks within today's candidates
+        moms = pd.Series([c['mom_20']    for c in candidates]).rank(pct=True)
+        vols = pd.Series([c['vol_ratio'] for c in candidates]).rank(pct=True)
+        for c, s in zip(candidates, (moms + vols).tolist()):
+            c['score'] = s
+        candidates.sort(key=lambda x: x['score'], reverse=True)
+    elif RANK_BY in ('momentum', 'rsi', 'volume'):
+        field = {'momentum': 'mom_20', 'rsi': 'rsi_8', 'volume': 'vol_ratio'}[RANK_BY]
+        candidates.sort(
+            key=lambda c: c.get(field) if np.isfinite(c.get(field, np.nan)) else -np.inf,
+            reverse=True)
+    else:
+        candidates.sort(key=lambda x: x['score'], reverse=True)
     logger.info(f"Scan complete ({version}): {len(candidates)} candidates from {scanned} tickers")
+    if any(v for v in [ADX_MIN, SMA200_PROXIMITY, BREAKOUT_LOOKBACK, MAX_STOP_PCT,
+                       JUICY_BODY_MULT, REQUIRE_GREEN, CLOSE_ABOVE_EMA8, RSI_CROSS_50,
+                       RSI_MIN, EARNINGS_BLOCK_DAYS]):
+        logger.info(f"v8.3+ filter rejections: {rej_counts}")
     return candidates
 
 

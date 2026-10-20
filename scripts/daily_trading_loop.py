@@ -332,6 +332,8 @@ def load_ticker_with_latest(ticker: str, latest_prices: Dict[str, float]) -> Opt
 def check_exits(portfolio: dict, latest_prices: Dict[str, float]) -> List[dict]:
     def _load(ticker):
         return load_ticker_with_latest(ticker, latest_prices)
+    # earnings_map=None -> engine lazily fetches the cached Nasdaq map,
+    # but only when the active version's PARAMS set EARNINGS_* keys (v8.6+)
     return engine_check_exits(portfolio, latest_prices, _load,
                               version=DEFAULT_VERSION,
                               today=datetime.now().date())
@@ -372,26 +374,42 @@ def execute_exits(exits: List[dict], portfolio: dict, ibkr) -> List[dict]:
         signal_px = ex.get('price', 0)
         entry_px = pos.get('entry_price', 0)
 
-        logger.info(f"EXIT {ticker}: {shares} shares (signal px ${signal_px:.2f}) | {ex['reason']}")
+        # v8.5+: fraction < 1.0 = partial exit (sell part, keep position)
+        fraction   = ex.get('fraction', 1.0)
+        sell_shares = int(shares * fraction) if fraction < 1.0 else shares
+        if sell_shares <= 0:
+            logger.warning(f"EXIT {ticker}: fraction={fraction} yields 0 shares - skipping")
+            continue
 
-        result = ibkr.place_market_order(ticker, shares, 'sell', signal_px)
+        logger.info(f"EXIT {ticker}: {sell_shares}/{shares} shares "
+                    f"(fraction={fraction}, signal px ${signal_px:.2f}) | {ex['reason']}")
+
+        result = ibkr.place_market_order(ticker, sell_shares, 'sell', signal_px)
         success = result.get('success', False)
         if not success:
             logger.error(f"IBKR sell order FAILED for {ticker}: {result.get('reason')}")
             continue
 
         fill_px = result.get('filled_avg_price') or signal_px
-        proceeds = shares * fill_px
-        pnl      = (fill_px - entry_px) * shares
+        proceeds = sell_shares * fill_px
+        pnl      = (fill_px - entry_px) * sell_shares
         pnl_pct  = ((fill_px - entry_px) / entry_px * 100) if entry_px > 0 else 0
 
         portfolio['cash'] = portfolio.get('cash', 0) + proceeds
-        del portfolio['positions'][ticker]
+        if fraction < 1.0:
+            pos['shares'] = shares - sell_shares
+            pos['partial_taken'] = True
+            pos['breakeven_stop'] = entry_px
+            if 'initial_shares' not in pos:
+                pos['initial_shares'] = shares
+        else:
+            del portfolio['positions'][ticker]
 
         trade_record = {
             'type':     'SELL',
             'ticker':   ticker,
-            'shares':   shares,
+            'shares':   sell_shares,
+            'fraction': fraction,
             'price':    fill_px,
             'proceeds': proceeds,
             'pnl':      pnl,
@@ -482,6 +500,9 @@ def execute_entries(candidates: List[dict], portfolio: dict, ibkr) -> List[dict]
             'highest_price':   fill_px,
             'ticker':          ticker,
             'atr':             atr,
+            'initial_shares':  shares,
+            'partial_taken':   False,
+            'breakeven_stop':  None,
         }
         trade_record = {
             'type':            'BUY',

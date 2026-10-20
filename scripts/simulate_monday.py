@@ -188,7 +188,8 @@ def scan_universe(all_tickers: List[str], open_tickers: set,
     def _load(ticker):
         return load_ticker_sim(ticker, sim_date, prices)
     return engine_scan_universe(all_tickers, open_tickers, prices,
-                                _load, version=DEFAULT_VERSION)
+                                _load, version=DEFAULT_VERSION,
+                                today=sim_date)
 
 
 def simulate_exits(exits: List[dict], portfolio: dict) -> List[dict]:
