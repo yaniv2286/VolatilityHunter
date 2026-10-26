@@ -1,5 +1,134 @@
 # V8.3 / V8.4 / V8.5 Experiment Results
 
+> AUDIT CORRECTION (2026-10-24): The strategy verdicts and causal explanations
+> below are historical notes, not validated investment conclusions. The legacy
+> simulator fails cash-only accounting, does not value open holdings daily, and
+> differs from the shared engine. Its per-ticker volatility sizing also uses
+> future observations. Do not use these CAGRs, drawdowns, or candidate rejection
+> verdicts for promotion or income forecasts until recomputed with a validated
+> portfolio simulator. This correction does not change the running paper strategy.
+>
+> Contrary to the historical statements below, v8.6 was subsequently promoted
+> in commit 33ada13. The 2026-10-23 trading log records a v8.6 scan and an IBKR
+> paper-account fill. Functional checks prove code paths run, not profitability.
+
+## Backtest integrity audit and replacement requirements (2026-10-24)
+
+Agreed research objectives: $100,000 starting capital, no withdrawals during
+the initial compounding period, 20% annualized return target, and approximately
+30% acceptable drawdown. Evaluate returns after modeled trading costs and
+separately disclose data/software expenses and personal-tax exclusions.
+Neither objective is a guaranteed future return or maximum loss.
+Keep existing stochastic 32-80, volume, momentum and exit rules as an explicit
+v8.1 baseline; evaluate the v8.6 earnings overlay separately. Broker migration
+is deferred. Current scope remains paper-only, long-only and cash-only.
+
+### Reproduced failure
+
+Calling `scripts/backtest_v8_1_vs_v8_7.py:build_equity_curve` with ten trades,
+all entering on 2020-01-02, exiting on 2020-01-06, earning 10%, and assigned
+distinct sectors with `vol_scale=1` produces $120,000 from $100,000.
+The cash-only maximum for these simultaneous trades, before costs, is $110,000.
+The builder implicitly allocates $200,000 without a cash debit. This proves
+that the harness can violate the mandate; it does not quantify the distortion
+in every previously reported historical run.
+
+Other confirmed implementation issues:
+
+- `src/strategy_v8_1.py` calculates `median_atr_pct` across the full series;
+  later volatility changes therefore affect earlier position sizing.
+- Entries use the signal bar's close, although its final indicators are only
+  known after the bar completes. This does not reproduce next-session execution.
+- Equity curves omit daily unrealized gains and losses in open holdings.
+- Legacy sector assignments use ticker initials; same-day baseline ordering
+  is alphabetical rather than the shared engine's composite score.
+- Per-ticker trades are generated independently of portfolio acceptance, so
+  sorting these precomputed records cannot reproduce a portfolio state machine.
+- The per-ticker power-stock rules and stop logic differ from the shared engine.
+
+### Required acceptance checks for the replacement
+
+1. Replay an exchange-session event timeline with explicit signal and execution
+   timestamps. Data available to decisions must be restricted to that timestamp.
+   Changing future prices must not change earlier signals, fills or sizing.
+2. Maintain one cash/share ledger, integer shares, settled-funds availability
+   under an explicit historical settlement policy, and fill-confirmed position
+   state. Reject unaffordable purchases and sales beyond owned shares.
+3. Value every open holding daily. Reconcile cash, holdings, dividend
+   receivables, corporate actions, fees and total equity against hand-calculated
+   fixtures, including an open position suffering a large interim loss.
+4. Call shared engine decisions instead of cloning strategy rules. Test
+   scanner ranking, exits, power promotion, partial exits and position caps
+   against identical inputs/state in the paper path. Record unresolved parity
+   differences rather than silently claiming agreement.
+5. Model execution costs, gaps, rejected/unfilled orders and missing prices.
+   Daily open prices are only an approximation to the intraday paper execution
+   schedule; label that limitation and stress it, or obtain suitable intraday
+   observations before claiming execution parity.
+6. Audit Tiingo coverage, adjustments, symbol changes, delistings and historical
+   universe eligibility. Missing historical coverage must block an investment
+   conclusion, not silently remove losing stocks. Current sector mappings
+   must not be described as historical point-in-time classifications.
+7. Use only earnings information known at the simulated date. Today's calendar
+   is not valid historical evidence; mark v8.6 performance unevaluable where
+   timestamped historical announcements are unavailable.
+8. Report accepted portfolio trades, daily equity/drawdown, annual and rolling
+   returns, time underwater, turnover, exposure, costs and benchmark results.
+   Record code revision, parameters, data fingerprints, exclusions and assumptions
+   so the run can be reproduced.
+9. Separate chronological research/evaluation periods and document that previously
+   inspected history is not untouched. Freeze rules before forward paper
+   evaluation. Sensitivity and adverse-cost tests supplement, not replace, it.
+
+These are requirements for a replacement, not a claim that it is implemented.
+No backtest can guarantee future profitability or make a 30% drawdown a hard cap.
+
+### Tiingo coverage check and proposed fixed dates (2026-10-24)
+
+Read-only audit: `python scripts/audit_backtest_data.py`, Exit 0.
+The audit covers the current `tickers.txt`, not a historical listing universe:
+
+- 2,135 requested tickers; 2,134 readable files; 8,932,209 rows.
+- AXL has no local file. 65 files have fewer than 300 observations.
+- 775 files begin on 2000-01-03; none contains pre-2000 observations.
+- 2,065 files end on 2026-10-22. The other 69 end earlier and require
+  investigation; an older end date alone does not establish a data error.
+- All 2,134 files contain adjusted OHLCV, dividend and split columns.
+- Basic checks found no duplicate/unsorted/null dates and no missing or
+  nonpositive close/adjusted-close values. These checks do not establish
+  exchange-session completeness, correct adjustments or historical coverage.
+
+Three authenticated, read-only Tiingo requests for SPY, AAPL and MSFT each
+returned 504 daily observations from 1998-01-02 through 1999-12-31, including
+raw/adjusted OHLCV, divCash and splitFactor. The provider supports the proposed
+warmup period for these samples. Full-universe pre-2000 coverage remains
+unverified. `scripts/repair_broken_parquets.py` explicitly sets
+`FULL_START = '2000-01-01'`; the local cutoff is not proof of a provider limit.
+
+Proposed research contract:
+
+- Request daily data beginning 1998-01-01 for historically eligible securities.
+  1998-1999 is warmup only, not reported investment performance. Later listings
+  become eligible only after satisfying the shared engine's history requirements.
+- Target the fixed performance interval 2000-01-01 through 2025-12-31, using
+  actual exchange sessions. This supersedes the provisional 2001 start if
+  warmup and historical-universe coverage pass validation. Do not claim a
+  validated full-2000 result before that gate passes.
+- Report 2026 separately with an explicit cutoff; the currently inspected
+  local endpoint is 2026-10-22. This is already-observed data, not untouched
+  forward evidence.
+- Acquire and fingerprint a separate research snapshot, including provider
+  retrieval dates, historical eligibility and exclusions. Do not overwrite
+  the active paper portfolio or silently splice adjusted data from different
+  corporate-action revisions.
+- Investigate the missing/stale files and historical delistings before accepting
+  investment conclusions. More years of today's survivors do not resolve this.
+- Freeze data, dates, costs and baseline parameters for each experiment batch.
+  A data repair creates a new snapshot and requires rerunning all comparators.
+
+No full-history bulk download, strategy change or broker change was performed
+as part of this coverage audit.
+
 **Date:** 2026-10-19 | **Status:** All candidates REJECTED — v8.1 remains champion
 **Baseline (same backtest run):** v8.1 = 21.79% 26yr CAGR | -31.84% MaxDD | 0.71 Sharpe | 27.48% WR | 43,076 trades | $16.1M final equity
 
@@ -159,3 +288,37 @@ all candidate code remains param-gated and dormant for future reference.
 
 Artifacts: `logs/backtest_v8_1_vs_v8_4_20261019_1557.json`,
 `logs/backtest_v8_1_vs_v8_5_20261019_1605.json`, plus v8.3x JSONs in `logs/`.
+
+---
+
+## 2026-10-26 corrected-engine baselines (supersedes all verdicts above)
+
+All numbers: frozen snapshot `data/research/snapshot_1998_20261022`,
+2000-01-03 -> 2025-12-31, $100k, T+1, 5bp slippage + $0.005/sh ($1 min),
+shared engine decisions, daily mark-to-market.
+
+| Run | Universe | CAGR | Max DD | Final equity | Notes |
+|---|---|---:|---:|---:|---|
+| v8.1 net | 2,124 survivors | 3.47% | -30.3% | $242k | understates (see below) |
+| v8.1 zero-cost | 2,124 survivors | 5.39% | -32.7% | $390k | costs ~1.9pp/yr |
+| Momentum 12-1 | 2,124 survivors | 13.34% | -74.3% | $2.58M | untradeable DD |
+| Momentum 12-1 | 9,886 honest | **2.39%** | **-99.6%** | $184k | REJECTED |
+| **v8.1 net** | **9,886 honest** | **8.54%** | **-31.9%** | **$839k** | reference baseline |
+
+Key findings:
+- Survivorship cuts BOTH ways: adding delisted/acquired names RAISED v8.1
+  (it catches future takeout winners) but DESTROYED naive momentum.
+- v8.1 beats SPY (8.54% vs 7.78%) on the honest universe, within the
+  ~30% drawdown tolerance (-31.9%) but underwater 97% of the time and
+  5.3 years in the worst window (2015-06 -> 2020-09).
+- Alpha is concentrated in 2000-2006 (+46.6/+55.5/+35.8/+77.0% years);
+  2014-2025 is essentially flat. The edge decayed, not the machinery.
+- Capital-ceiling defect: engine's $100k buying-power ops cap silently
+  blocks ALL buys once equity > ~$500k. Lifted for research via
+  --capital-ceiling (process-local). Same wall exists in live if the
+  account ever exceeds ~$500k - must be revisited before deployment.
+- CON ticker needed a Windows-reserved-name filename guard
+  (price_filename() in backtest_engine, mirrored in the downloader).
+
+Verdict: v8.1 = 8.54% CAGR reference line. Still short of the 20% goal;
+the gap is in the post-2014 flat regime, not in costs or accounting.
