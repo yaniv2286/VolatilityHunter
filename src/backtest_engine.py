@@ -22,6 +22,7 @@ sale proceeds), enforced by the ledger — the legacy "invest 200% of
 equity" bug is impossible here.
 """
 
+import hashlib
 import logging
 import os
 import sys
@@ -73,12 +74,18 @@ class BacktestData:
     """Point-in-time data access over a research snapshot directory."""
 
     def __init__(self, prices_dir: Path, tickers: List[str],
-                 max_cached: int = 800):
+                 max_cached: int = 800, indicator_cache: Optional[Path] = None):
         self.prices_dir = Path(prices_dir)
         self.tickers = list(tickers)
+        self.indicator_cache = Path(indicator_cache) if indicator_cache else None
+        self._indicator_revision = hashlib.sha256(
+            Path(__file__).with_name('strategy_v7_2.py').read_bytes()).hexdigest()
+        if self.indicator_cache:
+            self.indicator_cache.mkdir(parents=True, exist_ok=True)
         # Tier 1 (all tickers): dates index + numpy column arrays used by
         # prefilter, session prices and bar lookups. Bounded memory.
         self._dates: Dict[str, pd.DatetimeIndex] = {}
+        self._date_ns: Dict[str, np.ndarray] = {}
         self._ptr: Dict[str, int] = {}
         self._arr: Dict[str, Dict[str, np.ndarray]] = {}
         # Tier 2 (LRU): full indicator DataFrames, materialized only for
@@ -88,8 +95,9 @@ class BacktestData:
         self.max_cached = max_cached
         self.calendar: Optional[pd.DatetimeIndex] = None
         self._missing = set()
+        self._candidate_schedules = {}
 
-    _ARR_COLS = ('adjClose', 'close', 'open', 'volume',
+    _ARR_COLS = ('adjClose', 'adjOpen', 'adjHigh', 'adjLow', 'close', 'open', 'high', 'low', 'volume',
                  'divCash', 'splitFactor',
                  'stoch_k', 'stoch_d', 'sma_200', 'volume_sma')
 
@@ -97,6 +105,13 @@ class BacktestData:
         path = self.prices_dir / price_filename(ticker)
         if not path.exists():
             return None
+        cached = None
+        if self.indicator_cache:
+            source_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+            key = hashlib.sha256((source_hash + self._indicator_revision).encode()).hexdigest()
+            cached = self.indicator_cache / f'{ticker.lower()}_{key}.parquet'
+            if cached.exists():
+                return pd.read_parquet(cached)
         try:
             df = pd.read_parquet(path)
         except Exception:
@@ -108,7 +123,12 @@ class BacktestData:
         if getattr(df.index, 'tz', None) is not None:
             df.index = df.index.tz_localize(None)
         df = df[~df.index.duplicated(keep='last')].sort_index()
-        return add_indicators_v7_2(df)
+        df = add_indicators_v7_2(df)
+        if cached:
+            temporary = cached.with_suffix(f'.{os.getpid()}.tmp')
+            df.to_parquet(temporary)
+            os.replace(temporary, cached)
+        return df
 
     def _put_frame(self, ticker: str, df: pd.DataFrame):
         self._frames[ticker] = df
@@ -135,7 +155,8 @@ class BacktestData:
             self._missing.add(ticker)
             return None
         self._dates[ticker] = df.index
-        self._arr[ticker] = {c: df[c].values for c in self._ARR_COLS
+        self._date_ns[ticker] = df.index.asi8
+        self._arr[ticker] = {c: df[c].to_numpy(copy=True) for c in self._ARR_COLS
                              if c in df.columns}
         return self._put_frame(ticker, df)
 
@@ -167,20 +188,37 @@ class BacktestData:
             return None
         return df.iloc[:pos]
 
+    def decision_frame(self, ticker: str, date) -> Optional[pd.DataFrame]:
+        frame = self.asof(ticker, date)
+        if frame is None or frame.empty or 'adjClose' not in frame.columns:
+            return frame
+        last = frame.iloc[-1]
+        raw, adjusted = last['close'], last['adjClose']
+        if not np.isfinite(adjusted) or adjusted <= 0 or not np.isfinite(raw) or raw <= 0:
+            raise ValueError(f'invalid price basis for {ticker} at {date}')
+        scale = raw / adjusted
+        columns = [c for c in ('adjOpen', 'adjHigh', 'adjLow', 'adjClose',
+                               'sma_20', 'sma_25', 'sma_50', 'sma_100', 'sma_200',
+                               'ema_3', 'ema_8', 'atr') if c in frame.columns]
+        result = frame.copy()
+        result[columns] = result[columns] * scale
+        return result
+
     def advance(self, date):
         """Advance per-ticker day pointers to `date`. Call once per session,
         in chronological order."""
         ts = pd.Timestamp(date)
         self._today = ts
+        stamp = ts.value
         for t in self.tickers:
             if t not in self._arr:
                 self._ensure(t)  # light path: arrays + dates only
-            dates = self._dates.get(t)
+            dates = self._date_ns.get(t)
             if dates is None:
                 continue
             p = self._ptr.get(t, 0)
             n = len(dates)
-            while p < n and dates[p] < ts:
+            while p < n and dates[p] < stamp:
                 p += 1
             self._ptr[t] = p
 
@@ -196,6 +234,47 @@ class BacktestData:
         return None
 
     def prefilter_candidates(self, date, mom_days=None, mom_min=None):
+        key = (mom_days, mom_min)
+        if key not in self._candidate_schedules:
+            schedule = {}
+            for ticker in self.tickers:
+                if ticker not in self._arr:
+                    self._ensure(ticker)
+                arrays = self._arr.get(ticker)
+                dates = self._dates.get(ticker)
+                if arrays is None or dates is None or len(dates) < 253:
+                    continue
+                close, volume = arrays['close'], arrays['volume']
+                k, d = arrays['stoch_k'], arrays['stoch_d']
+                sma, vsma, adj = arrays['sma_200'], arrays['volume_sma'], arrays['adjClose']
+                eligible = np.arange(len(dates)) >= 252
+                eligible &= np.isfinite(close) & (close >= MIN_PRICE)
+                for values in (k, d, sma, vsma, volume, adj):
+                    eligible &= np.isfinite(values)
+                annual = np.full(len(dates), np.nan)
+                with np.errstate(divide='ignore', invalid='ignore'):
+                    annual[252:] = adj[252:] / adj[:-252] - 1.0
+                prior_valid = np.zeros(len(dates), dtype=bool)
+                prior_valid[252:] = np.isfinite(adj[:-252]) & (adj[:-252] > 0)
+                eligible &= prior_valid & (annual >= CAGR_FILTER)
+                if mom_days and mom_min is not None:
+                    momentum = np.full(len(dates), np.nan)
+                    if mom_days < len(dates):
+                        with np.errstate(divide='ignore', invalid='ignore'):
+                            momentum[mom_days:] = adj[mom_days:] / adj[:-mom_days] - 1.0
+                        momentum[mom_days:][~np.isfinite(adj[:-mom_days]) | (adj[:-mom_days] <= 0)] = np.nan
+                    eligible &= momentum >= mom_min
+                eligible &= (k >= STOCH_LOW) & (k <= STOCH_HIGH)
+                with np.errstate(divide='ignore', invalid='ignore'):
+                    raw_sma = sma * (close / adj)
+                eligible &= (adj > 0) & (close > raw_sma) & (volume >= vsma * VOLUME_SURGE)
+                eligible &= close * volume >= MIN_LIQUIDITY
+                for stamp in dates.asi8[eligible]:
+                    schedule.setdefault(int(stamp), []).append(ticker)
+            self._candidate_schedules[key] = schedule
+        return self._candidate_schedules[key].get(pd.Timestamp(date).value, []).copy()
+
+    def _prefilter_candidates_scalar(self, date, mom_days=None, mom_min=None):
         """Exact-equivalence scan prefilter.
 
         Returns the tickers that CAN produce a scan_universe candidate
@@ -235,7 +314,7 @@ class BacktestData:
             if not np.isfinite(p252) or p252 <= 0:
                 continue
             last_adj = adj[p]
-            if not np.isfinite(last_adj):
+            if not np.isfinite(last_adj) or last_adj <= 0:
                 continue
             if last_adj / p252 - 1.0 < CAGR_FILTER:
                 continue
@@ -247,7 +326,7 @@ class BacktestData:
                     continue
             if not (STOCH_LOW <= k <= STOCH_HIGH):
                 continue
-            if not (close > sma200):
+            if not (close > sma200 * (close / last_adj)):
                 continue
             if not (volume >= vsma * VOLUME_SURGE):
                 continue
@@ -258,15 +337,15 @@ class BacktestData:
 
     def session_prices(self, date) -> Dict[str, float]:
         """{ticker: raw close} for every ticker with a bar this session."""
-        ts = pd.Timestamp(date)
+        stamp = pd.Timestamp(date).value
         out = {}
         for t in self.tickers:
-            dates = self._dates.get(t)
+            dates = self._date_ns.get(t)
             a = self._arr.get(t)
             if dates is None or a is None:
                 continue
             p = self._ptr.get(t, 0)
-            if p < len(dates) and dates[p] == ts:
+            if p < len(dates) and dates[p] == stamp:
                 c = a['close'][p]
                 if np.isfinite(c) and c > 0:
                     out[t] = float(c)
@@ -399,6 +478,18 @@ class CorrectedBacktest:
 
     # ── order execution at session open ──────────────────────────────────
 
+    def _queue_untradeable_exits(self, date):
+        pending = {o['ticker'] for o in self.pending_sells}
+        for ticker in self.ledger.positions:
+            if ticker in pending:
+                continue
+            row = self.data.bar(ticker, date)
+            if row is None or not np.isfinite(row.get('volume', np.nan)) \
+                    or row.get('volume', 0) <= 0:
+                self.pending_sells.append({
+                    'ticker': ticker, 'fraction': 1.0,
+                    'reason': 'Missing/untradeable bar', 'tries': 0})
+
     def _fill_open(self, date):
         still_pending = []
         for order in self.pending_sells:
@@ -450,6 +541,8 @@ class CorrectedBacktest:
             if not tradeable:
                 logger.info("BUY %s unfilled - no bar/zero volume on %s", t, date)
                 continue
+            if not self._hook_fill_buy_ok(cand, row):
+                continue
             fill_px = float(row['open']) * (1.0 + self.slip)
             shares = cand['shares']
             rec = self.ledger.buy(t, date, fill_px, shares,
@@ -462,15 +555,36 @@ class CorrectedBacktest:
                             t, shares, rec.reason)
         self.pending_buys = []
 
+    # ── research overlay hooks (no-ops in the production path) ──────────
+    # Subclass comparators may override these to test FT-style elements
+    # without forking the engine loop.
+
+    def _hook_pre_exits(self, date, prices):
+        """Called after high-water updates, before engine_check_exits."""
+
+    def _hook_veto_candidate(self, cand, date):
+        """Return True to reject a scanned entry candidate."""
+        return False
+
+    def _hook_extra_cash_ceiling(self):
+        """Return an additional cap on cumulative est-cost queued this
+        pass, or None for no extra cap."""
+        return None
+
+    def _hook_fill_buy_ok(self, cand, row):
+        """Return False to cancel a pending buy at fill time."""
+        return True
+
     # ── signal pass on completed bar T (mirrors live loop order) ─────────
 
     def _signal_pass(self, date, prices):
         p = self.params
-        load_fn = lambda t: self.data.asof(t, date)  # noqa: E731
+        load_fn = lambda t: self.data.decision_frame(t, date)  # noqa: E731
         today = pd.Timestamp(date).date()
 
         update_highest_prices(self.portfolio, prices)
         update_high_water_mark(self.portfolio, prices)
+        self._hook_pre_exits(date, prices)
 
         # exits first, exactly like the live loop
         exits = engine_check_exits(
@@ -512,6 +626,7 @@ class CorrectedBacktest:
             earnings_map=self.earnings_map)
 
         committed = 0.0   # est cost already queued this signal pass
+        extra_cap = self._hook_extra_cash_ceiling()
         for cand in candidates:
             t = cand['ticker']
             if t in self.portfolio['positions']:
@@ -519,6 +634,8 @@ class CorrectedBacktest:
             allowed, _reason = can_enter(t, self.portfolio, is_bull,
                                          self.version)
             if not allowed:
+                continue
+            if self._hook_veto_candidate(cand, date):
                 continue
             shares, _cost, atr = calc_position_size(
                 self.portfolio, cand['price'], prices,
@@ -530,6 +647,8 @@ class CorrectedBacktest:
             est_cost = shares * cand['price'] * (1 + self.slip)
             if committed + est_cost > self.ledger.settled_cash:
                 continue   # live skips unaffordable, tries next candidate
+            if extra_cap is not None and committed + est_cost > extra_cap:
+                continue   # overlay cash cap (e.g. FT 20% buffer)
             committed += est_cost
             self.pending_buys.append({**cand, 'shares': shares, 'atr': atr})
             if len(self.pending_buys) >= free_slots:
@@ -549,6 +668,7 @@ class CorrectedBacktest:
             self._sync_cash()
             prices = self.data.session_prices(date)
             self.ledger.mark_to_market(date, prices, i)
+            self._queue_untradeable_exits(date)
             self._signal_pass(date, prices)
             self._sync_cash()
             if i % 500 == 0:

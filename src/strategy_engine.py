@@ -228,6 +228,73 @@ PARAMS = {
         'EARNINGS_BLOCK_DAYS':      14,  # no entries within 14d of earnings
         'EARNINGS_FORCE_EXIT_DAYS': 1,   # full exit the day before a report
     },
+    'v8.8': {
+        # EXPERIMENT (2026-10-26): v8.1 + full entry shutdown in bear
+        # regime. Pre-registered: diagnostics showed ~630 entries taken
+        # while SPY < SMA200 lost ~$80k net (00-13) on the honest
+        # universe; REGIME_MAX_POS=3 still let 3 slots trade.
+        'HARD_STOP_PCT':    0.08,
+        'ATR_STOP_MULT':    2.5,
+        'OVERBOUGHT_EXIT':  78.0,
+        'MOMENTUM_DAYS':    20,
+        'MOMENTUM_MIN':     0.05,
+        'REENTRY':          True,
+        'TIME_STOP_DAYS':   10,
+        'REGIME_MAX_POS':   0,   # THE ONE CHANGE: zero entries when SPY < SMA200
+        'SECTOR_MAX':       3,
+        'VOL_SIZE':         True,
+    },
+    'v8.9': {
+        # EXPERIMENT (2026-10-26): v8.1 + Freedom Trader breakeven
+        # ratchet - stop floors at entry once highest close >= +2%.
+        # Pre-registered accept: CAGR +>=0.5pp AND maxDD <= -35% AND
+        # profit factor improves vs the 8.54%/-31.9%/1.139 reference.
+        'HARD_STOP_PCT':    0.08,
+        'ATR_STOP_MULT':    2.5,
+        'OVERBOUGHT_EXIT':  78.0,
+        'MOMENTUM_DAYS':    20,
+        'MOMENTUM_MIN':     0.05,
+        'REENTRY':          True,
+        'TIME_STOP_DAYS':   10,
+        'REGIME_MAX_POS':   3,
+        'SECTOR_MAX':       3,
+        'VOL_SIZE':         True,
+        'BREAKEVEN_AT_PCT': 0.02,   # THE ONE CHANGE
+    },
+    'v8.10': {
+        # EXPERIMENT (2026-11-03): forensics showed entry %K quartiles are
+        # monotone - K<48 trades LOSE ~$830k combined (PF 0.85) while K>72
+        # earns +$1.30M (PF 1.82). Raise entry floor 32 -> 60.
+        # Pre-registered accept: CAGR > re-baselined v8.1 AND PF improves.
+        'HARD_STOP_PCT':    0.08,
+        'ATR_STOP_MULT':    2.5,
+        'OVERBOUGHT_EXIT':  78.0,
+        'MOMENTUM_DAYS':    20,
+        'MOMENTUM_MIN':     0.05,
+        'REENTRY':          True,
+        'TIME_STOP_DAYS':   10,
+        'REGIME_MAX_POS':   3,
+        'SECTOR_MAX':       3,
+        'VOL_SIZE':         True,
+        'STOCH_LOW':        60.0,   # THE ONE CHANGE
+    },
+    'v8.11': {
+        # EXPERIMENT (2026-11-05): forensics showed top-quartile 1yr
+        # momentum entries (+182%+) earned +$1.27M/PF 1.55 while mid
+        # quartiles were flat. Gate annual_ret >= 100% (vs default 15%).
+        # Pre-registered accept: CAGR > 11.93% re-baseline AND PF improves.
+        'HARD_STOP_PCT':    0.08,
+        'ATR_STOP_MULT':    2.5,
+        'OVERBOUGHT_EXIT':  78.0,
+        'MOMENTUM_DAYS':    20,
+        'MOMENTUM_MIN':     0.05,
+        'REENTRY':          True,
+        'TIME_STOP_DAYS':   10,
+        'REGIME_MAX_POS':   3,
+        'SECTOR_MAX':       3,
+        'VOL_SIZE':         True,
+        'CAGR_MIN':         1.00,   # THE ONE CHANGE
+    },
 }
 
 DEFAULT_VERSION = 'v8.6'  # v8.1 + earnings guard; rollback = 'v8.1'
@@ -555,6 +622,17 @@ def check_exits(portfolio: dict,
                               'reason': f'Hard stop ({pnl_pct:.1%})'})
                 continue
 
+        # v8.9: breakeven ratchet (Freedom Trader nuance #17) - once the
+        # position's highest close reaches +BE_AT%, the stop floors at
+        # entry. Evaluated on closes, consistent with all other exits.
+        BE_AT = p.get('BREAKEVEN_AT_PCT')
+        if BE_AT is not None and not pos.get('is_power_stock', False):
+            highest = pos.get('highest_price', entry)
+            if highest >= entry * (1 + BE_AT) and price <= entry:
+                exits.append({'ticker': ticker, 'price': price,
+                              'reason': f'Breakeven ratchet ({price:.2f} <= entry {entry:.2f})'})
+                continue
+
         # Time stop (v8.1) - counts TRADING days (weekdays), not calendar days
         if TIME_STOP_DAYS is not None:
             try:
@@ -699,10 +777,14 @@ def scan_universe(all_tickers: List[str],
     recently_exited: set of tickers exited today - skip unless version=v8 with REENTRY=True
     """
     p = get_params(version)
-    CAGR_MIN        = CAGR_FILTER
+    # v8.11+ annual-return gate override (default = CAGR_FILTER module const)
+    CAGR_MIN        = p.get('CAGR_MIN', CAGR_FILTER)
     MOMENTUM_DAYS   = p['MOMENTUM_DAYS']
     MOMENTUM_MIN    = p['MOMENTUM_MIN']
     REENTRY         = p['REENTRY']
+    # v8.10+ stoch-band overrides (default = module constants, v8.1 unchanged)
+    STOCH_LO_V      = p.get('STOCH_LOW', STOCH_LOW)
+    STOCH_HI_V      = p.get('STOCH_HIGH', STOCH_HIGH)
 
     # v8.3+ trend-quality filters (inactive when keys absent - v8.1 untouched)
     ADX_MIN           = p.get('ADX_MIN')
@@ -808,7 +890,7 @@ def scan_universe(all_tickers: List[str],
         vol_threshold = vsma * VOLUME_SURGE
 
         buy = (
-            STOCH_LOW <= k <= STOCH_HIGH and
+            STOCH_LO_V <= k <= STOCH_HI_V and
             price > sma200 and
             volume >= vol_threshold and
             annual_ret >= CAGR_MIN and

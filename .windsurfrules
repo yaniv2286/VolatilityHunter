@@ -2,6 +2,7 @@
 > **STATUS:** ACTIVE | **VERSION:** 1.3 | **LAST UPDATED:** 2026-02-28
 
 ## 0. GLOBAL DIRECTIVES
+- **PROJECT CONTINUITY:** Read `docs/PROJECT_MEMORY.md` at session start and update its checkpoint at handoff. It records the current goals, audit corrections, and next work; do not rely on older performance claims without checking it.
 - **DOCUMENTATION FIRST:** ALWAYS READ all files under `docs/` BEFORE performing any other action.
 - **ACTIVE MONITORING:** Whenever running terminal commands, monitor output for error messages. If any appear, STOP and fix them immediately before proceeding.
 - **NO SILENT FAILURES:** Every `try/except` block must log the full traceback. Never swallow errors.

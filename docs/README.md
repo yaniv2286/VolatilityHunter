@@ -2,6 +2,11 @@
 
 **Deterministic Quantitative Trading System | v11.6 - Deterministic Automation + Fill-Confirmed Execution**
 
+**Current goals and resume checkpoint:** Read [PROJECT_MEMORY.md](PROJECT_MEMORY.md)
+first. The current priority is backtest correctness and historical data coverage.
+Older performance/version descriptions below are historical context; they do not
+override the dated audit corrections in the project memory.
+
 ---
 
 ## 📚 Essential Documentation

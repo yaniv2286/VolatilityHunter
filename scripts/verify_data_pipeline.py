@@ -6,6 +6,9 @@ Tests: EOD volume sanity, sector mapping, position sizing ATR storage, ATR stop 
 
 import os
 import sys
+import json
+import tempfile
+from pathlib import Path
 import pandas as pd
 import numpy as np
 
@@ -14,6 +17,8 @@ sys.path.insert(0, ROOT)
 
 from src.strategy_engine import get_sector, calc_position_size, check_exits, get_params
 from src.market_hours import MarketHours
+from src.brokerage_interface import IBKRInterface
+import scripts.live_reconciliation as reconciliation
 
 
 def _sample_df():
@@ -118,6 +123,57 @@ def check_market_holidays():
     print('[OK] Juneteenth 2026 correctly flagged as non-trading day')
 
 
+def check_market_data_cancellation():
+    contract = object()
+    ticker = type('Ticker', (), {'bid': 99.0, 'ask': 100.0, 'contract': contract})()
+    class MockIB:
+        def __init__(self):
+            self.cancelled = None
+        def reqMktData(self, *_args):
+            return ticker
+        def sleep(self, _seconds):
+            return None
+        def cancelMktData(self, value):
+            self.cancelled = value
+    broker = IBKRInterface.__new__(IBKRInterface)
+    broker.ib = MockIB()
+    price = broker._calculate_marketable_limit('TEST', 'BUY')
+    if price != 101.0 or broker.ib.cancelled is not contract:
+        raise AssertionError('Market data cancellation did not use the subscribed contract')
+    print('[OK] Market data subscription cancelled with contract')
+
+
+def check_reconciliation_cohorts_and_snapshot():
+    portfolio = {
+        'cash': 900.0,
+        'positions': {},
+        'total_value': 1000.0,
+        'trade_history': [
+            {'type': 'SELL', 'timestamp': '2026-09-02T10:00:00', 'pnl': -100.0, 'pnl_pct': -10.0},
+            {'type': 'SELL', 'timestamp': '2026-09-03T10:00:00', 'pnl': 50.0, 'pnl_pct': 5.0},
+        ],
+    }
+    pre = reconciliation.live_trade_stats(portfolio, end_date='2026-09-02')
+    post = reconciliation.live_trade_stats(portfolio, start_date='2026-09-03')
+    if pre.get('total_trades') != 1 or post.get('total_trades') != 1 or post.get('realized_pnl') != 50.0:
+        raise AssertionError('Pre/post-fix trade cohorts are incorrect')
+    with tempfile.TemporaryDirectory() as tmp:
+        data_dir = Path(tmp)
+        (data_dir / 'portfolio.json').write_text(json.dumps(portfolio), encoding='utf-8')
+        old_data_dir = reconciliation.DATA_DIR
+        old_equity_file = reconciliation.LIVE_EQUITY_FILE
+        try:
+            reconciliation.DATA_DIR = data_dir
+            reconciliation.LIVE_EQUITY_FILE = data_dir / 'live_equity.jsonl'
+            snapshot = reconciliation.record_snapshot('2026-09-15')
+        finally:
+            reconciliation.DATA_DIR = old_data_dir
+            reconciliation.LIVE_EQUITY_FILE = old_equity_file
+        if not snapshot or snapshot.get('date') != '2026-09-15':
+            raise AssertionError('Reconciliation did not record the requested run date')
+    print('[OK] Reconciliation snapshot date and cohorts verified')
+
+
 def main() -> int:
     print('=' * 70)
     print('DATA PIPELINE VERIFICATION')
@@ -127,6 +183,8 @@ def main() -> int:
     check_position_sizing()
     check_atr_stop_cap()
     check_market_holidays()
+    check_market_data_cancellation()
+    check_reconciliation_cohorts_and_snapshot()
     print('=' * 70)
     print('ALL VERIFICATION CHECKS PASSED')
     print('=' * 70)

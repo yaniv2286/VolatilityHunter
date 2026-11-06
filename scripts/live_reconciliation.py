@@ -41,6 +41,7 @@ LOGS_DIR = ROOT / 'logs'
 LIVE_EQUITY_FILE = DATA_DIR / 'live_equity.jsonl'
 ALERT_LOG = LOGS_DIR / 'live_reconciliation_alerts.log'
 DEFAULT_BACKTEST_VERSION = 'v8_1'
+POST_FIX_START_DATE = '2026-09-03'
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 logger = logging.getLogger('live_reconciliation')
@@ -91,8 +92,8 @@ def load_backtest_curve(bt_path: Path, version: str = DEFAULT_BACKTEST_VERSION) 
     return series.sort_index().resample('B').last().ffill()
 
 
-def record_snapshot() -> Optional[Dict]:
-    """Record the latest completed-EOD live equity snapshot from portfolio.json."""
+def record_snapshot(snapshot_date: Optional[str] = None) -> Optional[Dict]:
+    """Record the current run's live equity snapshot from portfolio.json."""
     portfolio_path = DATA_DIR / 'portfolio.json'
     if not portfolio_path.exists():
         logger.warning('portfolio.json not found; cannot record snapshot')
@@ -104,7 +105,7 @@ def record_snapshot() -> Optional[Dict]:
         logger.error(f'Failed to read portfolio.json: {e}')
         return None
 
-    snapshot_date = last_completed_eod_date()
+    snapshot_date = snapshot_date or datetime.now().date().isoformat()
 
     # Use the total_value the trading loop saved, or compute from cash + positions.
     equity = portfolio.get('total_value')
@@ -189,9 +190,18 @@ def load_backtest_summary(bt_path: Path, version: str = DEFAULT_BACKTEST_VERSION
     return data.get(version, {})
 
 
-def live_trade_stats(portfolio: Dict) -> Dict:
+def live_trade_stats(portfolio: Dict, start_date: Optional[str] = None, end_date: Optional[str] = None) -> Dict:
     """Compute realized trade statistics from portfolio.json trade_history."""
-    sells = [t for t in portfolio.get('trade_history', []) if t.get('type') == 'SELL']
+    sells = []
+    for trade in portfolio.get('trade_history', []):
+        if trade.get('type') != 'SELL':
+            continue
+        trade_date = str(trade.get('timestamp', '')).split('T')[0]
+        if start_date and trade_date < start_date:
+            continue
+        if end_date and trade_date > end_date:
+            continue
+        sells.append(trade)
     if not sells:
         return {}
     pnls = [float(t.get('pnl_pct', 0.0)) for t in sells]
@@ -209,6 +219,19 @@ def live_trade_stats(portfolio: Dict) -> Dict:
         'profit_factor': pf,
         'realized_pnl': sum(float(t.get('pnl', 0.0)) for t in sells),
     }
+
+
+def print_trade_stats(title: str, stats: Dict) -> None:
+    if not stats:
+        print(f'{title}: no realized SELLs')
+        return
+    print(title)
+    print(f"  Total trades : {stats['total_trades']}")
+    print(f"  Win rate     : {stats['win_rate']:.1f}%")
+    print(f"  Avg win      : {stats['avg_win']:.2f}%")
+    print(f"  Avg loss     : {stats['avg_loss']:.2f}%")
+    print(f"  Profit factor: {stats['profit_factor']:.2f}")
+    print(f"  Realized P/L : ${stats['realized_pnl']:,.2f}")
 
 
 def compare_curves(live: pd.Series, backtest: pd.Series, version: str) -> Optional[Dict]:
@@ -326,6 +349,8 @@ def main() -> int:
     portfolio_path = DATA_DIR / 'portfolio.json'
     portfolio = json.loads(portfolio_path.read_text(encoding='utf-8')) if portfolio_path.exists() else {}
     live_stats = live_trade_stats(portfolio)
+    pre_fix_stats = live_trade_stats(portfolio, end_date='2026-09-02')
+    post_fix_stats = live_trade_stats(portfolio, start_date=POST_FIX_START_DATE)
 
     print()
     print('=' * 70)
@@ -342,13 +367,11 @@ def main() -> int:
     print(f"Backtest max DD    : {comp['backtest_max_dd_pct']:.2f}%")
     print()
     if live_stats:
-        print('LIVE TRADE STATS (realized SELLs)')
-        print(f"  Total trades : {live_stats['total_trades']}")
-        print(f"  Win rate     : {live_stats['win_rate']:.1f}%")
-        print(f"  Avg win      : {live_stats['avg_win']:.2f}%")
-        print(f"  Avg loss     : {live_stats['avg_loss']:.2f}%")
-        print(f"  Profit factor: {live_stats['profit_factor']:.2f}")
-        print(f"  Realized P/L : ${live_stats['realized_pnl']:,.2f}")
+        print_trade_stats('LIVE TRADE STATS - LIFETIME', live_stats)
+        print()
+        print_trade_stats('LIVE TRADE STATS - PRE-FIX (through 2026-09-02)', pre_fix_stats)
+        print()
+        print_trade_stats(f'LIVE TRADE STATS - POST-FIX (from {POST_FIX_START_DATE})', post_fix_stats)
         print()
         if bt_summary:
             print('BACKTEST EXPECTED STATS')
@@ -365,10 +388,10 @@ def main() -> int:
         alerts.append(f"ALERT: live return is {comp['divergence_pct']:+.2f}% below backtest (threshold -5%)")
     if comp['live_max_dd_pct'] < comp['backtest_max_dd_pct'] - 10.0:
         alerts.append(f"ALERT: live max drawdown {comp['live_max_dd_pct']:.2f}% is >10pp deeper than backtest {comp['backtest_max_dd_pct']:.2f}%")
-    if live_stats and live_stats['win_rate'] < bt_summary.get('win_rate', 0) * 0.7:
-        alerts.append(f"ALERT: live win rate {live_stats['win_rate']:.1f}% is <70% of backtest {bt_summary.get('win_rate', 0):.1f}%")
-    if live_stats and live_stats['avg_loss'] < bt_summary.get('avg_loss', 0) * 1.5:
-        alerts.append(f"ALERT: live avg loss {live_stats['avg_loss']:.2f}% is much worse than backtest {bt_summary.get('avg_loss', 0):.2f}%")
+    if post_fix_stats and post_fix_stats['win_rate'] < bt_summary.get('win_rate', 0) * 0.7:
+        alerts.append(f"ALERT: post-fix live win rate {post_fix_stats['win_rate']:.1f}% is <70% of backtest {bt_summary.get('win_rate', 0):.1f}%")
+    if post_fix_stats and post_fix_stats['avg_loss'] < bt_summary.get('avg_loss', 0) * 1.5:
+        alerts.append(f"ALERT: post-fix live avg loss {post_fix_stats['avg_loss']:.2f}% is much worse than backtest {bt_summary.get('avg_loss', 0):.2f}%")
 
     if alerts:
         print('\n'.join(alerts))

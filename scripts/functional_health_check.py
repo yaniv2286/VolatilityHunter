@@ -177,6 +177,41 @@ def check_parquet_universe() -> dict:
     return _result("data/*.parquet", PASS, f"{len(spy_excluded)} ticker parquets present")
 
 
+def check_scan_coverage() -> dict:
+    try:
+        import pyarrow.parquet as pq
+        tickers_path = ROOT / 'tickers.txt'
+        tickers = [t.strip().upper() for t in tickers_path.read_text().splitlines() if t.strip()]
+        eligible = 0
+        missing = 0
+        short = 0
+        unreadable = 0
+        for ticker in tickers:
+            path = ROOT / 'data' / f'{ticker.lower()}.parquet'
+            if not path.exists():
+                path = ROOT / 'data' / f'{ticker}.parquet'
+            if not path.exists():
+                missing += 1
+                continue
+            try:
+                rows = pq.ParquetFile(path).metadata.num_rows
+            except Exception:
+                unreadable += 1
+                continue
+            if rows >= 300:
+                eligible += 1
+            else:
+                short += 1
+        total = len(tickers)
+        coverage = eligible / total * 100 if total else 0.0
+        detail = f'{eligible}/{total} ({coverage:.1f}%) scan-eligible; short={short}, missing={missing}, unreadable={unreadable}'
+        if coverage < 90.0:
+            return _result('Scan coverage', FAIL, f'{detail}; run python scripts/repair_broken_parquets.py')
+        return _result('Scan coverage', PASS, detail)
+    except Exception as e:
+        return _result('Scan coverage', FAIL, f'{e}\n{traceback.format_exc()}')
+
+
 def check_last_bar_volume_sanity() -> dict:
     """Ensure the latest bar in a sample of parquets looks like a full EOD bar."""
     try:
@@ -315,6 +350,7 @@ def main() -> int:
         check_tickers,
         check_spy_parquet,
         check_parquet_universe,
+        check_scan_coverage,
         check_last_bar_volume_sanity,
         check_sector_map,
         check_ibkr_port,

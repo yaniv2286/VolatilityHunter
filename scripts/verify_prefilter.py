@@ -49,7 +49,7 @@ def main():
         date = cal[i]
         data.advance(date)
         prices = data.session_prices(date)
-        load_fn = lambda t, d=date: data.asof(t, d)
+        load_fn = lambda t, d=date: data.decision_frame(t, d)
         full = engine_scan_universe(
             data.tickers, set(), prices, load_fn, version=VERSION,
             today=pd.Timestamp(date).date(), earnings_map={})

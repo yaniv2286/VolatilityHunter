@@ -573,7 +573,7 @@ class IBKRInterface(BrokerageInterface):
             ask = ticker.ask
             
             # Cancel market data subscription
-            self.ib.cancelMktData(ticker)
+            self.ib.cancelMktData(ticker.contract)
             
             # Calculate limit price with 1% buffer
             if side.upper() == 'BUY':

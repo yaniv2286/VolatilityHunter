@@ -11,6 +11,7 @@ trades.csv} and prints the headline metrics.
 """
 
 import argparse
+import hashlib
 import json
 import logging
 import os
@@ -60,8 +61,9 @@ def main():
     ap.add_argument('--end', required=True)
     ap.add_argument('--version', default='v8.1')
     ap.add_argument('--strategy', default='engine',
-                    choices=['engine', 'momentum'],
-                    help='engine = shared strategy version; momentum = 12-1 comparator')
+                    choices=['engine', 'momentum', 'freedom', 'overlay',
+                             'nextgen'],
+                    help='engine = shared strategy version; momentum/freedom = comparators')
     ap.add_argument('--cash', type=float, default=100_000.0)
     ap.add_argument('--slippage-bps', type=float, default=0.0)
     ap.add_argument('--commission-per-share', type=float, default=0.005)
@@ -72,8 +74,30 @@ def main():
                          'ops ceiling so research equity can compound')
     ap.add_argument('--limit', type=int, default=0,
                     help='restrict universe to first N tickers (testing)')
+    ap.add_argument('--tickers', default='',
+                    help='comma list or @file restricting the universe')
+    ap.add_argument('--ng-config', default='',
+                    help='nextgen config: inline JSON or @file')
+    ap.add_argument('--overlays', default='',
+                    help='comma list of v8.1 overlay elements to ENABLE: '
+                         'breakeven,cashbuffer,retracement,vetoes')
+    ap.add_argument('--ft-disable', default='',
+                    help='comma list of Freedom-Trader elements to disable '
+                         '(ablation): weekly,power,trapdoor,flagpole,'
+                         'snapback,candle,structure,barrier,retracement,'
+                         'breakeven,rollover,conviction,cashbuffer')
+    ap.add_argument('--max-cached-frames', type=int, default=64)
+    ap.add_argument('--indicator-cache', default=None)
     ap.add_argument('--tag', default='')
     args = ap.parse_args()
+    code_files = ('src/backtest_engine.py', 'src/portfolio_ledger.py',
+                  'src/strategy_engine.py', 'src/strategy_v7_2.py',
+                  'src/freedom_trader_comparator.py',
+                  'src/v81_overlay_comparator.py',
+                  'src/nextgen_comparator.py',
+                  'scripts/backtest_corrected.py')
+    code_sha256 = {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest()
+                   for name in code_files}
 
     logging.basicConfig(level=logging.INFO,
                         format='%(asctime)s %(levelname)s %(message)s')
@@ -83,6 +107,16 @@ def main():
     tickers = [t for t, r in manifest['records'].items()
                if r.get('status') == 'ok']
     tickers.sort()
+    if args.tickers:
+        sel = args.tickers
+        if sel.startswith('@'):
+            want = [x.strip().upper() for x in
+                    Path(sel[1:]).read_text().replace(',', '\n').splitlines()
+                    if x.strip()]
+        else:
+            want = [x.strip().upper() for x in sel.split(',') if x.strip()]
+        want = set(want) | {'SPY'}   # SPY required as calendar/benchmark
+        tickers = [t for t in tickers if t in want]
     if args.limit:
         tickers = tickers[:args.limit]
     if 'SPY' not in tickers:
@@ -90,7 +124,9 @@ def main():
         return 1
     logger.info('universe: %d tickers from %s', len(tickers), snap)
 
-    data = BacktestData(snap / 'prices', tickers)
+    data = BacktestData(snap / 'prices', tickers,
+                        max_cached=args.max_cached_frames,
+                        indicator_cache=Path(args.indicator_cache) if args.indicator_cache else None)
     cal = data.build_calendar(args.start, args.end)
     logger.info('calendar: %s sessions %s -> %s',
                 len(cal), cal[0].date(), cal[-1].date())
@@ -104,6 +140,40 @@ def main():
             slippage_bps=args.slippage_bps,
             settlement_days=args.settlement_days,
             earnings_map={}, capital_ceiling=args.capital_ceiling)
+    elif args.strategy == 'freedom':
+        from src.freedom_trader_comparator import FreedomTraderComparator
+        bt = FreedomTraderComparator(
+            data, starting_cash=args.cash, version=args.version,
+            commission_per_share=args.commission_per_share,
+            min_commission=args.min_commission,
+            slippage_bps=args.slippage_bps,
+            settlement_days=args.settlement_days,
+            earnings_map={}, capital_ceiling=args.capital_ceiling,
+            ablations={x.strip() for x in args.ft_disable.split(',')
+                       if x.strip()})
+    elif args.strategy == 'nextgen':
+        from src.nextgen_comparator import NextgenComparator, parse_ng_config
+        bt = NextgenComparator(
+            data, starting_cash=args.cash, version=args.version,
+            commission_per_share=args.commission_per_share,
+            min_commission=args.min_commission,
+            slippage_bps=args.slippage_bps,
+            settlement_days=args.settlement_days,
+            earnings_map={},
+            capital_ceiling=args.capital_ceiling,
+            ng_config=parse_ng_config(args.ng_config))
+    elif args.strategy == 'overlay':
+        from src.v81_overlay_comparator import V81OverlayComparator
+        bt = V81OverlayComparator(
+            data, starting_cash=args.cash, version=args.version,
+            commission_per_share=args.commission_per_share,
+            min_commission=args.min_commission,
+            slippage_bps=args.slippage_bps,
+            settlement_days=args.settlement_days,
+            earnings_map={},
+            capital_ceiling=args.capital_ceiling,
+            overlays={x.strip() for x in args.overlays.split(',')
+                      if x.strip()})
     else:
         bt = CorrectedBacktest(
             data, starting_cash=args.cash, version=args.version,
@@ -114,6 +184,9 @@ def main():
             earnings_map={},  # empty: earnings guard off in historical runs
             capital_ceiling=args.capital_ceiling)
     res = bt.run()
+    if any(hashlib.sha256((ROOT / name).read_bytes()).hexdigest() != digest
+           for name, digest in code_sha256.items()):
+        raise RuntimeError('Research source changed during replay; rerun with frozen code')
 
     eq = res['equity']
     eq['date'] = pd.to_datetime(eq['date'])
@@ -124,8 +197,9 @@ def main():
     mdd, dd_start, dd_end = max_drawdown(eq['equity'], eq['date'])
 
     # SPY benchmark over identical sessions
-    spy = data.asof('SPY', cal[-1])
-    spy_ret = float(spy['close'].iloc[-1] / spy['close'].iloc[0] - 1)
+    spy = data.asof('SPY', cal[-1]).reindex(cal)
+    spy_col = 'adjClose' if 'adjClose' in spy.columns else 'close'
+    spy_ret = float(spy[spy_col].iloc[-1] / spy[spy_col].iloc[0] - 1)
     spy_cagr = (1 + spy_ret) ** (1 / years) - 1 if years > 0 else 0
 
     exposure = float((eq['positions_value'] > 0).mean())
@@ -140,8 +214,16 @@ def main():
         'snapshot_manifest': {
             'created_utc': manifest.get('created_utc'),
             'code_revision': manifest.get('code_revision'),
-            'universe_count': manifest.get('universe_count'),
+            'declared_universe_count': manifest.get('universe_count'),
+            'universe_count': len(tickers),
+            'manifest_sha256': hashlib.sha256((snap / 'manifest.json').read_bytes()).hexdigest(),
+            'loaded_tickers_sha256': hashlib.sha256('\n'.join(tickers).encode()).hexdigest(),
         },
+        'code_sha256': code_sha256,
+        'strategy_params': bt.params,
+        'benchmark': {'ticker': 'SPY', 'column': spy_col,
+                      'start': str(cal[0].date()), 'end': str(cal[-1].date()),
+                      'costs_included': False},
         'universe_size': len(tickers),
         'sessions': n_days,
         'years': round(years, 3),
@@ -172,17 +254,23 @@ def main():
         'limitations': [
             'Signals on completed bar T fill at T+1 open (approximates '
             'live 09:35 ET intraday fills).',
-            'Universe = current tickers.txt + resolved redirects; delisted '
-            'names outside the list are absent (survivorship bias).',
+            'Universe uses successful records in the frozen snapshot; missing '
+            'delisted histories and recycled symbol identities remain limitations.',
+            'Missing-bar exits retry for 20 sessions then use the last observed '
+            'price; this is optimistic and not verified delisting proceeds.',
+            'SPY benchmark uses measured-window adjusted closes without trading costs.',
             'Sector map and earnings calendar are current, not point-in-time.',
             'Adjusted-price indicators embed post-event corporate actions.',
+            'Research decision frames rescale adjusted price indicators to current '
+            'raw-price units; the production loader is not yet reconciled to this view.',
         ],
     }
 
     reports = ROOT / 'reports'
     reports.mkdir(exist_ok=True)
     tag = f"_{args.tag}" if args.tag else ''
-    base = f"backtest_{args.version}_{args.start}_{args.end}{tag}"
+    strat = '' if args.strategy == 'engine' else f'{args.strategy}_'
+    base = f"backtest_{strat}{args.version}_{args.start}_{args.end}{tag}"
     (reports / f'{base}_summary.json').write_text(
         json.dumps(summary, indent=2))
     eq.to_csv(reports / f'{base}_equity.csv', index=False)
