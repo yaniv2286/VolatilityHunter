@@ -75,6 +75,14 @@ but the raw momentum signal has no edge on this universe; inverse
 sleeve hurt again. Momentum family closed for good at 27+ experiments.
 v8.1 11.93%/-34.2% remains the only validated system.
 
+## Phase 3: ETF dual-momentum rotation (2026-11-06) - REJECTED
+
+19-instrument universe (sector SPDRs + index ETFs + TLT/GLD shelter),
+monthly nextgen engine. top1 -0.03%, top2 +0.91%, top3 +2.38% CAGR.
+Win rate improved with diversification (top3 60%, PF 1.22 - best PF of
+campaign) but monthly ETF rotation too slow. Third family closed.
+~30 experiments, 3 families, all dead vs v8.1.
+
 NG-A autopsy: +$385M in 2013 (momentum melt-up captured), -$183M in 2014
 (real momentum crash), finished $117k. Junk data: ZXZZT fake +199-billion-%
 bar, $0 prices, zero-volume names in rankings. Response: hygiene gates in
