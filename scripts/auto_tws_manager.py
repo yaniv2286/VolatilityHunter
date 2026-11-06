@@ -353,6 +353,11 @@ LogToConsole=no
                     elif in_logon and key == 'username':
                         final.append(f"Username={os.environ.get('IBKR_LOGIN_ID', 'yanivl228')}")
                         user_set = True
+                    elif key == 'localserverport':
+                        # API socket must listen on 7497 - TWS persists a
+                        # stale value (seen 4000) across launches and the
+                        # orchestrator's readiness ping then times out.
+                        final.append('LocalServerPort=7497')
                     else:
                         final.append(line)
                 # Handle keys missing at end of file
@@ -361,6 +366,10 @@ LogToConsole=no
                         final.append('tradingMode=p')
                     if not user_set:
                         final.append(f"Username={os.environ.get('IBKR_LOGIN_ID', 'yanivl228')}")
+                if not any(l.split('=')[0].strip().lower() == 'localserverport'
+                           for l in final):
+                    final.append('[IBGateway]')
+                    final.append('LocalServerPort=7497')
                 jts.write_text('\n'.join(final) + '\n', encoding='utf-8')
                 logger.info(f"jts.ini updated: paper mode + username in [Logon] section in {jts}")
             except Exception as e:
