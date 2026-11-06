@@ -1,0 +1,11 @@
+# Lean runtime dependencies for the VolatilityHunter Docker container.
+# This omits Windows-only GUI automation packages and the web/monitoring stack.
+pandas>=2.2.0
+numpy>=2.0.0
+pyarrow>=15.0.0
+requests>=2.32.0
+urllib3>=2.0.0
+python-dotenv>=1.0.0
+pytz>=2024.1
+ib-insync>=0.9.81
+psutil>=5.9.0

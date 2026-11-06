@@ -79,3 +79,14 @@ dist/
 # --- Virtual Environment Backups & Local Secrets ---
 venv_*_backup/
 scripts/tws_credentials.py
+
+# --- Research outputs (never commit) ---
+data/research/
+logs/*.log
+reports/*.csv
+reports/*.json
+temp/
+nul
+data/
+logs/*.json
+logs/*.patch
