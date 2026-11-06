@@ -436,6 +436,19 @@ src/v81_overlay_comparator.py, scripts/verify_overlay.py (10 tests),
 --tickers/--overlays/--ft-disable runner options, strategy-prefixed
 report filenames. Verify suite all Exit 0.
 
+## Live tracking phase (2026-11-06)
+
+v8.1 FORWARD-VALIDATED out-of-sample: +11.36% total (14.3% ann.) on
+untouched 2026-01-02..10-22 data, -19.4% DD, 178 trades. Production runs
+v8.6 (v8.1 + earnings guard) - same engine. Committed 816bead + eec0e26.
+
+IB Gateway fix: port stayed closed for 3 days (orchestrator timeouts).
+Root cause = TWS persisted LocalServerPort=4000; auto_tws_manager now
+forces 7497 in jts.ini pre-launch + user unchecked Read-Only API in GUI.
+Health check now 14/14 PASS with port open. Task Scheduler task
+VolatilityHunter_Daily_Live runs ~16:06 local next trading day (Mon
+11/9). User wants several weeks of paper tracking of the live engine.
+
 ## Next work, in execution order
 
 1. [DONE] Corrected v8.1 baseline on survivor universe (3.47%).
